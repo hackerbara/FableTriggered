@@ -14,7 +14,12 @@ This seems less than ideal for a variety of practical and/or ideological reasons
 
 ## How does it work?
 
-You point your preferred local coding agent at the instruction file. The actual refusal message is in the transcript history, it's just not rendered by the claude code harness by default. Implemetation work tested with Codex; likely would be refused by Claude itself.
+You point your preferred local coding agent at the instruction file. The actual refusal message is in the transcript history, it's just not rendered by the Claude Code harness by default. Implementation work tested with Codex; likely would be refused by Claude itself.
+
+## Patch instruction files
+
+- [`claude-fable-fallback-patch.md`](claude-fable-fallback-patch.md) - shows Fable fallback events in resumed history and `/resume`.
+- [`claude-reminder-suppression-patch.md`](claude-reminder-suppression-patch.md) - suppresses selected recurring reminder attachments in a copied Claude Code binary.
 
 ## Is this a good idea?
 

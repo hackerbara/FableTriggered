@@ -225,7 +225,7 @@ There is no growth flag. A module replacement may be shorter, same length, or lo
 
 Initial V1.5 mutating operation types:
 
-- `replace_between`: module-local range `[startMarker start, endMarker start)` using the first matching `endMarker` after the unique `startMarker`, with marker-count assertions.
+- `replace_between`: module-local range `[startMarker start, endMarker start)` using the first matching `endMarker` after the unique `startMarker`, with marker-count assertions. The start marker bytes are included, the end marker bytes are excluded, and `oldRangeSha256` hashes exactly that selected range.
 - `replace_exact`: module-local exact byte/string replacement with uniqueness assertion.
 
 Initial V1.5 assertion and postcondition types:
@@ -271,17 +271,17 @@ V1.5 build flow:
 18. Verify code signature.
 19. Recompute final output SHA-256 and size after signing.
 20. Re-inspect the signed output's Mach-O and Bun graph; fail if post-sign inspection changes or invalidates the Bun graph.
-21. Smoke copied output with --version and --help using content-based Claude Code checks.
-22. Run static postconditions against changed modules and/or output binary.
+21. Run static postconditions against changed modules and/or output binary.
+22. Smoke copied output with --version and --help using content-based Claude Code checks.
 23. Write build-report.json.
-24. Activate current symlink only if all automated gates pass, no manual-smoke gate is pending, and activation was requested.
+24. Activate current symlink only if identity checks, graph validation, operation resolution, static postconditions, signing, post-sign inspection, content-smoke, and required manual smoke all pass, and activation was requested.
 ```
 
 No step mutates the official source binary.
 
 ## 7. Patch stacking model
 
-Patch stacking happens above the packer and is deterministic.
+Patch stacking happens above the packer and is deterministic. In this section, `modulePath` means the same value as the containing module object's `path`: the exact Bun graph module path such as `/$bunfs/root/src/entrypoints/cli.js`.
 
 Rules:
 
@@ -469,10 +469,9 @@ Useful build flags may include:
 --skip-smoke         # tests only; never activation eligible
 --output-dir PATH
 --activate
---unverified-candidate
 ```
 
-`--unverified-candidate` may write a non-activation-eligible output and report for local development only. It must not bypass source SHA/size identity, module content SHA/length identity, Bun graph validation, operation resolution, signing, or automated smoke. If any identity, graph, or operation check fails, no patched output is written. The flag only changes report/activation status; it is not a safety bypass.
+V1.5 does not define `--unverified-candidate`. Development builds may skip signing or smoke only through explicit test-only skip flags, and those outputs are never activation eligible. Skip flags must not bypass source identity, module identity, graph validation, operation resolution, static postconditions, or copied-output-only behavior.
 
 If signing or smoke is skipped, the build report must mark the output as not activation eligible.
 
@@ -558,7 +557,7 @@ Minimum report fields:
   "activationBlockers": ["manual_smoke_pending"],
   "activationStatus": "blocked",
   "failureReason": null,
-  "unverifiedCandidate": false
+  "skippedGates": []
 }
 ```
 
@@ -583,7 +582,7 @@ Hard safety rules:
 - Never silently continue after graph validation errors.
 - Never infer module paths from fuzzy string scans when graph records are ambiguous.
 - Never accept duplicate target modules for a package operation.
-- Never apply package-provided executable code during build.
+- Never run package-provided build hooks, install hooks, shell scripts, or arbitrary package executables during build. Automated smoke is different: it executes the copied candidate binary only after source identity, module identity, graph validation, operation resolution, static postconditions, signing, and post-sign inspection have passed.
 
 Automated smoke passes only if:
 

@@ -101,3 +101,44 @@ def test_validate_package_json_resolves_module_operation(tmp_path, capsys):
     assert payload["ok"] is True
     assert payload["operationsResolved"][0]["moduleStart"] == 0
     assert payload["operationsResolved"][0]["newLen"] > payload["operationsResolved"][0]["oldLen"]
+
+
+def test_build_json_uses_v15_repack_engine_with_skip_gates(tmp_path, capsys):
+    from tests.test_builder_v15 import write_fixture_package
+
+    binary = tmp_path / "claude"
+    binary.write_bytes(build_macho_fixture()[0])
+    package = tmp_path / "pkg"
+    write_fixture_package(package, binary)
+    out_dir = tmp_path / "out"
+
+    assert (
+        main(
+            [
+                "build",
+                "--source",
+                str(binary),
+                "--package",
+                str(package),
+                "--output-dir",
+                str(out_dir),
+                "--source-version",
+                "fixture",
+                "--source-version-output",
+                "fixture (Claude Code)",
+                "--platform",
+                "darwin",
+                "--arch",
+                "arm64",
+                "--skip-signing",
+                "--skip-smoke",
+                "--json",
+            ]
+        )
+        == 1
+    )
+    payload = read_json(capsys)
+    assert payload["engine"] == "bun_graph_repack"
+    assert payload["status"] == "skipped_gates"
+    assert payload["activationEligible"] is False
+    assert (out_dir / "claude").exists()

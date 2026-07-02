@@ -1,25 +1,28 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import platform as platform_module
 import shutil
 import sys
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from claude_monkey import __version__
 from claude_monkey.binary_inspect import inspect_binary_bytes
-from claude_monkey.builder import BuildRequest, build_patchset
-from claude_monkey.builder_v15 import ValidationRequestV15, validate_package
+from claude_monkey.builder_v15 import (
+    BuildRequestV15,
+    ValidationRequestV15,
+    build_patchset_v15,
+    validate_package,
+)
 from claude_monkey.config import Profile, load_config, save_config
 from claude_monkey.install import (
     install_shim_transaction,
     restore_install_transaction,
     use_official,
 )
-from claude_monkey.manifest import Manifest, load_manifest_dict
 from claude_monkey.paths import StatePaths, default_paths
 from claude_monkey.smoke import run_command
 
@@ -65,10 +68,9 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--source-version-output")
     build.add_argument("--platform", default=sys.platform)
     build.add_argument("--arch", default=platform_module.machine() or "unknown")
-    build.add_argument("--skip-identity-check", action="store_true")
-    build.add_argument("--unverified-candidate", action="store_true")
     build.add_argument("--skip-signing", action="store_true")
     build.add_argument("--skip-smoke", action="store_true")
+    build.add_argument("--json", action="store_true")
     build.add_argument("--activate", action="store_true")
 
     install = sub.add_parser("install-shim")
@@ -105,10 +107,6 @@ def _package_roots(paths: StatePaths) -> list[Path]:
     return [paths.patches_dir, _repo_root() / "packages"]
 
 
-def _load_manifest(package_dir: Path) -> Manifest:
-    return load_manifest_dict(json.loads((package_dir / "patch.json").read_text()))
-
-
 def _resolve_package(package_id_or_path: str, paths: StatePaths) -> Path:
     raw = Path(package_id_or_path).expanduser()
     if raw.exists():
@@ -125,10 +123,6 @@ def _enabled_package_dirs(args: argparse.Namespace, paths: StatePaths, config) -
         return [_resolve_package(item, paths) for item in args.packages]
     profile = active_profile(config)
     return [_resolve_package(item, paths) for item in profile.enabledPatches]
-
-
-def _file_sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _discover_source(source_arg: str | None) -> Path | None:
@@ -195,34 +189,32 @@ def handle_build(args: argparse.Namespace, paths: StatePaths, config) -> int:
     if not package_dirs:
         print("build requires enabled patches or at least one --package", file=sys.stderr)
         return 2
-    manifests = [(package_dir, _load_manifest(package_dir)) for package_dir in package_dirs]
     output_dir = Path(args.output_dir).expanduser() if args.output_dir else _default_output_dir(
         paths, config, source_version
     )
-    report = build_patchset(
-        BuildRequest(
+    report = build_patchset_v15(
+        BuildRequestV15(
             source_path=source,
             output_dir=output_dir,
-            manifests=manifests,
+            package_dirs=package_dirs,
             source_version=source_version,
             source_version_output=version_output,
-            source_sha256=_file_sha256(source),
-            source_size_bytes=source.stat().st_size,
             platform=args.platform,
             arch=args.arch,
-            skip_identity_check=args.skip_identity_check,
-            unverified_candidate=args.unverified_candidate,
             run_signing=not args.skip_signing,
             run_smoke=not args.skip_smoke,
             activate=args.activate,
             current_path=paths.current_path,
         )
     )
-    if report.status in {"verified", "unverified_candidate"}:
+    if report.status in {"verified", "manual_smoke_pending"}:
         config.activePatchSet = str(output_dir)
         save_config(paths.config_path, config)
-    _print_report_summary(report)
-    return 0 if report.status in {"verified", "unverified_candidate"} else 1
+    if args.json:
+        print(json.dumps(asdict(report), indent=2, sort_keys=True))
+    else:
+        _print_report_summary(report)
+    return 0 if report.status in {"verified", "manual_smoke_pending"} else 1
 
 
 def _record_path(args: argparse.Namespace, state_dir: Path) -> Path:

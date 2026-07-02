@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 DEFAULT_TIMEOUT_SECONDS = 15.0
 TIMEOUT_RETURN_CODE = 124
@@ -58,3 +59,28 @@ def codesign_sign(binary: Path, runner=run_command) -> CommandResult:
 
 def codesign_verify(binary: Path, runner=run_command) -> CommandResult:
     return runner(["codesign", "--verify", "--deep", "--strict", "--verbose=4", str(binary)])
+
+
+def smoke_claude_code_version_and_help(
+    binary: Path, expected_version_output: str, runner=run_command
+) -> dict[str, Any]:
+    version = runner([str(binary), "--version"])
+    help_result = runner([str(binary), "--help"])
+    errors: list[str] = []
+    version_text = (version.stdout.strip() or version.stderr.strip()).strip()
+    help_text = f"{help_result.stdout}\n{help_result.stderr}"
+    if version.returncode != 0:
+        errors.append("version_nonzero_exit")
+    if version_text != expected_version_output:
+        errors.append("version_mismatch")
+    if help_result.returncode != 0:
+        errors.append("help_nonzero_exit")
+    if "Claude Code" not in help_text:
+        errors.append("claude_help_marker_missing")
+    if "Bun is a fast JavaScript runtime" in help_text or version_text.startswith("1.4.0"):
+        errors.append("bun_help_detected")
+    return {
+        "passed": not errors,
+        "errors": errors,
+        "commands": [version.__dict__, help_result.__dict__],
+    }

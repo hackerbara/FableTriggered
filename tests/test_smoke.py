@@ -44,3 +44,40 @@ def test_run_command_timeout_returns_failure_result():
     result = run_command(["python3", "-c", "import time; time.sleep(2)"], timeout_seconds=0.01)
     assert result.returncode == 124
     assert "timed out" in result.stderr
+
+
+def test_content_smoke_rejects_bun_cli_help(tmp_path):
+    from claude_monkey.smoke import smoke_claude_code_version_and_help
+
+    binary = tmp_path / "claude"
+    binary.write_text("fake")
+
+    def runner(argv):
+        if argv[-1] == "--version":
+            return CommandResult(argv=argv, returncode=0, stdout="1.4.0\n", stderr="")
+        return CommandResult(
+            argv=argv, returncode=0, stdout="Bun is a fast JavaScript runtime\n", stderr=""
+        )
+
+    result = smoke_claude_code_version_and_help(binary, "2.1.198 (Claude Code)", runner)
+    assert result["passed"] is False
+    assert "version_mismatch" in result["errors"]
+    assert "bun_help_detected" in result["errors"]
+
+
+def test_content_smoke_accepts_claude_code_markers(tmp_path):
+    from claude_monkey.smoke import smoke_claude_code_version_and_help
+
+    binary = tmp_path / "claude"
+    binary.write_text("fake")
+
+    def runner(argv):
+        if argv[-1] == "--version":
+            return CommandResult(argv=argv, returncode=0, stdout="2.1.198 (Claude Code)\n", stderr="")
+        return CommandResult(
+            argv=argv, returncode=0, stdout="Usage: claude [options]\nClaude Code help\n", stderr=""
+        )
+
+    result = smoke_claude_code_version_and_help(binary, "2.1.198 (Claude Code)", runner)
+    assert result["passed"] is True
+    assert result["errors"] == []

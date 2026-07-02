@@ -1,5 +1,7 @@
 # FableTriggered - Claude Code Fable downgrade message visibility patch
 
+![FableTriggered screenshot](assets/fabletriggered-screenshot.jpeg)
+
 ## What is this?
 
 An instruction file that tells a coding agent how to monkey-patch a local version of Claude Code to show an indicator in the session `/resume` list if the session had a security-classifier downgrade message, and then to unhide that downgrade message in the resumed chat.

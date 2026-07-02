@@ -122,6 +122,13 @@ def require_sha256_hex(value: Any, field: str) -> str:
     return value
 
 
+def optional_sha256_hex(obj: dict[str, Any], field: str) -> str | None:
+    value = obj.get(field)
+    if value is None:
+        return None
+    return require_sha256_hex(value, field)
+
+
 def optional_string(obj: dict[str, Any], field: str) -> str | None:
     value = obj.get(field)
     if value is None:
@@ -191,7 +198,7 @@ def parse_operation(value: Any) -> Operation:
         require_within_range=tuple(require_within),
         replacement=parse_payload(op.get("replacement")),
         padding=padding,
-        old_range_sha256=optional_string(op, "oldRangeSha256"),
+        old_range_sha256=optional_sha256_hex(op, "oldRangeSha256"),
         old_range_length=optional_non_negative_int(op, "oldRangeLength"),
         known_behavior_change=optional_string(op, "knownBehaviorChange"),
     )

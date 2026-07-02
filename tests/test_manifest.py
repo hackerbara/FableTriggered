@@ -111,3 +111,10 @@ def test_manifest_rejects_non_hex_sha256(field):
         replacement["sha256"] = "z" * 64
     with pytest.raises(ManifestError, match="sha256"):
         load_manifest_dict(data)
+
+
+def test_manifest_rejects_non_hex_old_range_sha256():
+    data = valid_manifest()
+    data["targets"][0]["operations"][0]["oldRangeSha256"] = "not-a-sha"
+    with pytest.raises(ManifestError, match="oldRangeSha256"):
+        load_manifest_dict(data)

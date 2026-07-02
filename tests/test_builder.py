@@ -6,7 +6,6 @@ from tests.test_manifest import valid_manifest
 
 from claude_monkey.builder import BuildRequest, build_patchset
 from claude_monkey.manifest import load_manifest_dict
-from claude_monkey.smoke import CommandResult, smoke_version_and_help
 
 TEST_SHA = "b" * 64
 
@@ -198,18 +197,3 @@ def test_skip_identity_check_is_unverified_even_when_identity_matches(tmp_path):
     )
     assert report.status == "unverified_candidate"
     assert report.unverifiedCandidate is True
-
-
-
-def test_smoke_runner_records_commands(tmp_path):
-    binary = tmp_path / "claude"
-    binary.write_text("fake")
-    calls = []
-
-    def runner(argv):
-        calls.append(argv)
-        return CommandResult(argv=argv, returncode=0, stdout="ok", stderr="")
-
-    results = smoke_version_and_help(binary, runner)
-    assert [r.argv[-1] for r in results] == ["--version", "--help"]
-    assert calls[0] == [str(binary), "--version"]

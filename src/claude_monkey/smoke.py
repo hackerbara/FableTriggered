@@ -4,6 +4,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+DEFAULT_TIMEOUT_SECONDS = 15.0
+TIMEOUT_RETURN_CODE = 124
+
 
 @dataclass(frozen=True)
 class CommandResult:
@@ -13,8 +16,26 @@ class CommandResult:
     stderr: str
 
 
-def run_command(argv: list[str]) -> CommandResult:
-    proc = subprocess.run(argv, text=True, capture_output=True, check=False)
+def run_command(argv: list[str], timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS) -> CommandResult:
+    try:
+        proc = subprocess.run(
+            argv,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+        stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+        message = f"command timed out after {timeout_seconds} seconds"
+        stderr = f"{stderr}\n{message}" if stderr else message
+        return CommandResult(
+            argv=argv,
+            returncode=TIMEOUT_RETURN_CODE,
+            stdout=stdout,
+            stderr=stderr,
+        )
     return CommandResult(
         argv=argv, returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr
     )

@@ -28,8 +28,12 @@ def is_management(argv):
     return bool(argv) and argv[0] in MANAGEMENT
 
 
+def is_prompt_flag(arg):
+    return arg in PROMPT_FLAGS or any(arg.startswith(flag + '=') for flag in PROMPT_FLAGS)
+
+
 def has_prompt_flag(argv):
-    return any(arg in PROMPT_FLAGS for arg in argv)
+    return any(is_prompt_flag(arg) for arg in argv)
 
 
 def active_prompt_args(argv):

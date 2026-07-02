@@ -35,24 +35,34 @@ def digest_manifest(manifest: Manifest) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def target_matches_request(target: Target, request: BuildRequest) -> bool:
+    ident = target.source_identity
+    return (
+        ident.claude_version == request.source_version
+        and ident.version_output == request.source_version_output
+        and ident.sha256 == request.source_sha256
+        and ident.size_bytes == request.source_size_bytes
+        and ident.platform == request.platform
+        and ident.arch == request.arch
+    )
+
+
 def select_target(manifest: Manifest, request: BuildRequest) -> Target | None:
     for target in manifest.targets:
-        ident = target.source_identity
-        if (
-            ident.claude_version == request.source_version
-            and ident.version_output == request.source_version_output
-            and ident.sha256 == request.source_sha256
-            and ident.size_bytes == request.source_size_bytes
-            and ident.platform == request.platform
-            and ident.arch == request.arch
-        ):
+        if target_matches_request(target, request):
             return target
-    if request.skip_identity_check or request.unverified_candidate:
-        return manifest.targets[0]
     return None
 
 
+def select_bypass_target(manifest: Manifest) -> Target | None:
+    if len(manifest.targets) != 1:
+        return None
+    return manifest.targets[0]
+
+
 def assert_condition(data: bytes, assertion: Assertion) -> dict:
+    if assertion.scope != "whole_binary":
+        raise ValueError(f"unsupported_assertion_scope:{assertion.scope}")
     needle = assertion.value.encode("utf-8")
     found = needle in data
     passed = found if assertion.type == "must_contain" else not found
@@ -88,8 +98,16 @@ def build_patchset(request: BuildRequest) -> BuildReport:
     report_path = request.output_dir / "build-report.json"
     source = request.source_path.read_bytes()
     selected: list[tuple[Path, Manifest, Target]] = []
+    identity_bypassed = False
     for package_dir, manifest in request.manifests:
         target = select_target(manifest, request)
+        if target is None and (request.skip_identity_check or request.unverified_candidate):
+            target = select_bypass_target(manifest)
+            identity_bypassed = target is not None
+            if target is None:
+                report = failed_report(request, f"ambiguous_identity_bypass:{manifest.id}")
+                report.write(report_path)
+                return report
         if target is None:
             report = failed_report(request, f"identity_mismatch:{manifest.id}")
             report.write(report_path)
@@ -122,6 +140,11 @@ def build_patchset(request: BuildRequest) -> BuildReport:
                     report.verificationResults = verification_results
                     report.write(report_path)
                     return report
+        if request.run_signing or request.run_smoke:
+            report = failed_report(request, "verification_hooks_unimplemented")
+            report.verificationResults = verification_results
+            report.write(report_path)
+            return report
     except (PatchError, ValueError, OSError) as exc:
         report = failed_report(request, f"patch_failed:{exc}")
         report.write(report_path)
@@ -147,7 +170,9 @@ def build_patchset(request: BuildRequest) -> BuildReport:
         for item in planned
     ]
     report = BuildReport(
-        status="unverified_candidate" if request.unverified_candidate else "verified",
+        status="unverified_candidate"
+        if request.unverified_candidate or identity_bypassed
+        else "verified",
         sourceClaudePath=str(request.source_path),
         sourceVersion=request.source_version,
         sourceVersionOutput=request.source_version_output,
@@ -163,7 +188,7 @@ def build_patchset(request: BuildRequest) -> BuildReport:
         byteRanges=ranges,
         verificationResults=verification_results,
         activationStatus="skipped",
-        unverifiedCandidate=request.unverified_candidate,
+        unverifiedCandidate=request.unverified_candidate or identity_bypassed,
     )
     report.write(report_path)
     return report

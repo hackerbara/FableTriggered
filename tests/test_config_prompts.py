@@ -46,3 +46,11 @@ def test_no_injection_for_management_invocation(tmp_path):
         "mcp",
         "list",
     ]
+
+
+def test_prompt_equals_flags_override_profile(tmp_path):
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("extra prompt")
+    profile = PromptProfile(id="research", name="Research", path=prompt, mode="append")
+    args = prompt_args_for_invocation(["--system-prompt=mine", "hello"], profile, True)
+    assert args == ["--system-prompt=mine", "hello"]

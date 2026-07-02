@@ -9,3 +9,8 @@ def test_shim_script_uses_exec_and_bypass():
     assert "os.execv" in script
     assert "/tmp/state" in script
     assert "shell=True" not in script
+
+
+def test_shim_script_detects_equals_prompt_flags():
+    script = render_shim_script("/tmp/state")
+    assert "startswith(flag + '=')" in script

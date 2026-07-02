@@ -20,8 +20,14 @@ class PromptProfile:
     mode: str = "append"
 
 
+def is_prompt_flag(arg: str) -> bool:
+    return arg in PROMPT_FLAG_PREFIXES or any(
+        arg.startswith(flag + "=") for flag in PROMPT_FLAG_PREFIXES
+    )
+
+
 def has_user_prompt_flag(argv: list[str]) -> bool:
-    return any(arg in PROMPT_FLAG_PREFIXES for arg in argv)
+    return any(is_prompt_flag(arg) for arg in argv)
 
 
 def is_management_invocation(argv: list[str]) -> bool:

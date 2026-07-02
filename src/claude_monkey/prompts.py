@@ -40,12 +40,15 @@ def prompt_args_for_invocation(
     argv: list[str],
     profile: PromptProfile | None,
     supports_file_flags: bool,
+    allow_direct_string_flags: bool = False,
 ) -> list[str]:
     if profile is None or has_user_prompt_flag(argv) or is_management_invocation(argv):
         return list(argv)
     if supports_file_flags:
         flag = "--append-system-prompt-file" if profile.mode == "append" else "--system-prompt-file"
         return [flag, str(profile.path), *argv]
+    if not allow_direct_string_flags:
+        return list(argv)
     text = profile.path.read_text()
     flag = "--append-system-prompt" if profile.mode == "append" else "--system-prompt"
     return [flag, text, *argv]

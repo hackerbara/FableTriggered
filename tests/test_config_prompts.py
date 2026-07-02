@@ -54,3 +54,13 @@ def test_prompt_equals_flags_override_profile(tmp_path):
     profile = PromptProfile(id="research", name="Research", path=prompt, mode="append")
     args = prompt_args_for_invocation(["--system-prompt=mine", "hello"], profile, True)
     assert args == ["--system-prompt=mine", "hello"]
+
+
+def test_prompt_direct_string_fallback_requires_explicit_allow(tmp_path):
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("extra prompt")
+    profile = PromptProfile(id="research", name="Research", path=prompt, mode="append")
+    assert prompt_args_for_invocation(["hello"], profile, supports_file_flags=False) == ["hello"]
+    assert prompt_args_for_invocation(
+        ["hello"], profile, supports_file_flags=False, allow_direct_string_flags=True
+    ) == ["--append-system-prompt", "extra prompt", "hello"]

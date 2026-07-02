@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from claude_monkey.install import (
     install_shim_transaction,
@@ -87,3 +88,19 @@ def test_dry_run_does_not_write_record_or_state(tmp_path):
     assert not record.exists()
     assert not (tmp_path / "state").exists()
     assert target.read_text() == "official"
+
+
+def test_install_writes_record_before_replacing_target(tmp_path, monkeypatch):
+    target = tmp_path / "claude"
+    target.write_text("official")
+    calls = []
+    real_replace = Path.replace
+
+    def tracking_replace(self, target_path):
+        calls.append((self, target_path, (tmp_path / "state" / "install-record.json").exists()))
+        return real_replace(self, target_path)
+
+    monkeypatch.setattr(Path, "replace", tracking_replace)
+    install_shim_transaction(target, tmp_path / "state", dry_run=False)
+    assert calls
+    assert calls[0][2] is True

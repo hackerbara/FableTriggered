@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 from tests.test_manifest import valid_manifest
@@ -10,11 +11,16 @@ from claude_monkey.manifest import load_manifest_dict
 TEST_SHA = "b" * 64
 
 
+def file_sha256(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def test_build_patchset_writes_report_and_output(tmp_path):
     source = tmp_path / "claude-source"
     source.write_bytes(b"HEAD case\"a\":{OLD_A_BODY} case\"b\":{OLD_B_BODY} TAIL")
+    source_sha = file_sha256(source)
     data = valid_manifest()
-    data["targets"][0]["sourceIdentity"]["sha256"] = TEST_SHA
+    data["targets"][0]["sourceIdentity"]["sha256"] = source_sha
     data["targets"][0]["sourceIdentity"]["sizeBytes"] = source.stat().st_size
     manifest = load_manifest_dict(data)
     out_dir = tmp_path / "out"
@@ -25,7 +31,7 @@ def test_build_patchset_writes_report_and_output(tmp_path):
             manifests=[(tmp_path, manifest)],
             source_version="2.1.198",
             source_version_output="2.1.198 (Claude Code)",
-            source_sha256=TEST_SHA,
+            source_sha256=source_sha,
             source_size_bytes=source.stat().st_size,
             platform="darwin",
             arch="arm64",
@@ -49,6 +55,7 @@ def test_build_patchset_writes_report_and_output(tmp_path):
 def test_identity_mismatch_blocks_normal_build(tmp_path):
     source = tmp_path / "claude-source"
     source.write_bytes(b"HEAD case\"a\":{OLD_A_BODY} case\"b\":{OLD_B_BODY} TAIL")
+    source_sha = file_sha256(source)
     manifest = load_manifest_dict(valid_manifest())
     report = build_patchset(
         BuildRequest(
@@ -57,7 +64,7 @@ def test_identity_mismatch_blocks_normal_build(tmp_path):
             manifests=[(tmp_path, manifest)],
             source_version="2.1.199",
             source_version_output="2.1.199 (Claude Code)",
-            source_sha256=TEST_SHA,
+            source_sha256=source_sha,
             source_size_bytes=source.stat().st_size,
             platform="darwin",
             arch="arm64",
@@ -117,8 +124,9 @@ def test_identity_bypass_requires_unambiguous_target(tmp_path):
 def test_range_assertions_are_rejected_until_supported(tmp_path):
     source = tmp_path / "claude-source"
     source.write_bytes(b"HEAD case\"a\":{OLD_A_BODY} case\"b\":{OLD_B_BODY} TAIL")
+    source_sha = file_sha256(source)
     data = valid_manifest()
-    data["targets"][0]["sourceIdentity"]["sha256"] = TEST_SHA
+    data["targets"][0]["sourceIdentity"]["sha256"] = source_sha
     data["targets"][0]["sourceIdentity"]["sizeBytes"] = source.stat().st_size
     data["targets"][0]["postconditions"] = [
         {"type": "must_not_contain", "scope": "range", "opId": "replace-a", "value": "TAIL"}
@@ -131,7 +139,7 @@ def test_range_assertions_are_rejected_until_supported(tmp_path):
             manifests=[(tmp_path, manifest)],
             source_version="2.1.198",
             source_version_output="2.1.198 (Claude Code)",
-            source_sha256=TEST_SHA,
+            source_sha256=source_sha,
             source_size_bytes=source.stat().st_size,
             platform="darwin",
             arch="arm64",
@@ -147,8 +155,9 @@ def test_range_assertions_are_rejected_until_supported(tmp_path):
 def test_requested_signing_or_smoke_without_hooks_is_not_verified(tmp_path):
     source = tmp_path / "claude-source"
     source.write_bytes(b"HEAD case\"a\":{OLD_A_BODY} case\"b\":{OLD_B_BODY} TAIL")
+    source_sha = file_sha256(source)
     data = valid_manifest()
-    data["targets"][0]["sourceIdentity"]["sha256"] = TEST_SHA
+    data["targets"][0]["sourceIdentity"]["sha256"] = source_sha
     data["targets"][0]["sourceIdentity"]["sizeBytes"] = source.stat().st_size
     manifest = load_manifest_dict(data)
     report = build_patchset(
@@ -158,7 +167,7 @@ def test_requested_signing_or_smoke_without_hooks_is_not_verified(tmp_path):
             manifests=[(tmp_path, manifest)],
             source_version="2.1.198",
             source_version_output="2.1.198 (Claude Code)",
-            source_sha256=TEST_SHA,
+            source_sha256=source_sha,
             source_size_bytes=source.stat().st_size,
             platform="darwin",
             arch="arm64",
@@ -174,8 +183,9 @@ def test_requested_signing_or_smoke_without_hooks_is_not_verified(tmp_path):
 def test_skip_identity_check_is_unverified_even_when_identity_matches(tmp_path):
     source = tmp_path / "claude-source"
     source.write_bytes(b"HEAD case\"a\":{OLD_A_BODY} case\"b\":{OLD_B_BODY} TAIL")
+    source_sha = file_sha256(source)
     data = valid_manifest()
-    data["targets"][0]["sourceIdentity"]["sha256"] = TEST_SHA
+    data["targets"][0]["sourceIdentity"]["sha256"] = source_sha
     data["targets"][0]["sourceIdentity"]["sizeBytes"] = source.stat().st_size
     manifest = load_manifest_dict(data)
     report = build_patchset(
@@ -185,7 +195,7 @@ def test_skip_identity_check_is_unverified_even_when_identity_matches(tmp_path):
             manifests=[(tmp_path, manifest)],
             source_version="2.1.198",
             source_version_output="2.1.198 (Claude Code)",
-            source_sha256=TEST_SHA,
+            source_sha256=source_sha,
             source_size_bytes=source.stat().st_size,
             platform="darwin",
             arch="arm64",
@@ -197,3 +207,32 @@ def test_skip_identity_check_is_unverified_even_when_identity_matches(tmp_path):
     )
     assert report.status == "unverified_candidate"
     assert report.unverifiedCandidate is True
+
+
+def test_build_uses_actual_source_identity_not_claimed_identity(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(b"HEAD case\"a\":{OLD_A_BODY} case\"b\":{OLD_B_BODY} TAIL")
+    data = valid_manifest()
+    data["targets"][0]["sourceIdentity"]["sha256"] = "f" * 64
+    data["targets"][0]["sourceIdentity"]["sizeBytes"] = 123456
+    manifest = load_manifest_dict(data)
+    report = build_patchset(
+        BuildRequest(
+            source_path=source,
+            output_dir=tmp_path / "out",
+            manifests=[(tmp_path, manifest)],
+            source_version="2.1.198",
+            source_version_output="2.1.198 (Claude Code)",
+            source_sha256="f" * 64,
+            source_size_bytes=123456,
+            platform="darwin",
+            arch="arm64",
+            run_signing=False,
+            run_smoke=False,
+            activate=False,
+        )
+    )
+    assert report.status == "failed"
+    assert "source_identity_mismatch" in report.failureReason
+    assert report.sourceSha256 != "f" * 64
+    assert report.sourceSizeBytes == source.stat().st_size

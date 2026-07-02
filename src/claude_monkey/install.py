@@ -53,10 +53,10 @@ def install_shim_transaction(target_path: Path, state_dir: Path, dry_run: bool) 
     if dry_run:
         return record_path
     state_dir.mkdir(parents=True, exist_ok=True)
+    record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     tmp = target_path.with_suffix(target_path.suffix + ".claude-monkey.tmp")
     write_shim(tmp, state_dir)
     tmp.replace(target_path)
-    record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     return record_path
 
 

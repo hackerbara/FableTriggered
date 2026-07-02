@@ -74,14 +74,21 @@ def assert_condition(data: bytes, assertion: Assertion) -> dict:
     }
 
 
-def failed_report(request: BuildRequest, reason: str) -> BuildReport:
+def failed_report(
+    request: BuildRequest,
+    reason: str,
+    source_sha256: str | None = None,
+    source_size_bytes: int | None = None,
+) -> BuildReport:
     return BuildReport(
         status="failed",
         sourceClaudePath=str(request.source_path),
         sourceVersion=request.source_version,
         sourceVersionOutput=request.source_version_output,
-        sourceSha256=request.source_sha256,
-        sourceSizeBytes=request.source_size_bytes,
+        sourceSha256=source_sha256 or request.source_sha256,
+        sourceSizeBytes=(
+            source_size_bytes if source_size_bytes is not None else request.source_size_bytes
+        ),
         platform=request.platform,
         arch=request.arch,
         enabledPatches=[manifest.id for _, manifest in request.manifests],
@@ -97,6 +104,20 @@ def build_patchset(request: BuildRequest) -> BuildReport:
     request.output_dir.mkdir(parents=True, exist_ok=True)
     report_path = request.output_dir / "build-report.json"
     source = request.source_path.read_bytes()
+    actual_source_sha256 = hashlib.sha256(source).hexdigest()
+    actual_source_size_bytes = len(source)
+    if (
+        actual_source_sha256 != request.source_sha256
+        or actual_source_size_bytes != request.source_size_bytes
+    ) and not (request.skip_identity_check or request.unverified_candidate):
+        report = failed_report(
+            request,
+            "source_identity_mismatch",
+            actual_source_sha256,
+            actual_source_size_bytes,
+        )
+        report.write(report_path)
+        return report
     selected: list[tuple[Path, Manifest, Target]] = []
     identity_bypassed = request.skip_identity_check
     for package_dir, manifest in request.manifests:
@@ -176,8 +197,8 @@ def build_patchset(request: BuildRequest) -> BuildReport:
         sourceClaudePath=str(request.source_path),
         sourceVersion=request.source_version,
         sourceVersionOutput=request.source_version_output,
-        sourceSha256=request.source_sha256,
-        sourceSizeBytes=request.source_size_bytes,
+        sourceSha256=actual_source_sha256,
+        sourceSizeBytes=actual_source_size_bytes,
         platform=request.platform,
         arch=request.arch,
         enabledPatches=[manifest.id for _, manifest in request.manifests],

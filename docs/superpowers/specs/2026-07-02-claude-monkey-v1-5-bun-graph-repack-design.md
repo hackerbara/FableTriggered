@@ -1,7 +1,7 @@
 # ClaudeMonkey V1.5 Bun graph-aware repack design
 
 Date: 2026-07-02
-Status: approved design direction; implementation not started
+Status: design direction approved; detailed spec under review; implementation not started
 Project: ClaudeMonkey
 Scope: V1.5 CLI/core patch-application engine replacement
 
@@ -68,10 +68,10 @@ Visual UI smoke was not completed for the final artifact, so UI-affecting patche
 
 The public sources are useful corroboration and comparison material, not vendored dependencies.
 
-- [TheCjw `extract_bun.js` gist](https://gist.github.com/TheCjw/2665020a559c1e980fa10f2a5c2aa621): strongest current public corroboration for Bun standalone payload parsing, trailer validation, and 52-byte module records. No explicit reusable license was found. It is extractor-only, not a repacker.
-- [sorrycc `unbundle-claude-code.ts` gist](https://gist.github.com/sorrycc/27944a584ad9c22e5ffc0c90fa33f007): useful Claude Code download/unbundle workflow reference. No explicit reusable license was found. Some parser assumptions conflict with local 2.1.198 evidence, especially hardcoded module-table/header and content `+8` assumptions.
-- `lafkpages/bun-decompile`: actual repo found by research, but not linked from the gists, not clearly licensed from visible evidence, and extraction/decompile-oriented rather than repack-oriented.
-- `@shepherdjerred/bun-decompile`: actual packaged project with GPL-3.0 license and historical Bun decompile work, but its module-entry size assumptions conflict with the local 2.1.198 graph evidence. It should not be vendored into ClaudeMonkey.
+- [TheCjw `extract_bun.js` gist](https://gist.github.com/TheCjw/2665020a559c1e980fa10f2a5c2aa621): strongest current public corroboration for Bun standalone payload parsing, trailer validation, and 52-byte module records. No explicit reusable license was found in the checked gist evidence on 2026-07-02. It is extractor-only, not a repacker.
+- [sorrycc `unbundle-claude-code.ts` gist](https://gist.github.com/sorrycc/27944a584ad9c22e5ffc0c90fa33f007): useful Claude Code download/unbundle workflow reference. No explicit reusable license was found in the checked gist evidence on 2026-07-02. Some parser assumptions conflict with local 2.1.198 evidence, especially hardcoded module-table/header and content `+8` assumptions.
+- `lafkpages/bun-decompile`: actual repo found by research, but not linked from the gists, not clearly licensed from visible evidence checked on 2026-07-02, and extraction/decompile-oriented rather than repack-oriented.
+- `@shepherdjerred/bun-decompile`: actual packaged project with GPL-3.0 license observed on 2026-07-02 and historical Bun decompile work, but its module-entry size assumptions conflict with the local 2.1.198 graph evidence. It should not be vendored into ClaudeMonkey.
 
 Recommendation: build a clean-room production core informed by local spike evidence and public format corroboration. Do not copy unlicensed gist code. Do not vendor GPL code into ClaudeMonkey's core. Consider publishing or upstreaming evidence only after ClaudeMonkey has its own validator/repacker and fixtures.
 
@@ -134,17 +134,12 @@ Example package shape:
         "claudeVersion": "2.1.198",
         "versionOutput": "2.1.198 (Claude Code)",
         "sha256": "<official-source-sha256>",
-        "sizeBytes": 233957936,
+        "sizeBytes": 229328464,
         "platform": "darwin",
         "arch": "arm64"
       },
-      "binaryShape": {
-        "format": "macho64",
-        "bunSegment": "__BUN",
-        "bunSection": "__bun",
-        "bunTrailer": "\\n---- Bun! ----\\n",
-        "moduleRecordSize": 52
-      },
+      "requiredEngine": "bun_graph_repack",
+      "requiredBinaryFormat": "bun_standalone_macho64",
       "modules": [
         {
           "path": "/$bunfs/root/src/entrypoints/cli.js",
@@ -200,13 +195,14 @@ Required target identity:
 - `sourceIdentity.platform`
 - `sourceIdentity.arch`
 
-Required binary shape:
+Required engine constraints:
 
-- `format`: initially `macho64` only.
-- `bunSegment`: initially `__BUN`.
-- `bunSection`: initially `__bun`.
-- `bunTrailer`: initially `\n---- Bun! ----\n`.
-- `moduleRecordSize`: initially `52`.
+- `requiredEngine`: initially `bun_graph_repack`.
+- `requiredBinaryFormat`: initially `bun_standalone_macho64`.
+
+Packages identify source binaries and Bun modules. They do not encode Bun container mechanics such as trailer bytes, module record sizes, section names, or pointer-table layout. The engine owns binary-shape validation and reports the observed shape through `inspect-binary --json` and `build-report.json`.
+
+All concrete numeric examples in this document are fixture-derived and must match the named fixture. If a value is illustrative, it must be a placeholder, not a plausible-looking number.
 
 Required module identity:
 
@@ -225,14 +221,21 @@ Required operation identity:
 
 There is no growth flag. A module replacement may be shorter, same length, or longer. Repacking is the only V1.5 application mechanism.
 
-### 5.2 Operation vocabulary
+### 5.2 Operation and assertion vocabulary
 
-Initial V1.5 operation types:
+Initial V1.5 mutating operation types:
 
-- `replace_between`: module-local range from `startMarker` to the first matching `endMarker` after it, with marker-count assertions.
+- `replace_between`: module-local range `[startMarker start, endMarker start)` using the first matching `endMarker` after the unique `startMarker`, with marker-count assertions.
 - `replace_exact`: module-local exact byte/string replacement with uniqueness assertion.
-- `module_must_contain`: assertion only.
-- `module_must_not_contain`: assertion only.
+
+Initial V1.5 assertion and postcondition types:
+
+- `module_must_contain`
+- `module_must_not_contain`
+- `binary_must_contain`
+- `binary_must_not_contain`
+
+Mutating operations always carry `replacement`. Assertions never carry `replacement`.
 
 All text markers are UTF-8 encoded for matching against module bytes. Future binary marker encodings can be added only if a real package needs them.
 
@@ -253,7 +256,7 @@ V1.5 build flow:
    - module table;
    - module records;
    - pointer-pair bounds.
-6. Validate graph shape against target binaryShape.
+6. Validate graph shape against the engine-owned `bun_standalone_macho64` requirements.
 7. Extract an in-memory module map keyed by Bun module path.
 8. Match every enabled package target against source identity and module identity.
 9. Resolve every operation against original module content.
@@ -266,10 +269,12 @@ V1.5 build flow:
 16. Preserve executable mode.
 17. Ad-hoc sign copied output on macOS.
 18. Verify code signature.
-19. Smoke copied output with --version and --help.
-20. Run static postconditions against changed modules and/or output binary.
-21. Write build-report.json.
-22. Activate current symlink only if all required automated gates pass and activation was requested.
+19. Recompute final output SHA-256 and size after signing.
+20. Re-inspect the signed output's Mach-O and Bun graph; fail if post-sign inspection changes or invalidates the Bun graph.
+21. Smoke copied output with --version and --help using content-based Claude Code checks.
+22. Run static postconditions against changed modules and/or output binary.
+23. Write build-report.json.
+24. Activate current symlink only if all automated gates pass, no manual-smoke gate is pending, and activation was requested.
 ```
 
 No step mutates the official source binary.
@@ -390,7 +395,7 @@ Minimum JSON shape:
   "ok": true,
   "sourcePath": "/path/to/claude",
   "sourceSha256": "...",
-  "sourceSizeBytes": 233957936,
+  "sourceSizeBytes": 229328464,
   "format": "macho64",
   "supported": true,
   "bun": {
@@ -433,11 +438,15 @@ Minimum JSON shape:
     {
       "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
       "opId": "renderer-overlay",
-      "start": 155038386,
-      "end": 155039021,
+      "moduleStart": 12720354,
+      "moduleEnd": 12720989,
       "oldLen": 635,
       "newLen": 17019,
-      "delta": 16384
+      "delta": 16384,
+      "debugCoordinates": {
+        "payloadStart": 155038386,
+        "absoluteFileStart": 218329786
+      }
     }
   ],
   "manualSmokeRequired": true,
@@ -445,7 +454,7 @@ Minimum JSON shape:
 }
 ```
 
-Offsets in validation output are module offsets by default. If absolute file offsets are included, they must be labeled explicitly as absolute file offsets.
+Machine-readable operation coordinates are always module-local and must be named `moduleStart` and `moduleEnd`. Payload-relative or absolute-file coordinates are optional debug fields and must be named `payloadStart`, `payloadEnd`, `absoluteFileStart`, or `absoluteFileEnd`.
 
 ### 9.3 `build --json`
 
@@ -463,6 +472,8 @@ Useful build flags may include:
 --unverified-candidate
 ```
 
+`--unverified-candidate` may write a non-activation-eligible output and report for local development only. It must not bypass source SHA/size identity, module content SHA/length identity, Bun graph validation, operation resolution, signing, or automated smoke. If any identity, graph, or operation check fails, no patched output is written. The flag only changes report/activation status; it is not a safety bypass.
+
 If signing or smoke is skipped, the build report must mark the output as not activation eligible.
 
 ## 10. Build report
@@ -474,13 +485,14 @@ Minimum report fields:
 ```json
 {
   "schemaVersion": 2,
-  "status": "verified",
+  "status": "manual_smoke_pending",
+  "automatedStatus": "passed",
   "engine": "bun_graph_repack",
   "sourceClaudePath": "/path/to/claude",
   "sourceVersion": "2.1.198",
   "sourceVersionOutput": "2.1.198 (Claude Code)",
   "sourceSha256": "...",
-  "sourceSizeBytes": 233957936,
+  "sourceSizeBytes": 229328464,
   "enabledPatches": ["floating-renderer-overlay"],
   "changedModules": [
     {
@@ -497,12 +509,16 @@ Minimum report fields:
       "packageId": "floating-renderer-overlay",
       "opId": "renderer-overlay",
       "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-      "start": 155038386,
-      "end": 155039021,
+      "moduleStart": 12720354,
+      "moduleEnd": 12720989,
       "oldLen": 635,
       "newLen": 17019,
       "delta": 16384,
-      "oldSha256": "..."
+      "oldSha256": "...",
+      "debugCoordinates": {
+        "payloadStart": 155038386,
+        "absoluteFileStart": 218329786
+      }
     }
   ],
   "bunGraphUpdates": {
@@ -522,16 +538,25 @@ Minimum report fields:
     "codeSignatureOffsetDelta": 16384
   },
   "verificationResults": [],
+  "outputPath": "/path/to/output/claude",
+  "outputSha256": "...",
+  "outputSizeBytes": 229344848,
   "signingResult": {
     "status": "passed"
+  },
+  "postSignInspection": {
+    "bunGraphValid": true,
+    "validationErrors": []
   },
   "smokeTestResults": [],
   "manualSmoke": {
     "required": true,
-    "completed": false,
+    "status": "pending",
     "reason": "UI-affecting renderer patch"
   },
-  "activationStatus": "skipped",
+  "activationEligible": false,
+  "activationBlockers": ["manual_smoke_pending"],
+  "activationStatus": "blocked",
   "failureReason": null,
   "unverifiedCandidate": false
 }
@@ -542,6 +567,8 @@ Report rules:
 - `engine` must be `bun_graph_repack` for V1.5 builds.
 - Failed builds still write a report when possible.
 - Manual/visual smoke status is visible and separate from automated smoke.
+- `status` is the overall build status. `automatedStatus` records automated gate results. A UI-affecting build with pending manual smoke must not be reported simply as `verified`.
+- `activationEligible` must be false whenever signing, automated smoke, post-sign inspection, source/module identity, or required manual smoke is incomplete or failed.
 - The report should include enough graph/Mach-O update evidence for future debugging, but V2 UI should not branch on internal update details.
 
 ## 11. Safety and fail-closed behavior
@@ -550,13 +577,20 @@ Hard safety rules:
 
 - Never mutate the official Claude binary.
 - Never patch an unrecognized binary shape.
-- Never activate an output that was not signed and smoked successfully.
+- Never activate an output that was not signed, post-sign inspected, content-smoked successfully, and cleared of required manual-smoke blockers.
 - Never treat successful signing as proof of correct Bun graph metadata.
 - Never treat `--version` alone as sufficient smoke; `--help` must also show Claude Code behavior, not Bun runtime help.
 - Never silently continue after graph validation errors.
 - Never infer module paths from fuzzy string scans when graph records are ambiguous.
 - Never accept duplicate target modules for a package operation.
 - Never apply package-provided executable code during build.
+
+Automated smoke passes only if:
+
+- `--version` exits 0 and exactly matches `sourceIdentity.versionOutput`.
+- `--help` exits 0.
+- Help output contains Claude Code-specific markers.
+- Help output does not match Bun runtime help.
 
 Failure examples:
 
@@ -582,9 +616,10 @@ V2 JSON contract additions:
 ```json
 {
   "latestBuildEngine": "bun_graph_repack",
-  "latestBuildStatus": "verified",
+  "latestBuildStatus": "manual_smoke_pending",
   "latestBuildReportPath": "/Users/example/.claude-monkey/.../build-report.json",
   "manualSmokeRequired": true,
+  "activationEligible": false,
   "rebuildRequired": false
 }
 ```
@@ -600,6 +635,7 @@ V2 JSON contract additions:
   "engine": "bun_graph_repack",
   "reportPath": "/Users/example/.claude-monkey/.../build-report.json",
   "manualSmokeRequired": true,
+  "activationEligible": false,
   "error": null
 }
 ```
@@ -623,7 +659,7 @@ Required migration path for each package:
 9. Validate package against source.
 10. Build with the V1.5 repack engine.
 
-A future `migrate-slot-package` helper may assist package authors by reading a V1 package and suggesting module coordinates. That helper would be a migration aid, not a runtime compatibility path.
+A future `suggest-module-migration-from-v1` helper may assist package authors by reading a V1 package and suggesting module coordinates. That helper would be a migration aid, not a runtime compatibility path.
 
 ## 14. Testing and verification plan
 
@@ -638,7 +674,7 @@ Test areas:
 - Module operation planner resolves ranges inside module bytes.
 - Module operation planner rejects duplicate markers, missing markers, old range hash mismatch, and overlaps.
 - Repacker updates changed module size and shifted pointers.
-- Build report serializes changed modules, graph updates, Mach-O updates, signing, smoke, manual smoke, and failure reasons.
+- Build report serializes changed modules, graph updates, Mach-O updates, output identity, signing, post-sign inspection, content-based smoke, manual smoke, activation eligibility, and failure reasons.
 - CLI `inspect-binary --json` and `validate-package --json` are read-only.
 
 ### 14.2 Fixture tests
@@ -668,9 +704,11 @@ Real-binary acceptance checks:
 - `validate-package --json` resolves operations;
 - `build --json` writes copied output only;
 - `codesign --verify --strict` passes;
-- output `--version` returns Claude Code version;
-- output `--help` returns Claude Code help, not Bun help;
+- output `--version` exits 0 and exactly matches the expected Claude Code version output;
+- output `--help` exits 0, contains Claude Code-specific help markers, and does not match Bun runtime help;
 - build report records manual smoke requirement for UI patches;
+- smoke rejects a copied binary that exits 0 but reports Bun runtime version/help;
+- signed output is re-inspected and the graph remains valid;
 - official Claude binary hash remains unchanged.
 
 ### 14.4 Manual visual smoke
@@ -688,18 +726,19 @@ Manual smoke completion can be recorded later in a report note or separate verif
 
 ## 15. Implementation sequence after spec approval
 
-1. Add schema v2 manifest models and validators for module-coordinate packages.
-2. Add read-only Bun/Mach-O inspection and `inspect-binary --json`.
-3. Add module operation planner and package validation.
-4. Add synthetic Bun graph repack fixture and failing tests.
-5. Implement Bun graph rewrite for changed modules.
-6. Implement Mach-O update for changed `__BUN` size and shifted `__LINKEDIT`/code-signature offsets.
-7. Wire builder to use only the V1.5 repack engine for schema v2 packages.
-8. Extend build reports.
-9. Add signing/smoke activation eligibility rules.
-10. Migrate one reference package to schema v2 as proof.
-11. Run synthetic tests.
-12. Run opt-in copied real-binary smoke only with explicit approval.
-13. Update V2 JSON/status contract docs if needed.
+1. Update the active builder contract so schema v1 whole-binary packages are rejected with a migration-required error in V1.5 builds. The V1 same-size patch code may remain only as archived legacy code or test fixture support, not as an active build strategy.
+2. Add schema v2 manifest models and validators for module-coordinate packages.
+3. Add read-only Bun/Mach-O inspection and `inspect-binary --json`.
+4. Add module operation planner and package validation.
+5. Add synthetic Bun graph repack fixture and failing tests.
+6. Implement Bun graph rewrite for changed modules.
+7. Implement Mach-O update for changed `__BUN` size and shifted `__LINKEDIT`/code-signature offsets.
+8. Wire builder to use only the V1.5 repack engine for schema v2 packages.
+9. Extend build reports with output identity, post-sign inspection, content-smoke evidence, manual-smoke state, and activation eligibility.
+10. Add signing, post-sign inspection, content-smoke, and manual-smoke activation eligibility rules.
+11. Migrate one reference package to schema v2 as proof.
+12. Run synthetic tests.
+13. Run opt-in copied real-binary smoke only with explicit approval.
+14. Update V2 JSON/status contract docs if needed.
 
 Stop before implementation if the user wants an implementation plan first. This document is the design surface, not a code-change plan.

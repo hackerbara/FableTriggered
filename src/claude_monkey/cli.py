@@ -12,6 +12,7 @@ from typing import Any
 from claude_monkey import __version__
 from claude_monkey.binary_inspect import inspect_binary_bytes
 from claude_monkey.builder import BuildRequest, build_patchset
+from claude_monkey.builder_v15 import ValidationRequestV15, validate_package
 from claude_monkey.config import Profile, load_config, save_config
 from claude_monkey.install import (
     install_shim_transaction,
@@ -46,6 +47,15 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_binary = sub.add_parser("inspect-binary")
     inspect_binary.add_argument("--source", required=True)
     inspect_binary.add_argument("--json", action="store_true")
+
+    validate = sub.add_parser("validate-package")
+    validate.add_argument("--source", required=True)
+    validate.add_argument("--package", required=True)
+    validate.add_argument("--source-version", required=True)
+    validate.add_argument("--source-version-output", required=True)
+    validate.add_argument("--platform", default=sys.platform)
+    validate.add_argument("--arch", default=platform_module.machine() or "unknown")
+    validate.add_argument("--json", action="store_true")
 
     build = sub.add_parser("build")
     build.add_argument("--source")
@@ -329,6 +339,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"supported={str(payload['supported']).lower()}")
             print(f"modules={len(payload['modules'])}")
         return 0 if payload["ok"] and not payload["validationErrors"] else 1
+    if args.command == "validate-package":
+        payload = validate_package(
+            ValidationRequestV15(
+                source_path=Path(args.source).expanduser(),
+                package_dir=Path(args.package).expanduser(),
+                source_version=args.source_version,
+                source_version_output=args.source_version_output,
+                platform=args.platform,
+                arch=args.arch,
+            )
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(f"ok={str(payload['ok']).lower()}")
+        return 0 if payload["ok"] else 1
     if args.command == "build":
         return handle_build(args, paths, config)
     if args.command == "install-shim":

@@ -167,11 +167,14 @@ def parse_assertion(value: Any) -> Assertion:
     scope = item.get("scope", "whole_binary")
     if scope not in SUPPORTED_SCOPES:
         raise ManifestError(f"unsupported assertion scope: {scope}")
+    op_id = optional_string(item, "opId")
+    if scope == "range" and op_id is None:
+        raise ManifestError("range assertion requires opId")
     return Assertion(
         type=assertion_type,
         scope=scope,
         value=require_string(item, "value"),
-        op_id=optional_string(item, "opId"),
+        op_id=op_id,
     )
 
 

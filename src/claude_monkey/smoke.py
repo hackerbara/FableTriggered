@@ -45,5 +45,9 @@ def smoke_version_and_help(binary: Path, runner=run_command) -> list[CommandResu
     return [runner([str(binary), "--version"]), runner([str(binary), "--help"])]
 
 
+def codesign_sign(binary: Path, runner=run_command) -> CommandResult:
+    return runner(["codesign", "--force", "--sign", "-", str(binary)])
+
+
 def codesign_verify(binary: Path, runner=run_command) -> CommandResult:
     return runner(["codesign", "--verify", "--deep", "--strict", "--verbose=4", str(binary)])

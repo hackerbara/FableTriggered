@@ -8,7 +8,7 @@
     {
       "operations": [
         {
-          "endMarker": "case\"user\":{",
+          "endMarker": "case\"user\":{if(n.isCompactSummary){let M=h?\"transcript\":\"prompt\",H;",
           "expectedEndMarkerCount": 1,
           "expectedStartMarkerCount": 1,
           "label": "Render assistant fallback as system warning banner",
@@ -35,7 +35,7 @@
           "padding": "spaces",
           "replacement": {
             "path": "payloads/net-metadata-formatter.js",
-            "sha256": "98586d745820dab5a2889e507c9762786371358d1cd2d1a237f14b4522e5791d"
+            "sha256": "b0c41c4097997d2fdf879795a448f83dee1326138f09c536886219874eff8f4d"
           },
           "requireWithinRange": [
             "return n.join(\" \\xB7 \")"

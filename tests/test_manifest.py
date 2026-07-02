@@ -118,3 +118,19 @@ def test_manifest_rejects_non_hex_old_range_sha256():
     data["targets"][0]["operations"][0]["oldRangeSha256"] = "not-a-sha"
     with pytest.raises(ManifestError, match="oldRangeSha256"):
         load_manifest_dict(data)
+
+
+def test_manifest_accepts_range_assertions_with_op_id():
+    data = valid_manifest()
+    data["targets"][0]["postconditions"][0]["scope"] = "range"
+    data["targets"][0]["postconditions"][0]["opId"] = "replace-a"
+    manifest = load_manifest_dict(data)
+    assert manifest.targets[0].postconditions[0].scope == "range"
+    assert manifest.targets[0].postconditions[0].op_id == "replace-a"
+
+
+def test_manifest_rejects_range_assertions_without_op_id():
+    data = valid_manifest()
+    data["targets"][0]["postconditions"][0]["scope"] = "range"
+    with pytest.raises(ManifestError, match="range assertion requires opId"):
+        load_manifest_dict(data)

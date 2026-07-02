@@ -121,7 +121,7 @@ def test_identity_bypass_requires_unambiguous_target(tmp_path):
     assert "ambiguous_identity_bypass" in report.failureReason
 
 
-def test_range_assertions_are_rejected_until_supported(tmp_path):
+def test_range_assertions_are_evaluated_against_operation_range(tmp_path):
     source = tmp_path / "claude-source"
     source.write_bytes(b"HEAD case\"a\":{OLD_A_BODY} case\"b\":{OLD_B_BODY} TAIL")
     source_sha = file_sha256(source)
@@ -148,36 +148,8 @@ def test_range_assertions_are_rejected_until_supported(tmp_path):
             activate=False,
         )
     )
-    assert report.status == "failed"
-    assert "unsupported_assertion_scope" in report.failureReason
-
-
-def test_requested_signing_or_smoke_without_hooks_is_not_verified(tmp_path):
-    source = tmp_path / "claude-source"
-    source.write_bytes(b"HEAD case\"a\":{OLD_A_BODY} case\"b\":{OLD_B_BODY} TAIL")
-    source_sha = file_sha256(source)
-    data = valid_manifest()
-    data["targets"][0]["sourceIdentity"]["sha256"] = source_sha
-    data["targets"][0]["sourceIdentity"]["sizeBytes"] = source.stat().st_size
-    manifest = load_manifest_dict(data)
-    report = build_patchset(
-        BuildRequest(
-            source_path=source,
-            output_dir=tmp_path / "out",
-            manifests=[(tmp_path, manifest)],
-            source_version="2.1.198",
-            source_version_output="2.1.198 (Claude Code)",
-            source_sha256=source_sha,
-            source_size_bytes=source.stat().st_size,
-            platform="darwin",
-            arch="arm64",
-            run_signing=True,
-            run_smoke=True,
-            activate=False,
-        )
-    )
-    assert report.status == "failed"
-    assert "verification_hooks_unimplemented" in report.failureReason
+    assert report.status == "verified", report.failureReason
+    assert report.verificationResults[-1]["scope"] == "range"
 
 
 def test_skip_identity_check_is_unverified_even_when_identity_matches(tmp_path):
@@ -236,3 +208,43 @@ def test_build_uses_actual_source_identity_not_claimed_identity(tmp_path):
     assert "source_identity_mismatch" in report.failureReason
     assert report.sourceSha256 != "f" * 64
     assert report.sourceSizeBytes == source.stat().st_size
+
+
+def test_requested_signing_and_smoke_use_injected_runner(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(b"HEAD case\"a\":{OLD_A_BODY} case\"b\":{OLD_B_BODY} TAIL")
+    source_sha = file_sha256(source)
+    data = valid_manifest()
+    data["targets"][0]["sourceIdentity"]["sha256"] = source_sha
+    data["targets"][0]["sourceIdentity"]["sizeBytes"] = source.stat().st_size
+    manifest = load_manifest_dict(data)
+    calls = []
+
+    def runner(argv):
+        calls.append(argv)
+        from claude_monkey.smoke import CommandResult
+
+        return CommandResult(argv=argv, returncode=0, stdout="ok", stderr="")
+
+    report = build_patchset(
+        BuildRequest(
+            source_path=source,
+            output_dir=tmp_path / "out",
+            manifests=[(tmp_path, manifest)],
+            source_version="2.1.198",
+            source_version_output="2.1.198 (Claude Code)",
+            source_sha256=source_sha,
+            source_size_bytes=source.stat().st_size,
+            platform="darwin",
+            arch="arm64",
+            run_signing=True,
+            run_smoke=True,
+            command_runner=runner,
+            activate=False,
+        )
+    )
+    assert report.status == "verified", report.failureReason
+    output = str(tmp_path / "out" / "claude")
+    assert [call[0] for call in calls] == ["codesign", "codesign", output, output]
+    assert len(report.smokeTestResults) == 2
+    assert report.signingResult["status"] == "passed"

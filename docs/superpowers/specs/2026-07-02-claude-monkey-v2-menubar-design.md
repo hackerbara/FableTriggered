@@ -40,6 +40,10 @@ V2 should ask v1 for machine-readable state. If v1 does not already expose these
 claude-monkey status --json
 claude-monkey list-patches --json
 claude-monkey list-prompts --json
+claude-monkey enable <patch-id> --json
+claude-monkey disable <patch-id> --json
+claude-monkey set-prompt <prompt-id> --json
+claude-monkey clear-prompt --json
 claude-monkey build --json
 claude-monkey install-shim --json
 claude-monkey uninstall-shim --json
@@ -56,7 +60,7 @@ The exact v1 implementation can add fields, but v2 needs these minimum shapes be
 ```json
 {
   "schemaVersion": 1,
-  "status": "ok",
+  "status": "rebuild_required",
   "sourceClaudeVersion": "2.1.198",
   "sourceClaudePath": "/path/to/official/claude",
   "installMode": "shim",
@@ -82,6 +86,14 @@ error
 not_installed
 unknown
 ```
+
+Status precedence:
+
+```text
+error > not_installed > rebuild_required > ok > unknown
+```
+
+If `rebuildRequired` is true and no higher-priority state applies, `status` should be `rebuild_required`. V2 may recompute that precedence defensively, but v1 should emit a non-contradictory status.
 
 `claude-monkey list-patches --json`:
 
@@ -128,7 +140,7 @@ unknown
 }
 ```
 
-Mutating commands such as `build --json`, `install-shim --json`, and `uninstall-shim --json` should return a command result envelope:
+Mutating commands such as `enable --json`, `disable --json`, `set-prompt --json`, `clear-prompt --json`, `build --json`, `install-shim --json`, and `uninstall-shim --json` should return a command result envelope:
 
 ```json
 {
@@ -141,7 +153,16 @@ Mutating commands such as `build --json`, `install-shim --json`, and `uninstall-
 }
 ```
 
-If `ok` is `false`, `error` should contain a short human-readable message and any structured error code v1 already owns. V2 should display the short message and offer logs/report access rather than trying to interpret every builder failure.
+`error` must be either `null` or this object shape:
+
+```json
+{
+  "message": "Short human-readable failure",
+  "code": "optional_machine_code"
+}
+```
+
+If `ok` is `false`, V2 should display `error.message` and offer logs/report access rather than trying to interpret every builder failure. `error.code` is for tests, logs, and future branching; it may be `null` when v1 has no stable structured code.
 
 ## 3. Chosen implementation approach
 
@@ -204,6 +225,8 @@ app = rumps.App(
 ```
 
 The implementation can wrap this in a class, but the visible status item should be icon-only. If `title=None` falls back to text in the installed `rumps` version, use the nearest supported `rumps` pattern that leaves no persistent `ClaudeMonkey` text in the menu bar and keep the manual smoke test for that behavior.
+
+Because `quit_button=None` disables the default rumps quit item, the explicit `Quit` menu item must call `rumps.quit_application()`.
 
 ## 5. MVP menu structure
 
@@ -300,6 +323,7 @@ Command runner constraints:
 - Bound captured stdout and stderr in memory and logs. The UI needs concise summaries, not unbounded process output.
 - Serialize mutating commands. Only one of `enable`, `disable`, `set-prompt`, `clear-prompt`, `build`, `install-shim`, or `uninstall-shim` may run at a time.
 - Run slow commands such as `build`, `install-shim`, and `uninstall-shim` off the `rumps` menu callback path so the menu bar app does not freeze.
+- Worker threads may run subprocesses and write command results to a queue, but menu mutation, icon updates, and alerts must happen through a `rumps`/AppKit-safe app-loop handoff. A simple implementation can use a short-interval `rumps.Timer` to drain the result queue and update UI from the app loop.
 - While a slow command is running, disable other mutating menu items, show a busy/running status item inside the menu, and refresh state after completion.
 - Keep read-only refresh commands safe to run on demand, but avoid overlapping refreshes with mutating command completion refreshes.
 
@@ -310,13 +334,13 @@ Command runner constraints:
 Clicking a prompt profile calls:
 
 ```bash
-claude-monkey set-prompt <prompt-id>
+claude-monkey set-prompt <prompt-id> --json
 ```
 
 Clicking `none` calls:
 
 ```bash
-claude-monkey clear-prompt
+claude-monkey clear-prompt --json
 ```
 
 Expected UX:
@@ -330,8 +354,8 @@ Expected UX:
 Clicking a patch calls one of:
 
 ```bash
-claude-monkey enable <patch-id>
-claude-monkey disable <patch-id>
+claude-monkey enable <patch-id> --json
+claude-monkey disable <patch-id> --json
 ```
 
 Expected UX:
@@ -497,23 +521,29 @@ Manual smoke tests on macOS:
 
 V1 contract acceptance checklist before any menu UI work:
 
+Substitute known patch and prompt IDs from the fixture or local `list-* --json` outputs. Run config-mutating commands against a disposable state directory or disposable `HOME`; do not mutate the user's real active profile just to prove the menu contract.
+
 ```bash
 claude-monkey status --json
 claude-monkey list-patches --json
 claude-monkey list-prompts --json
-claude-monkey build --json --help
-claude-monkey install-shim --json --help
-claude-monkey uninstall-shim --json --help
+HOME="$(mktemp -d)" claude-monkey enable <known-patch-id> --json
+HOME="$(mktemp -d)" claude-monkey disable <known-patch-id> --json
+HOME="$(mktemp -d)" claude-monkey set-prompt <known-prompt-id> --json
+HOME="$(mktemp -d)" claude-monkey clear-prompt --json
+claude-monkey build --json --dry-run
+claude-monkey install-shim --json --dry-run
+claude-monkey uninstall-shim --json --dry-run
 ```
 
 Acceptance criteria:
 
-- Each command exits successfully in a normal configured environment, except build/install commands may stop at help or dry-run if a real mutation would be unsafe during contract testing.
+- Each command exits successfully in a normal configured environment, except the `HOME="$(mktemp -d)" ...` commands use disposable state and the build/install commands must use dry-run if a real mutation would be unsafe during contract testing.
 - JSON parses without fallback text scraping.
 - Status output includes state directory, logs directory, prompt state, desired patch state, active patch state, rebuild-required state, and latest report path if one exists.
 - Patch output includes every patch ID, display label, desired enabled state, active enabled state, availability, and compatibility status.
 - Prompt output includes every prompt ID, display label, active state, mode, and source path.
-- Command result envelopes consistently expose `ok`, `summary`, and `error`.
+- Command result envelopes for all mutating commands consistently expose `ok`, `summary`, and `error`, where `error` is either `null` or an object with `message` and `code`.
 - The CLI/core, not the menu bar app, owns all config mutation, build activation, shim installation, authorization, and rollback behavior.
 
 ## 12. Non-goals for v2

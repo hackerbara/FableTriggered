@@ -36,6 +36,13 @@ def run_command(argv: list[str], timeout_seconds: float = DEFAULT_TIMEOUT_SECOND
             stdout=stdout,
             stderr=stderr,
         )
+    except OSError as exc:
+        return CommandResult(
+            argv=argv,
+            returncode=127,
+            stdout="",
+            stderr=f"{type(exc).__name__}: {exc}",
+        )
     return CommandResult(
         argv=argv, returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr
     )

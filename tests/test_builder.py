@@ -248,3 +248,74 @@ def test_requested_signing_and_smoke_use_injected_runner(tmp_path):
     assert [call[0] for call in calls] == ["codesign", "codesign", output, output]
     assert len(report.smokeTestResults) == 2
     assert report.signingResult["status"] == "passed"
+
+
+def test_signing_runner_exception_writes_failed_report(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(b"HEAD case\"a\":{OLD_A_BODY} case\"b\":{OLD_B_BODY} TAIL")
+    source_sha = file_sha256(source)
+    data = valid_manifest()
+    data["targets"][0]["sourceIdentity"]["sha256"] = source_sha
+    data["targets"][0]["sourceIdentity"]["sizeBytes"] = source.stat().st_size
+    manifest = load_manifest_dict(data)
+
+    def runner(argv):
+        raise FileNotFoundError(argv[0])
+
+    report = build_patchset(
+        BuildRequest(
+            source_path=source,
+            output_dir=tmp_path / "out",
+            manifests=[(tmp_path, manifest)],
+            source_version="2.1.198",
+            source_version_output="2.1.198 (Claude Code)",
+            source_sha256=source_sha,
+            source_size_bytes=source.stat().st_size,
+            platform="darwin",
+            arch="arm64",
+            run_signing=True,
+            run_smoke=False,
+            command_runner=runner,
+            activate=False,
+        )
+    )
+    assert report.status == "failed"
+    assert report.failureReason == "signing_failed"
+    assert report.signingResult["status"] == "failed"
+    assert (tmp_path / "out" / "build-report.json").exists()
+
+
+def test_smoke_runner_exception_writes_failed_report(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(b"HEAD case\"a\":{OLD_A_BODY} case\"b\":{OLD_B_BODY} TAIL")
+    source_sha = file_sha256(source)
+    data = valid_manifest()
+    data["targets"][0]["sourceIdentity"]["sha256"] = source_sha
+    data["targets"][0]["sourceIdentity"]["sizeBytes"] = source.stat().st_size
+    manifest = load_manifest_dict(data)
+
+    def runner(argv):
+        raise PermissionError(argv[0])
+
+    report = build_patchset(
+        BuildRequest(
+            source_path=source,
+            output_dir=tmp_path / "out",
+            manifests=[(tmp_path, manifest)],
+            source_version="2.1.198",
+            source_version_output="2.1.198 (Claude Code)",
+            source_sha256=source_sha,
+            source_size_bytes=source.stat().st_size,
+            platform="darwin",
+            arch="arm64",
+            run_signing=False,
+            run_smoke=True,
+            command_runner=runner,
+            activate=False,
+        )
+    )
+    assert report.status == "failed"
+    assert report.failureReason == "smoke_failed"
+    assert report.smokeTestResults[0]["returncode"] == 127
+    assert "PermissionError" in report.smokeTestResults[0]["stderr"]
+    assert (tmp_path / "out" / "build-report.json").exists()

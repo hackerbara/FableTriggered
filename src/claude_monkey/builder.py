@@ -140,9 +140,29 @@ def _command_result_dict(result: CommandResult) -> dict[str, Any]:
     return asdict(result)
 
 
+def _exception_result(argv: list[str], exc: Exception) -> CommandResult:
+    return CommandResult(
+        argv=argv,
+        returncode=127,
+        stdout="",
+        stderr=f"{type(exc).__name__}: {exc}",
+    )
+
+
+def _safe_runner(runner: CommandRunner) -> CommandRunner:
+    def wrapped(argv: list[str]) -> CommandResult:
+        try:
+            return runner(argv)
+        except Exception as exc:
+            return _exception_result(argv, exc)
+
+    return wrapped
+
+
 def _apply_signing(report: BuildReport, output: Path, runner: CommandRunner) -> bool:
-    sign = codesign_sign(output, runner)
-    verify = codesign_verify(output, runner)
+    safe_runner = _safe_runner(runner)
+    sign = codesign_sign(output, safe_runner)
+    verify = codesign_verify(output, safe_runner)
     passed = sign.returncode == 0 and verify.returncode == 0
     report.signingResult = {
         "status": "passed" if passed else "failed",
@@ -156,7 +176,7 @@ def _apply_signing(report: BuildReport, output: Path, runner: CommandRunner) -> 
 
 
 def _apply_smoke(report: BuildReport, output: Path, runner: CommandRunner) -> bool:
-    results = smoke_version_and_help(output, runner)
+    results = smoke_version_and_help(output, _safe_runner(runner))
     report.smokeTestResults = [_command_result_dict(result) for result in results]
     passed = all(result.returncode == 0 for result in results)
     if not passed:

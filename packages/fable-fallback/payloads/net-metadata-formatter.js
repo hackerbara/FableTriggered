@@ -1,0 +1,1 @@
+function net(e){let t=e.fileSize!==void 0?$a(e.fileSize):e.messageCount+" messages",n=[Bz(e.modified,{style:"short"})];if(e.gitBranch)n.push(e.gitBranch);n.push(t);if(e.tag)n.push("#"+e.tag);if(e.agentSetting)n.push("@"+e.agentSetting);if(e.prNumber)n.push("#"+e.prNumber);if(e.fableClassifierTriggered)n.push("Fable classifier triggered");return n.join(" · ")}

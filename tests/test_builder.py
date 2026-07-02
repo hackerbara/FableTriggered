@@ -169,3 +169,31 @@ def test_requested_signing_or_smoke_without_hooks_is_not_verified(tmp_path):
     )
     assert report.status == "failed"
     assert "verification_hooks_unimplemented" in report.failureReason
+
+
+def test_skip_identity_check_is_unverified_even_when_identity_matches(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(b"HEAD case\"a\":{OLD_A_BODY} case\"b\":{OLD_B_BODY} TAIL")
+    data = valid_manifest()
+    data["targets"][0]["sourceIdentity"]["sha256"] = TEST_SHA
+    data["targets"][0]["sourceIdentity"]["sizeBytes"] = source.stat().st_size
+    manifest = load_manifest_dict(data)
+    report = build_patchset(
+        BuildRequest(
+            source_path=source,
+            output_dir=tmp_path / "out",
+            manifests=[(tmp_path, manifest)],
+            source_version="2.1.198",
+            source_version_output="2.1.198 (Claude Code)",
+            source_sha256=TEST_SHA,
+            source_size_bytes=source.stat().st_size,
+            platform="darwin",
+            arch="arm64",
+            skip_identity_check=True,
+            run_signing=False,
+            run_smoke=False,
+            activate=False,
+        )
+    )
+    assert report.status == "unverified_candidate"
+    assert report.unverifiedCandidate is True

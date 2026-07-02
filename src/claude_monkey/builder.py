@@ -98,7 +98,7 @@ def build_patchset(request: BuildRequest) -> BuildReport:
     report_path = request.output_dir / "build-report.json"
     source = request.source_path.read_bytes()
     selected: list[tuple[Path, Manifest, Target]] = []
-    identity_bypassed = False
+    identity_bypassed = request.skip_identity_check
     for package_dir, manifest in request.manifests:
         target = select_target(manifest, request)
         if target is None and (request.skip_identity_check or request.unverified_candidate):

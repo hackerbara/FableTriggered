@@ -1,7 +1,7 @@
 # ClaudeMonkey v2 menu bar design and runbook
 
 Date: 2026-07-02
-Status: approved design direction; implementation not started
+Status: approved design direction; adversarial review fixes incorporated; implementation not started
 Project: ClaudeMonkey
 Scope: v2 fast-follow menu bar companion after the v1 Python CLI/core lands
 
@@ -46,6 +46,102 @@ claude-monkey uninstall-shim --json
 ```
 
 The menu bar may tolerate early text output during a spike, but the implementation plan should treat JSON CLI output as a required seam before a usable MVP.
+
+### Minimal JSON contracts
+
+The exact v1 implementation can add fields, but v2 needs these minimum shapes before any `rumps` UI code depends on them.
+
+`claude-monkey status --json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "status": "ok",
+  "sourceClaudeVersion": "2.1.198",
+  "sourceClaudePath": "/path/to/official/claude",
+  "installMode": "shim",
+  "shimInstalled": true,
+  "activeProfile": "default",
+  "activePrompt": "research",
+  "desiredPatchIds": ["fable-fallback", "reminder-suppression"],
+  "activePatchIds": ["fable-fallback"],
+  "rebuildRequired": true,
+  "latestBuildReportPath": "/Users/example/.claude-monkey/versions/2.1.198/patchsets/example/build-report.json",
+  "stateDir": "/Users/example/.claude-monkey",
+  "logsDir": "/Users/example/.claude-monkey/logs",
+  "lastError": null
+}
+```
+
+Allowed `status` values:
+
+```text
+ok
+rebuild_required
+error
+not_installed
+unknown
+```
+
+`claude-monkey list-patches --json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "patches": [
+    {
+      "id": "fable-fallback",
+      "label": "Fable fallback visibility",
+      "desiredEnabled": true,
+      "activeEnabled": true,
+      "available": true,
+      "compatibilityStatus": "compatible"
+    }
+  ]
+}
+```
+
+Allowed `compatibilityStatus` values:
+
+```text
+compatible
+version_mismatch
+sha_mismatch
+conflict
+unknown
+```
+
+`claude-monkey list-prompts --json`:
+
+```json
+{
+  "schemaVersion": 1,
+  "prompts": [
+    {
+      "id": "research",
+      "label": "Research",
+      "active": true,
+      "mode": "append",
+      "sourcePath": "/Users/example/.claude-monkey/prompts/research.md"
+    }
+  ]
+}
+```
+
+Mutating commands such as `build --json`, `install-shim --json`, and `uninstall-shim --json` should return a command result envelope:
+
+```json
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "status": "ok",
+  "summary": "Build activated",
+  "reportPath": "/Users/example/.claude-monkey/versions/2.1.198/patchsets/example/build-report.json",
+  "error": null
+}
+```
+
+If `ok` is `false`, `error` should contain a short human-readable message and any structured error code v1 already owns. V2 should display the short message and offer logs/report access rather than trying to interpret every builder failure.
 
 ## 3. Chosen implementation approach
 
@@ -95,17 +191,31 @@ Visual direction:
 - The icon should be legible at menu bar size before it is cute.
 - Do not spend v2 time on a full app icon set unless packaging becomes part of the task.
 
+`rumps` wiring requirement:
+
+```python
+app = rumps.App(
+    name="ClaudeMonkey",
+    title=None,
+    icon=str(icon_path),
+    template=True,
+    quit_button=None,
+)
+```
+
+The implementation can wrap this in a class, but the visible status item should be icon-only. If `title=None` falls back to text in the installed `rumps` version, use the nearest supported `rumps` pattern that leaves no persistent `ClaudeMonkey` text in the menu bar and keep the manual smoke test for that behavior.
+
 ## 5. MVP menu structure
 
-Target menu:
+Target menu with example values shown:
 
 ```text
 [icon-only status item]
 ────────────────
-ClaudeMonkey: OK / Rebuild Required / Error
-Claude Code: 2.1.198
-Prompt: research
-Patches: 2 enabled
+ClaudeMonkey: <OK / Rebuild Required / Error>
+Claude Code: <version>
+Prompt: <prompt-id or none>
+Patches: <enabled-count> enabled
 ────────────────
 Prompts
   ✓ research
@@ -120,6 +230,7 @@ Rebuild / Apply…
 Install shim…
 Uninstall shim…
 Open build report
+Open logs folder
 Open state folder
 Refresh
 Quit
@@ -133,6 +244,7 @@ Notes:
 - Prompt and patch items should use checked state rather than duplicating the current value in labels.
 - `Rebuild / Apply…` should remain visible in all states. When no rebuild is required, it can still allow a deliberate rebuild; when rebuild is required, it is the primary call to action.
 - `Open build report` should open the latest active or failed report if one exists; otherwise it should show a small alert.
+- `Open logs folder` should reveal `~/.claude-monkey/logs/` in Finder, creating it if the menu bar log path is initialized.
 - `Open state folder` should reveal `~/.claude-monkey/` in Finder.
 
 ## 6. Data flow
@@ -176,11 +288,20 @@ Command flow:
 ```text
 user clicks menu item
   -> confirm if action is destructive/protected/slow
-  -> run one claude-monkey command via subprocess
+  -> enqueue one claude-monkey command through the serialized command runner
   -> capture stdout, stderr, exit code
   -> refresh MenuState
   -> show alert only for failures, protected operations, or build summaries
 ```
+
+Command runner constraints:
+
+- Use argv-list subprocess calls with `shell=False`; never concatenate patch IDs, prompt IDs, or paths into shell strings.
+- Bound captured stdout and stderr in memory and logs. The UI needs concise summaries, not unbounded process output.
+- Serialize mutating commands. Only one of `enable`, `disable`, `set-prompt`, `clear-prompt`, `build`, `install-shim`, or `uninstall-shim` may run at a time.
+- Run slow commands such as `build`, `install-shim`, and `uninstall-shim` off the `rumps` menu callback path so the menu bar app does not freeze.
+- While a slow command is running, disable other mutating menu items, show a busy/running status item inside the menu, and refresh state after completion.
+- Keep read-only refresh commands safe to run on demand, but avoid overlapping refreshes with mutating command completion refreshes.
 
 ## 7. Action behavior
 
@@ -240,7 +361,7 @@ claude-monkey build --json
 
 Expected UX:
 
-- Show a running/busy menu state if practical.
+- Show a running/busy menu state.
 - Disable other mutating menu items while build is running.
 - On success, show summary with active patch set and report path.
 - On failure, show error summary and offer to open the build report/log.
@@ -264,16 +385,19 @@ Permissions rules:
 - If v1 needs elevation for a protected install/restore operation, v2 should call a narrow v1 elevation path for that operation only.
 - V2 should display v1's authorization prompt/result rather than inventing a second permissions model.
 
-### Open report and folders
+### Open report, logs, and folders
 
-Use macOS `open` through subprocess:
+Use macOS `open` through argv-list subprocess calls:
 
 ```bash
 open <latest-build-report-path>
+open ~/.claude-monkey/logs
 open ~/.claude-monkey
 ```
 
 If the latest report path is missing, show an alert instead of failing silently.
+
+If the logs directory is missing, create `~/.claude-monkey/logs/` when the menu bar logger initializes. If creation fails, show an alert with the path and keep `Open state folder` available.
 
 ## 8. Error handling
 
@@ -288,6 +412,7 @@ Error categories:
 - Shim install/uninstall failed.
 - Permission denied.
 - No active build report.
+- Logs directory unavailable.
 
 Error UI rules:
 
@@ -295,6 +420,7 @@ Error UI rules:
 - Use the error icon variant if available.
 - Preserve the last known good menu where possible, but mark it stale.
 - Include `Open state folder` and `Refresh` even in error state.
+- Include `Open logs folder` when the logs directory exists or can be created.
 - Show concise alerts for command failures with an option/path to inspect logs or reports.
 - Do not hide rebuild-required or failed-build states behind a green-looking icon.
 
@@ -317,6 +443,8 @@ Log entries should include:
 - state refresh failures
 
 The build pipeline's authoritative evidence remains `build-report.json` from v1.
+
+The menu should expose `Open logs folder` as a first-class action. The logs folder is for menu bar command-runner evidence and UI failures; it is not a replacement for build reports.
 
 ## 10. Packaging and launch stance
 
@@ -341,25 +469,52 @@ Do not build login-item automation in v2 unless explicitly requested. A manual l
 
 Unit tests should cover the non-UI boundaries first:
 
+- V1 JSON contract parsing for `status`, `list-patches`, `list-prompts`, and command result envelopes.
 - CLI JSON parsing into `MenuState`.
 - Menu state derivation: OK, rebuild-required, error, not-installed.
 - Prompt click maps to the correct CLI command.
 - Patch click maps to `enable` or `disable`, not `build`.
 - Rebuild confirmation maps to `build --json`.
 - Open report handles missing report paths.
+- Open logs folder uses the logs directory, not the build report path.
 - Command failures preserve enough stderr for the user.
+- Mutating command runner serializes commands and refuses concurrent mutation.
+- Slow command execution does not run directly on the menu callback path.
+- Subprocess calls use argv lists with `shell=False`.
 
 Manual smoke tests on macOS:
 
-1. Launch from source with the icon asset present.
-2. Verify the menu bar shows an icon only, not text.
-3. Verify the icon is visible in light and dark menu bar appearances.
-4. Toggle a patch and confirm the menu shows rebuild-required without building.
-5. Click `Rebuild / Apply…`, cancel, and confirm no command runs.
-6. Click `Rebuild / Apply…`, confirm, and verify v1 handles build/activation.
-7. Select a prompt and verify the menu says it applies on next Claude launch.
-8. Open the build report and state folder.
-9. Simulate CLI failure and verify the menu enters error state with Refresh still available.
+1. Run the V1 contract acceptance checklist below.
+2. Launch from source with the icon asset present.
+3. Verify the menu bar shows an icon only, not text.
+4. Verify the icon is visible in light and dark menu bar appearances.
+5. Toggle a patch and confirm the menu shows rebuild-required without building.
+6. Click `Rebuild / Apply…`, cancel, and confirm no command runs.
+7. Click `Rebuild / Apply…`, confirm, and verify v1 handles build/activation.
+8. Select a prompt and verify the menu says it applies on next Claude launch.
+9. Open the build report, logs folder, and state folder.
+10. Simulate CLI failure and verify the menu enters error state with Refresh and logs access still available.
+
+V1 contract acceptance checklist before any menu UI work:
+
+```bash
+claude-monkey status --json
+claude-monkey list-patches --json
+claude-monkey list-prompts --json
+claude-monkey build --json --help
+claude-monkey install-shim --json --help
+claude-monkey uninstall-shim --json --help
+```
+
+Acceptance criteria:
+
+- Each command exits successfully in a normal configured environment, except build/install commands may stop at help or dry-run if a real mutation would be unsafe during contract testing.
+- JSON parses without fallback text scraping.
+- Status output includes state directory, logs directory, prompt state, desired patch state, active patch state, rebuild-required state, and latest report path if one exists.
+- Patch output includes every patch ID, display label, desired enabled state, active enabled state, availability, and compatibility status.
+- Prompt output includes every prompt ID, display label, active state, mode, and source path.
+- Command result envelopes consistently expose `ok`, `summary`, and `error`.
+- The CLI/core, not the menu bar app, owns all config mutation, build activation, shim installation, authorization, and rollback behavior.
 
 ## 12. Non-goals for v2
 
@@ -379,15 +534,15 @@ V2 should not include:
 
 ## 13. Implementation sequence after v1 lands
 
-1. Add or confirm v1 JSON command contracts.
+1. Pass the V1 contract acceptance checklist with real JSON output or add the missing v1 JSON seams first.
 2. Add the menu bar icon asset under `assets/`.
 3. Add `claude_monkey.menubar_state` for parsing JSON and deriving UI state.
-4. Add `claude_monkey.menubar_commands` for subprocess execution and logging.
-5. Add `claude_monkey.menubar` as the rumps app entrypoint.
-6. Build the static menu with status, prompt, patch, rebuild, install/uninstall, open, refresh, and quit items.
+4. Add `claude_monkey.menubar_commands` for safe argv-list subprocess execution, serialization, background slow-command handling, and menu bar logging.
+5. Add `claude_monkey.menubar` as the `rumps` app entrypoint with icon-only status item wiring.
+6. Build the static menu with status, prompt, patch, rebuild, install/uninstall, open report, open logs, open state folder, refresh, and quit items.
 7. Wire prompt and patch clicks to CLI commands.
 8. Wire rebuild/install/uninstall confirmation flows.
-9. Add unit tests for state and command mapping.
+9. Add unit tests for state, command mapping, command serialization, safe subprocess invocation, and logs/report open behavior.
 10. Run the manual macOS smoke checklist.
 
 Stop after a working source-run menu bar MVP. Do not expand into packaging polish until the thin companion proves useful.

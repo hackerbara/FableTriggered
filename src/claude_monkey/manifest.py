@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
+HEX_DIGITS = set("0123456789abcdefABCDEF")
+
 SUPPORTED_OPERATION_TYPES = {"replace_between", "replace_exact"}
 SUPPORTED_ASSERTION_TYPES = {"must_contain", "must_not_contain"}
 SUPPORTED_SCOPES = {"whole_binary", "range"}
@@ -91,8 +93,32 @@ def require_string(obj: dict[str, Any], field: str) -> str:
 
 def require_int(obj: dict[str, Any], field: str) -> int:
     value = obj.get(field)
-    if not isinstance(value, int):
+    if isinstance(value, bool) or not isinstance(value, int):
         raise ManifestError(f"{field} must be an integer")
+    return value
+
+
+def require_positive_int(obj: dict[str, Any], field: str, default: int | None = None) -> int:
+    value = obj.get(field, default)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ManifestError(f"{field} must be a positive integer")
+    return value
+
+
+def optional_non_negative_int(obj: dict[str, Any], field: str) -> int | None:
+    value = obj.get(field)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ManifestError(f"{field} must be a non-negative integer")
+    return value
+
+
+def require_sha256_hex(value: Any, field: str) -> str:
+    if not isinstance(value, str):
+        raise ManifestError(f"{field} must be a string")
+    if len(value) != 64 or any(ch not in HEX_DIGITS for ch in value):
+        raise ManifestError(f"{field} must be 64 hex characters")
     return value
 
 
@@ -117,8 +143,8 @@ def parse_payload(value: Any) -> PayloadRef:
         raise ManifestError("replacement.inline must be a string")
     if path is not None and not isinstance(path, str):
         raise ManifestError("replacement.path must be a string")
-    if sha256 is not None and not isinstance(sha256, str):
-        raise ManifestError("replacement.sha256 must be a string")
+    if sha256 is not None:
+        sha256 = require_sha256_hex(sha256, "replacement.sha256")
     if (inline is None) == (path is None):
         raise ManifestError("replacement must provide exactly one of inline or path")
     if path is not None and sha256 is None:
@@ -160,22 +186,20 @@ def parse_operation(value: Any) -> Operation:
         start_marker=optional_string(op, "startMarker"),
         end_marker=optional_string(op, "endMarker"),
         exact=optional_string(op, "exact"),
-        expected_start_marker_count=int(op.get("expectedStartMarkerCount", 1)),
-        expected_end_marker_count=int(op.get("expectedEndMarkerCount", 1)),
+        expected_start_marker_count=require_positive_int(op, "expectedStartMarkerCount", 1),
+        expected_end_marker_count=require_positive_int(op, "expectedEndMarkerCount", 1),
         require_within_range=tuple(require_within),
         replacement=parse_payload(op.get("replacement")),
         padding=padding,
         old_range_sha256=optional_string(op, "oldRangeSha256"),
-        old_range_length=op.get("oldRangeLength"),
+        old_range_length=optional_non_negative_int(op, "oldRangeLength"),
         known_behavior_change=optional_string(op, "knownBehaviorChange"),
     )
 
 
 def parse_source_identity(value: Any) -> SourceIdentity:
     item = require_mapping(value, "sourceIdentity")
-    sha = require_string(item, "sha256")
-    if len(sha) != 64:
-        raise ManifestError("sha256 must be 64 hex characters")
+    sha = require_sha256_hex(item.get("sha256"), "sha256")
     return SourceIdentity(
         claude_version=require_string(item, "claudeVersion"),
         version_output=require_string(item, "versionOutput"),

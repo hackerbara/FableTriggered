@@ -81,3 +81,33 @@ def test_manifest_can_be_json_serialized_for_digest_stability():
     data = valid_manifest()
     encoded = json.dumps(data, sort_keys=True, separators=(",", ":"))
     assert "example-patch" in encoded
+
+
+@pytest.mark.parametrize("value", ["1", 0, -1, True])
+def test_manifest_rejects_invalid_expected_marker_counts(value):
+    data = valid_manifest()
+    data["targets"][0]["operations"][0]["expectedEndMarkerCount"] = value
+    with pytest.raises(ManifestError, match="expectedEndMarkerCount"):
+        load_manifest_dict(data)
+
+
+@pytest.mark.parametrize("value", ["12", -1, True])
+def test_manifest_rejects_invalid_old_range_length(value):
+    data = valid_manifest()
+    data["targets"][0]["operations"][0]["oldRangeLength"] = value
+    with pytest.raises(ManifestError, match="oldRangeLength"):
+        load_manifest_dict(data)
+
+
+@pytest.mark.parametrize("field", ["sha256", "replacement.sha256"])
+def test_manifest_rejects_non_hex_sha256(field):
+    data = valid_manifest()
+    if field == "sha256":
+        data["targets"][0]["sourceIdentity"]["sha256"] = "g" * 64
+    else:
+        replacement = data["targets"][0]["operations"][0]["replacement"]
+        replacement.pop("inline")
+        replacement["path"] = "payload.js"
+        replacement["sha256"] = "z" * 64
+    with pytest.raises(ManifestError, match="sha256"):
+        load_manifest_dict(data)

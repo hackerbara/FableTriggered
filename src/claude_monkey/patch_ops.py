@@ -68,6 +68,8 @@ def compute_operation_range(
                 f"{end_count} != {operation.expected_end_marker_count}"
             )
         end = source.find(end_marker, start + len(start_marker))
+        if start < 0 or end < 0 or end < start:
+            raise PatchError(f"{operation.op_id}: invalid byte range [{start},{end})")
     elif operation.type == "replace_exact":
         if operation.exact is None:
             raise PatchError(f"{operation.op_id}: replace_exact requires exact")
@@ -77,6 +79,8 @@ def compute_operation_range(
             raise PatchError(f"{operation.op_id}: exact marker count {exact_count} != 1")
         start = source.find(exact)
         end = start + len(exact)
+        if start < 0 or end < 0 or end < start:
+            raise PatchError(f"{operation.op_id}: invalid byte range [{start},{end})")
     else:
         raise PatchError(f"{operation.op_id}: unsupported operation type {operation.type}")
 

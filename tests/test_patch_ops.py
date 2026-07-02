@@ -79,3 +79,46 @@ def test_adjacent_ranges_are_allowed_and_ordered_by_original_offset():
         [("pkg", second, b"case\"b\":{NEW_B} "), ("pkg", first, b"case\"a\":{NEW_A}")],
     )
     assert [p.op_id for p in planned] == ["a", "b"]
+
+
+def test_replace_between_defensively_rejects_negative_end_range():
+    operation = op("bad", "HEAD", "MISSING", "HEAD")
+    operation = Operation(**{**operation.__dict__, "expected_end_marker_count": 0})
+    with pytest.raises(PatchError, match="invalid byte range"):
+        compute_operation_range(tiny_binary(), operation, b"HEAD")
+
+
+def test_replace_exact_requires_single_exact_match():
+    operation = Operation(
+        op_id="exact",
+        label="exact",
+        type="replace_exact",
+        start_marker=None,
+        end_marker=None,
+        exact="OLD_A_BODY",
+        expected_start_marker_count=1,
+        expected_end_marker_count=1,
+        require_within_range=(),
+        replacement=PayloadRef(inline="NEW_A_BODY"),
+        padding="spaces",
+    )
+    planned = compute_operation_range(tiny_binary(), operation, b"NEW_A_BODY")
+    assert tiny_binary()[planned.start : planned.end] == b"OLD_A_BODY"
+
+
+def test_padding_none_requires_exact_length():
+    operation = op("a", "case\"a\":{", "case\"b\":{", "short")
+    operation = Operation(**{**operation.__dict__, "padding": "none"})
+    with pytest.raises(PatchError, match="padding none requires exact length"):
+        compute_operation_range(tiny_binary(), operation, b"short")
+
+
+def test_old_range_length_and_sha_are_checked():
+    operation = op("a", "case\"a\":{", "case\"b\":{", "case\"a\":{NEW}")
+    wrong_length = Operation(**{**operation.__dict__, "old_range_length": 1})
+    with pytest.raises(PatchError, match="old range length mismatch"):
+        compute_operation_range(tiny_binary(), wrong_length, b"case\"a\":{NEW}")
+
+    wrong_sha = Operation(**{**operation.__dict__, "old_range_sha256": "0" * 64})
+    with pytest.raises(PatchError, match="old range sha256 mismatch"):
+        compute_operation_range(tiny_binary(), wrong_sha, b"case\"a\":{NEW}")

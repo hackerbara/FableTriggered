@@ -30,3 +30,12 @@ def test_external_payload_rejects_sha_mismatch(tmp_path):
     ref = PayloadRef(path="payload.js", sha256="0" * 64, encoding="utf-8")
     with pytest.raises(PayloadError, match="sha256 mismatch"):
         load_payload_bytes(ref, tmp_path)
+
+
+def test_external_payload_rejects_path_escape(tmp_path):
+    outside = tmp_path.parent / "outside-payload.js"
+    outside.write_bytes(b"replacement")
+    sha = hashlib.sha256(b"replacement").hexdigest()
+    ref = PayloadRef(path="../outside-payload.js", sha256=sha, encoding="utf-8")
+    with pytest.raises(PayloadError, match="escapes package directory"):
+        load_payload_bytes(ref, tmp_path)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 
 from claude_monkey import __version__
-from claude_monkey.config import load_config, save_config
+from claude_monkey.config import Profile, load_config, save_config
 from claude_monkey.paths import default_paths
 
 
@@ -31,9 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def active_profile(config):
-    return config.profiles.setdefault(
-        config.activeProfile, type(next(iter(config.profiles.values())))(enabledPatches=[])
-    )
+    return config.profiles.setdefault(config.activeProfile, Profile(enabledPatches=[]))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -63,18 +61,10 @@ def main(argv: list[str] | None = None) -> int:
         save_config(paths.config_path, config)
         print(f"disabled {args.patch_id}; rebuild required")
         return 0
-    if args.command in {
-        "doctor",
-        "list-patches",
-        "list-prompts",
-        "set-prompt",
-        "clear-prompt",
-        "build",
-        "install-shim",
-        "uninstall-shim",
-        "rollback",
-        "use-official",
-    }:
+    if args.command in {"build", "install-shim", "uninstall-shim", "rollback", "use-official"}:
+        print(f"{args.command}: not implemented", file=__import__("sys").stderr)
+        return 2
+    if args.command in {"doctor", "list-patches", "list-prompts", "set-prompt", "clear-prompt"}:
         print(f"{args.command}: command shell available")
         return 0
     parser.print_help()

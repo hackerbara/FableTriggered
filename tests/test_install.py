@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 
-from claude_monkey.install import install_shim_transaction, restore_install_transaction, use_official
+from claude_monkey.install import (
+    install_shim_transaction,
+    restore_install_transaction,
+    use_official,
+)
 from claude_monkey.shim import render_shim_script
 
 

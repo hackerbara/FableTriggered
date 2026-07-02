@@ -1,0 +1,143 @@
+{
+  "description": "Suppresses selected recurring model-visible reminder attachments.",
+  "id": "reminder-suppression",
+  "name": "Reminder suppression",
+  "packageVersion": "0.1.0",
+  "schemaVersion": 1,
+  "targets": [
+    {
+      "operations": [
+        {
+          "endMarker": "case\"task_reminder\":",
+          "expectedEndMarkerCount": 1,
+          "expectedStartMarkerCount": 1,
+          "label": "Suppress todo reminder attachment",
+          "opId": "todo-reminder",
+          "padding": "spaces",
+          "replacement": {
+            "path": "payloads/todo-reminder.js",
+            "sha256": "8f18aa67837d4c65123350865ced8a72a2032b447db1efd70a18bec005fc6621"
+          },
+          "requireWithinRange": [],
+          "startMarker": "case\"todo_reminder\":",
+          "type": "replace_between"
+        },
+        {
+          "endMarker": "case\"tool_search_usage_reminder\":",
+          "expectedEndMarkerCount": 1,
+          "expectedStartMarkerCount": 1,
+          "label": "Suppress task reminder attachment",
+          "opId": "task-reminder",
+          "padding": "spaces",
+          "replacement": {
+            "path": "payloads/task-reminder.js",
+            "sha256": "0122dfa21cf18d346a296814725ac41bf1c5fd2e7090017176698c7a938179d6"
+          },
+          "requireWithinRange": [],
+          "startMarker": "case\"task_reminder\":",
+          "type": "replace_between"
+        },
+        {
+          "endMarker": "case\"relevant_memories\":",
+          "expectedEndMarkerCount": 1,
+          "expectedStartMarkerCount": 1,
+          "label": "Suppress tool-search usage reminder attachment",
+          "opId": "tool-search-usage-reminder",
+          "padding": "spaces",
+          "replacement": {
+            "path": "payloads/tool-search-usage-reminder.js",
+            "sha256": "d0c0695ac5487c2a83bfcbed9d9bc7ed9631aff26c23a157473667cbd18f898b"
+          },
+          "requireWithinRange": [],
+          "startMarker": "case\"tool_search_usage_reminder\":",
+          "type": "replace_between"
+        },
+        {
+          "endMarker": ",total_tokens_reminder:",
+          "expectedEndMarkerCount": 1,
+          "expectedStartMarkerCount": 1,
+          "label": "Suppress token usage renderer",
+          "opId": "token-usage",
+          "padding": "spaces",
+          "replacement": {
+            "path": "payloads/token-usage.js",
+            "sha256": "23cb4eb9df0f2e48526dcb30aa31c142e97dc458739333f18c8b406216309241"
+          },
+          "requireWithinRange": [],
+          "startMarker": "token_usage:(e)=>[In({content:_v(`Token usage:",
+          "type": "replace_between"
+        },
+        {
+          "endMarker": ",budget_usd:",
+          "expectedEndMarkerCount": 1,
+          "expectedStartMarkerCount": 1,
+          "label": "Suppress total tokens reminder renderer",
+          "opId": "total-tokens-reminder",
+          "padding": "spaces",
+          "replacement": {
+            "path": "payloads/total-tokens-reminder.js",
+            "sha256": "94e6b12128122951667167fe6373ec88dbbfc01b6415c3931f3e1f02ac4b26e0"
+          },
+          "requireWithinRange": [],
+          "startMarker": "total_tokens_reminder:(e)=>[In({content:_v(e.text),isMeta:!0})]",
+          "type": "replace_between"
+        },
+        {
+          "endMarker": ",output_token_usage:",
+          "expectedEndMarkerCount": 1,
+          "expectedStartMarkerCount": 1,
+          "label": "Suppress USD budget renderer",
+          "opId": "budget-usd",
+          "padding": "spaces",
+          "replacement": {
+            "path": "payloads/budget-usd.js",
+            "sha256": "ee0626e4610530cb1d484eb8e624cc407aad6a286b4bac29b6b3c4e13da987e3"
+          },
+          "requireWithinRange": [],
+          "startMarker": "budget_usd:(e)=>[In({content:_v(`USD budget:",
+          "type": "replace_between"
+        },
+        {
+          "endMarker": ",hook_blocking_error:",
+          "expectedEndMarkerCount": 1,
+          "expectedStartMarkerCount": 1,
+          "label": "Suppress output token usage renderer",
+          "opId": "output-token-usage",
+          "padding": "spaces",
+          "replacement": {
+            "path": "payloads/output-token-usage.js",
+            "sha256": "b9652d77c4828b8dd0c5f29831a6c67a2afc08e84b80993ffad9608a6ea78983"
+          },
+          "requireWithinRange": [],
+          "startMarker": "output_token_usage:(e)=>{let t=e.budget!==null?",
+          "type": "replace_between"
+        }
+      ],
+      "postconditions": [
+        {
+          "scope": "whole_binary",
+          "type": "must_contain",
+          "value": "case\"todo_reminder\":return[];"
+        },
+        {
+          "scope": "whole_binary",
+          "type": "must_contain",
+          "value": "token_usage:(e)=>[]"
+        },
+        {
+          "scope": "whole_binary",
+          "type": "must_contain",
+          "value": "output_token_usage:(e)=>[]"
+        }
+      ],
+      "sourceIdentity": {
+        "arch": "arm64",
+        "claudeVersion": "2.1.198",
+        "platform": "darwin",
+        "sha256": "ab6f7ee109816ede414f7c285446633f805b623aa609f425609a64266451d61e",
+        "sizeBytes": 229328464,
+        "versionOutput": "2.1.198 (Claude Code)"
+      }
+    }
+  ]
+}

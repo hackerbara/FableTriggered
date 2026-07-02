@@ -1,0 +1,87 @@
+{
+  "description": "Shows Fable fallback events in resumed history and /resume.",
+  "id": "fable-fallback",
+  "name": "Fable fallback visibility",
+  "packageVersion": "0.1.0",
+  "schemaVersion": 1,
+  "targets": [
+    {
+      "operations": [
+        {
+          "endMarker": "case\"user\":{",
+          "expectedEndMarkerCount": 1,
+          "expectedStartMarkerCount": 1,
+          "label": "Render assistant fallback as system warning banner",
+          "opId": "gcm-assistant-fallback-banner",
+          "padding": "spaces",
+          "replacement": {
+            "path": "payloads/gcm-assistant-case.js",
+            "sha256": "5a94dc78b58fba59c803f1f24d64c15634423cee85c3c4319c611e8b56ab48bc"
+          },
+          "requireWithinRange": [
+            "D=(O,M)=>Ab.jsx(SCm,{param:O",
+            "x=n.message.content.map(D)"
+          ],
+          "startMarker": "case\"assistant\":{let R;if(t[20]!==r.firstTextBlockUuidByMessageID",
+          "type": "replace_between"
+        },
+        {
+          "endMarker": "function gte",
+          "expectedEndMarkerCount": 1,
+          "expectedStartMarkerCount": 1,
+          "knownBehaviorChange": "This compact formatter omits rare bg metadata and PR repository prefix to fit the original byte budget.",
+          "label": "Append Fable classifier marker to resume metadata",
+          "opId": "net-resume-marker",
+          "padding": "spaces",
+          "replacement": {
+            "path": "payloads/net-metadata-formatter.js",
+            "sha256": "98586d745820dab5a2889e507c9762786371358d1cd2d1a237f14b4522e5791d"
+          },
+          "requireWithinRange": [
+            "return n.join(\" \\xB7 \")"
+          ],
+          "startMarker": "function net(e){let t=e.fileSize!==void 0?$a(e.fileSize):`${e.messageCount} messages`",
+          "type": "replace_between"
+        },
+        {
+          "endMarker": "async function kJe",
+          "expectedEndMarkerCount": 1,
+          "expectedStartMarkerCount": 1,
+          "label": "Detect Fable fallback during resume lite-log enrichment",
+          "opId": "wpf-lite-log-detector",
+          "padding": "spaces",
+          "replacement": {
+            "path": "payloads/wpf-lite-log-enrichment.js",
+            "sha256": "51f0d24473dbcead77d7ea9cffa7270746423c7e84d9336252f87cb93d5fba9b"
+          },
+          "requireWithinRange": [
+            "let n=await Nmc(e.fullPath,e.fileSize??0,t)",
+            "projectPath:s"
+          ],
+          "startMarker": "async function wpf(e,t){if(!e.isLite||!e.fullPath)return e;",
+          "type": "replace_between"
+        }
+      ],
+      "postconditions": [
+        {
+          "scope": "whole_binary",
+          "type": "must_contain",
+          "value": "Fable classifier triggered"
+        },
+        {
+          "scope": "whole_binary",
+          "type": "must_contain",
+          "value": "fableClassifierTriggered"
+        }
+      ],
+      "sourceIdentity": {
+        "arch": "arm64",
+        "claudeVersion": "2.1.198",
+        "platform": "darwin",
+        "sha256": "ab6f7ee109816ede414f7c285446633f805b623aa609f425609a64266451d61e",
+        "sizeBytes": 229328464,
+        "versionOutput": "2.1.198 (Claude Code)"
+      }
+    }
+  ]
+}

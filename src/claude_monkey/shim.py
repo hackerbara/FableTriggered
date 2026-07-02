@@ -15,7 +15,12 @@ from pathlib import Path
 STATE_DIR = Path({state_dir!r})
 CURRENT = STATE_DIR / "current"
 CONFIG = STATE_DIR / "config.json"
-PROMPT_FLAGS = {{"--system-prompt", "--system-prompt-file", "--append-system-prompt", "--append-system-prompt-file"}}
+PROMPT_FLAGS = {{
+    "--system-prompt",
+    "--system-prompt-file",
+    "--append-system-prompt",
+    "--append-system-prompt-file",
+}}
 MANAGEMENT = {{"--help", "-h", "--version", "update", "mcp", "plugin"}}
 
 
@@ -28,12 +33,20 @@ def has_prompt_flag(argv):
 
 
 def active_prompt_args(argv):
-    if os.environ.get("CLAUDE_MONKEY_BYPASS") == "1" or is_management(argv) or has_prompt_flag(argv):
+    if (
+        os.environ.get("CLAUDE_MONKEY_BYPASS") == "1"
+        or is_management(argv)
+        or has_prompt_flag(argv)
+    ):
         return argv
     if not CONFIG.exists():
         return argv
     config = json.loads(CONFIG.read_text())
-    profile_name = config.get("profiles", {{}}).get(config.get("activeProfile", "default"), {{}}).get("promptProfile")
+    profile_name = (
+        config.get("profiles", {{}})
+        .get(config.get("activeProfile", "default"), {{}})
+        .get("promptProfile")
+    )
     if not profile_name:
         return argv
     profile_path = STATE_DIR / "prompts" / (profile_name + ".json")
@@ -48,7 +61,11 @@ def active_prompt_args(argv):
 
 def main():
     argv = sys.argv[1:]
-    target = os.environ.get("CLAUDE_MONKEY_OFFICIAL") if os.environ.get("CLAUDE_MONKEY_BYPASS") == "1" else None
+    target = (
+        os.environ.get("CLAUDE_MONKEY_OFFICIAL")
+        if os.environ.get("CLAUDE_MONKEY_BYPASS") == "1"
+        else None
+    )
     if target is None:
         if not CURRENT.exists():
             print("ClaudeMonkey: no active Claude binary at " + str(CURRENT), file=sys.stderr)

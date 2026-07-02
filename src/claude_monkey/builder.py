@@ -56,7 +56,12 @@ def assert_condition(data: bytes, assertion: Assertion) -> dict:
     needle = assertion.value.encode("utf-8")
     found = needle in data
     passed = found if assertion.type == "must_contain" else not found
-    return {"type": assertion.type, "scope": assertion.scope, "value": assertion.value, "passed": passed}
+    return {
+        "type": assertion.type,
+        "scope": assertion.scope,
+        "value": assertion.value,
+        "passed": passed,
+    }
 
 
 def failed_report(request: BuildRequest, reason: str) -> BuildReport:
@@ -70,7 +75,9 @@ def failed_report(request: BuildRequest, reason: str) -> BuildReport:
         platform=request.platform,
         arch=request.arch,
         enabledPatches=[manifest.id for _, manifest in request.manifests],
-        manifestDigests={manifest.id: digest_manifest(manifest) for _, manifest in request.manifests},
+        manifestDigests={
+            manifest.id: digest_manifest(manifest) for _, manifest in request.manifests
+        },
         failureReason=reason,
         unverifiedCandidate=request.unverified_candidate,
     )
@@ -149,7 +156,9 @@ def build_patchset(request: BuildRequest) -> BuildReport:
         platform=request.platform,
         arch=request.arch,
         enabledPatches=[manifest.id for _, manifest in request.manifests],
-        manifestDigests={manifest.id: digest_manifest(manifest) for _, manifest in request.manifests},
+        manifestDigests={
+            manifest.id: digest_manifest(manifest) for _, manifest in request.manifests
+        },
         operationsApplied=operations,
         byteRanges=ranges,
         verificationResults=verification_results,

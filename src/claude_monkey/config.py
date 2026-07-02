@@ -20,7 +20,9 @@ class ClaudeMonkeyConfig:
 
 
 def default_config() -> ClaudeMonkeyConfig:
-    return ClaudeMonkeyConfig(activeProfile="default", profiles={"default": Profile(enabledPatches=[])})
+    return ClaudeMonkeyConfig(
+        activeProfile="default", profiles={"default": Profile(enabledPatches=[])}
+    )
 
 
 def load_config(path: Path) -> ClaudeMonkeyConfig:

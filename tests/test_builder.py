@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 
+from tests.test_manifest import valid_manifest
+
 from claude_monkey.builder import BuildRequest, build_patchset
 from claude_monkey.manifest import load_manifest_dict
-from tests.test_manifest import valid_manifest
 
 TEST_SHA = "b" * 64
 

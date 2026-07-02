@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from claude_monkey import __version__
+from claude_monkey.binary_inspect import inspect_binary_bytes
 from claude_monkey.builder import BuildRequest, build_patchset
 from claude_monkey.config import Profile, load_config, save_config
 from claude_monkey.install import (
@@ -41,6 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
     set_prompt.add_argument("--mode", choices=("append", "replace"), default="append")
     set_prompt.add_argument("--from-file", action="store_true")
     sub.add_parser("clear-prompt")
+
+    inspect_binary = sub.add_parser("inspect-binary")
+    inspect_binary.add_argument("--source", required=True)
+    inspect_binary.add_argument("--json", action="store_true")
 
     build = sub.add_parser("build")
     build.add_argument("--source")
@@ -315,6 +320,15 @@ def main(argv: list[str] | None = None) -> int:
         save_config(paths.config_path, config)
         print("cleared active prompt profile")
         return 0
+    if args.command == "inspect-binary":
+        source = Path(args.source).expanduser()
+        payload = inspect_binary_bytes(source.read_bytes(), source_path=str(source))
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(f"supported={str(payload['supported']).lower()}")
+            print(f"modules={len(payload['modules'])}")
+        return 0 if payload["ok"] and not payload["validationErrors"] else 1
     if args.command == "build":
         return handle_build(args, paths, config)
     if args.command == "install-shim":

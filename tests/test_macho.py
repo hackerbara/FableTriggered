@@ -18,7 +18,9 @@ def test_shift_layout_grows_bun_and_moves_linkedit():
     data, offsets = build_macho_fixture()
     from claude_monkey.macho import shift_macho_after_bun_change
 
-    shifted, updates = shift_macho_after_bun_change(data, insert_abs=offsets.bun_fileoff + 32, delta=64)
+    shifted, updates = shift_macho_after_bun_change(
+        data, insert_abs=offsets.bun_fileoff + 32, delta=64
+    )
     layout = find_macho_layout(shifted)
     assert layout.bun_segment.filesize == offsets.bun_size + 64
     assert layout.bun_section.size == offsets.bun_size + 64

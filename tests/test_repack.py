@@ -22,7 +22,9 @@ def test_repack_changed_modules_updates_module_and_preserves_inspectability():
     assert inspected["validationErrors"] == []
     layout2 = find_macho_layout(result.output_bytes)
     graph2 = parse_bun_section(
-        result.output_bytes[layout2.bun_section.offset : layout2.bun_section.offset + layout2.bun_section.size]
+        result.output_bytes[
+            layout2.bun_section.offset : layout2.bun_section.offset + layout2.bun_section.size
+        ]
     )
     assert graph2.module_by_path(MODULE_PATH_0).content == new_module
     assert graph2.declared_payload_len == graph.declared_payload_len + result.delta

@@ -116,7 +116,12 @@ def find_macho_layout(data: bytes | bytearray) -> MachOLayout:
         elif cmd == LC_CODE_SIGNATURE:
             code_signature = LinkeditData(off, u32(data, off + 8), u32(data, off + 12))
         off += cmdsize
-    if bun_segment is None or bun_section is None or linkedit_segment is None or code_signature is None:
+    if (
+        bun_segment is None
+        or bun_section is None
+        or linkedit_segment is None
+        or code_signature is None
+    ):
         raise MachOError("missing_required_macho_layout")
     return MachOLayout(tuple(commands), bun_segment, bun_section, linkedit_segment, code_signature)
 
@@ -150,7 +155,11 @@ def shift_macho_after_bun_change(
             {"field": "__BUN.filesize", "old": bun.filesize, "new": bun.filesize + delta},
             {"field": "__bun.size", "old": section.size, "new": section.size + delta},
             {"field": "__LINKEDIT.vmaddr", "old": linkedit.vmaddr, "new": linkedit.vmaddr + delta},
-            {"field": "__LINKEDIT.fileoff", "old": linkedit.fileoff, "new": linkedit.fileoff + delta},
+            {
+                "field": "__LINKEDIT.fileoff",
+                "old": linkedit.fileoff,
+                "new": linkedit.fileoff + delta,
+            },
         ]
     )
     for index, command_offset, cmd, _cmdsize in layout.commands:
@@ -178,9 +187,13 @@ def shift_macho_after_bun_change(
                 (64, "extreloff"),
                 (72, "locreloff"),
             ]:
-                _bump_u32(out, command_offset + rel, insert_abs, delta, f"cmd{index}.{name}", updates)
+                _bump_u32(
+                    out, command_offset + rel, insert_abs, delta, f"cmd{index}.{name}", updates
+                )
         elif cmd == LC_CODE_SIGNATURE:
-            _bump_u32(out, command_offset + 8, insert_abs, delta, "LC_CODE_SIGNATURE.dataoff", updates)
+            _bump_u32(
+                out, command_offset + 8, insert_abs, delta, "LC_CODE_SIGNATURE.dataoff", updates
+            )
         elif cmd in LINKEDIT_DATA_CMDS:
             _bump_u32(out, command_offset + 8, insert_abs, delta, f"cmd{index}.dataoff", updates)
     return bytes(out), updates

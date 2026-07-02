@@ -5,7 +5,11 @@ import hashlib
 import pytest
 
 from claude_monkey.manifest_v2 import ModuleOperationV2, PayloadRefV2
-from claude_monkey.module_patch import ModulePatchError, plan_module_operations, render_changed_module
+from claude_monkey.module_patch import (
+    ModulePatchError,
+    plan_module_operations,
+    render_changed_module,
+)
 
 MODULE = b"function render(){OLD_RENDER}\nfunction after(){return 1}\n"
 

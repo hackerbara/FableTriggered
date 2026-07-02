@@ -75,10 +75,12 @@ def test_cli_build_with_explicit_source_and_package(monkeypatch, tmp_path, capsy
                 "--skip-smoke",
             ]
         )
-        == 0
+        == 1
     )
-    assert (out_dir / "claude").exists()
-    assert "verified" in capsys.readouterr().out
+    assert not (out_dir / "claude").exists()
+    out = capsys.readouterr().out
+    assert "failed" in out
+    assert "schema_v1_migration_required" in out
 
 
 def test_cli_use_official_updates_current_symlink(monkeypatch, tmp_path):

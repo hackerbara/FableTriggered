@@ -71,7 +71,11 @@ def load_manifest_v2(package_dir: Path) -> ManifestV2:
 
 def load_payload(ref: PayloadRefV2, package_dir: Path) -> bytes:
     if ref.inline is not None:
-        data = ref.inline.encode("utf-8") if ref.encoding == "utf-8" else base64.b64decode(ref.inline)
+        data = (
+            ref.inline.encode("utf-8")
+            if ref.encoding == "utf-8"
+            else base64.b64decode(ref.inline)
+        )
     else:
         assert ref.path is not None
         data = (package_dir / ref.path).read_bytes()
@@ -80,7 +84,9 @@ def load_payload(ref: PayloadRefV2, package_dir: Path) -> bytes:
     return data
 
 
-def target_matches(target: TargetV2, request: ValidationRequestV15 | BuildRequestV15, source: bytes) -> bool:
+def target_matches(
+    target: TargetV2, request: ValidationRequestV15 | BuildRequestV15, source: bytes
+) -> bool:
     ident = target.source_identity
     return (
         ident.claude_version == request.source_version
@@ -95,7 +101,9 @@ def target_matches(target: TargetV2, request: ValidationRequestV15 | BuildReques
 def validate_package(request: ValidationRequestV15) -> dict[str, Any]:
     source = request.source_path.read_bytes()
     manifest = load_manifest_v2(request.package_dir)
-    matching_targets = [target for target in manifest.targets if target_matches(target, request, source)]
+    matching_targets = [
+        target for target in manifest.targets if target_matches(target, request, source)
+    ]
     if len(matching_targets) != 1:
         return {
             "schemaVersion": 1,
@@ -136,7 +144,9 @@ def validate_package(request: ValidationRequestV15) -> dict[str, Any]:
             (operation, load_payload(operation.replacement, request.package_dir))
             for operation in module_target.operations
         ]
-        planned = plan_module_operations(manifest.id, module_target.path, module.content, operation_inputs)
+        planned = plan_module_operations(
+            manifest.id, module_target.path, module.content, operation_inputs
+        )
         resolved.extend(planned)
         changed_modules[module_target.path] = render_changed_module(module.content, planned)
     return {
@@ -245,7 +255,9 @@ def _assert_condition_v2(
 
 
 def _check_overlaps(planned: list[PlannedModuleOperation]) -> None:
-    ordered = sorted(planned, key=lambda item: (item.module_start, item.module_end, item.package_id, item.op_id))
+    ordered = sorted(
+        planned, key=lambda item: (item.module_start, item.module_end, item.package_id, item.op_id)
+    )
     for left, right in zip(ordered, ordered[1:], strict=False):
         if left.module_end > right.module_start:
             raise ValueError(
@@ -282,9 +294,13 @@ def _select_packages(
             reason = str(exc)
             if reason != "schema_v1_migration_required":
                 reason = f"manifest_v2_invalid:{reason}"
-            return selected, _write_failed(request, report_path, reason, source=source, enabled=enabled)
+            return selected, _write_failed(
+                request, report_path, reason, source=source, enabled=enabled
+            )
         enabled.append(manifest.id)
-        matching = [target for target in manifest.targets if target_matches(target, request, source)]
+        matching = [
+            target for target in manifest.targets if target_matches(target, request, source)
+        ]
         if len(matching) != 1:
             return selected, _write_failed(
                 request,
@@ -331,7 +347,10 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
             for module_target in target.modules:
                 module = graph.module_by_path(module_target.path)
                 module_sha = hashlib.sha256(module.content).hexdigest()
-                if module_sha != module_target.content_sha256 or module.content_size != module_target.content_length:
+                if (
+                    module_sha != module_target.content_sha256
+                    or module.content_size != module_target.content_length
+                ):
                     raise ValueError(f"module_identity_failed:{module_target.path}")
                 operation_inputs = [
                     (operation, load_payload(operation.replacement, package_dir))
@@ -344,7 +363,9 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
         changed_modules: dict[str, bytes] = {}
         for module_path, planned in planned_by_module.items():
             _check_overlaps(planned)
-            changed_modules[module_path] = render_changed_module(original_modules[module_path], planned)
+            changed_modules[module_path] = render_changed_module(
+                original_modules[module_path], planned
+            )
         if not changed_modules:
             raise ValueError("no_module_changes")
         repack = repack_changed_modules(source, changed_modules)

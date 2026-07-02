@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from tests.fixtures_bun import MODULE_PATH_0, TRAILER, build_payload
 
 from claude_monkey.bun_graph import BunGraphError, parse_bun_section

@@ -75,7 +75,11 @@ class BunGraph:
         payload[start:end] = new_content
         delta = len(new_content) - module.content_size
         insert_point = end
-        new_modules_offset = self.modules_offset + delta if self.modules_offset >= insert_point else self.modules_offset
+        new_modules_offset = (
+            self.modules_offset + delta
+            if self.modules_offset >= insert_point
+            else self.modules_offset
+        )
         new_offsets_struct_offset = (
             self.offsets_struct_offset + delta
             if self.offsets_struct_offset >= insert_point

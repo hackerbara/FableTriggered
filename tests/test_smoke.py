@@ -73,7 +73,9 @@ def test_content_smoke_accepts_claude_code_markers(tmp_path):
 
     def runner(argv):
         if argv[-1] == "--version":
-            return CommandResult(argv=argv, returncode=0, stdout="2.1.198 (Claude Code)\n", stderr="")
+            return CommandResult(
+                argv=argv, returncode=0, stdout="2.1.198 (Claude Code)\n", stderr=""
+            )
         return CommandResult(
             argv=argv, returncode=0, stdout="Usage: claude [options]\nClaude Code help\n", stderr=""
         )

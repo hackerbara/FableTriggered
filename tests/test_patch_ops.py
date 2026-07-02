@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import pytest
+from tests.fixtures import tiny_binary
 
 from claude_monkey.manifest import Operation, PayloadRef
-from claude_monkey.patch_ops import PatchError, compute_operation_range, plan_patch, render_patched_bytes
-from tests.fixtures import tiny_binary
+from claude_monkey.patch_ops import (
+    PatchError,
+    compute_operation_range,
+    plan_patch,
+    render_patched_bytes,
+)
 
 
 def op(op_id: str, start: str, end: str, replacement: str) -> Operation:

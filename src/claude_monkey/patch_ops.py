@@ -49,7 +49,9 @@ def compute_operation_range(
 ) -> PlannedOperation:
     if operation.type == "replace_between":
         if operation.start_marker is None or operation.end_marker is None:
-            raise PatchError(f"{operation.op_id}: replace_between requires startMarker and endMarker")
+            raise PatchError(
+                f"{operation.op_id}: replace_between requires startMarker and endMarker"
+            )
         start_marker = b(operation.start_marker)
         end_marker = b(operation.end_marker)
         start_count = count_occurrences(source, start_marker)
@@ -88,7 +90,9 @@ def compute_operation_range(
     if operation.old_range_sha256 is not None and operation.old_range_sha256 != old_sha:
         raise PatchError(f"{operation.op_id}: old range sha256 mismatch")
     if len(replacement) > len(old):
-        raise PatchError(f"{operation.op_id}: replacement too large: {len(replacement)} > {len(old)}")
+        raise PatchError(
+            f"{operation.op_id}: replacement too large: {len(replacement)} > {len(old)}"
+        )
     if operation.padding == "spaces":
         padded = replacement + (b" " * (len(old) - len(replacement)))
     elif operation.padding == "none":
@@ -111,13 +115,16 @@ def compute_operation_range(
     )
 
 
-def plan_patch(source: bytes, operations: list[tuple[str, Operation, bytes]]) -> list[PlannedOperation]:
+def plan_patch(
+    source: bytes,
+    operations: list[tuple[str, Operation, bytes]],
+) -> list[PlannedOperation]:
     planned = [
         compute_operation_range(source, op, replacement, package_id)
         for package_id, op, replacement in operations
     ]
     planned.sort(key=lambda item: (item.start, item.end, item.package_id, item.op_id))
-    for left, right in zip(planned, planned[1:]):
+    for left, right in zip(planned, planned[1:], strict=False):
         if left.end > right.start:
             raise PatchError(
                 f"overlap: {left.package_id}:{left.op_id} [{left.start},{left.end}) and "

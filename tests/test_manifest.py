@@ -53,7 +53,9 @@ def test_load_manifest_accepts_valid_shape():
     assert manifest.targets[0].operations[0].op_id == "replace-a"
 
 
-@pytest.mark.parametrize("field", ["schemaVersion", "id", "name", "description", "packageVersion", "targets"])
+@pytest.mark.parametrize(
+    "field", ["schemaVersion", "id", "name", "description", "packageVersion", "targets"]
+)
 def test_manifest_requires_top_level_fields(field):
     data = valid_manifest()
     del data[field]

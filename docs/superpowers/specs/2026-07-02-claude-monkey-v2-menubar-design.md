@@ -45,8 +45,11 @@ claude-monkey disable <patch-id> --json
 claude-monkey set-prompt <prompt-id> --json
 claude-monkey clear-prompt --json
 claude-monkey build --json
+claude-monkey build --json --dry-run
 claude-monkey install-shim --json
+claude-monkey install-shim --json --dry-run
 claude-monkey uninstall-shim --json
+claude-monkey uninstall-shim --json --dry-run
 ```
 
 The menu bar may tolerate early text output during a spike, but the implementation plan should treat JSON CLI output as a required seam before a usable MVP.
@@ -94,6 +97,10 @@ error > not_installed > rebuild_required > ok > unknown
 ```
 
 If `rebuildRequired` is true and no higher-priority state applies, `status` should be `rebuild_required`. V2 may recompute that precedence defensively, but v1 should emit a non-contradictory status.
+
+`unknown` is not a competing positive state. Use it only when v1 or v2 cannot classify the state.
+
+`lastError` must use the same shape as command-envelope `error`: either `null` or `{"message": string, "code": string | null}`.
 
 `claude-monkey list-patches --json`:
 
@@ -149,6 +156,8 @@ Mutating commands such as `enable --json`, `disable --json`, `set-prompt --json`
   "status": "ok",
   "summary": "Build activated",
   "reportPath": "/Users/example/.claude-monkey/versions/2.1.198/patchsets/example/build-report.json",
+  "dryRun": false,
+  "plannedActions": [],
   "error": null
 }
 ```
@@ -162,7 +171,23 @@ Mutating commands such as `enable --json`, `disable --json`, `set-prompt --json`
 }
 ```
 
-If `ok` is `false`, V2 should display `error.message` and offer logs/report access rather than trying to interpret every builder failure. `error.code` is for tests, logs, and future branching; it may be `null` when v1 has no stable structured code.
+Envelope invariants:
+
+- `ok: true` requires `error: null`.
+- `ok: false` requires `error.message` to be a non-empty string. `error.code` may be `null`.
+- `reportPath` is optional and may be `null`; it is primarily meaningful for build/build-like failures. V2 should refresh state and use `status.latestBuildReportPath` for persistent report discovery.
+- `dryRun` is required for `build`, `install-shim`, and `uninstall-shim` result envelopes; it should be `true` when the command was invoked with `--dry-run`, otherwise `false`.
+- `plannedActions` is required for `--dry-run` result envelopes and should list concise strings for the changes that would have happened. It may be an empty list for non-dry-run or simple config mutations.
+
+If `ok` is `false`, V2 should display `error.message` and offer logs/report access rather than trying to interpret every builder failure. `error.code` is for tests, logs, and future branching.
+
+Dry-run semantics for `build`, `install-shim`, and `uninstall-shim`:
+
+- Must not activate a build, install a shim, uninstall a shim, alter symlinks, or write protected locations.
+- Must return the same result envelope shape as the real command.
+- Must set `dryRun: true`.
+- Must include `plannedActions`, even if the result is a failure discovered during preflight.
+- May write temporary diagnostic data under the active state directory only if v1 already treats that as safe diagnostic output; it must not change active profile, active patch set, current symlink, or shim install state.
 
 ## 3. Chosen implementation approach
 
@@ -324,6 +349,7 @@ Command runner constraints:
 - Serialize mutating commands. Only one of `enable`, `disable`, `set-prompt`, `clear-prompt`, `build`, `install-shim`, or `uninstall-shim` may run at a time.
 - Run slow commands such as `build`, `install-shim`, and `uninstall-shim` off the `rumps` menu callback path so the menu bar app does not freeze.
 - Worker threads may run subprocesses and write command results to a queue, but menu mutation, icon updates, and alerts must happen through a `rumps`/AppKit-safe app-loop handoff. A simple implementation can use a short-interval `rumps.Timer` to drain the result queue and update UI from the app loop.
+- The worker result queue should be a testable boundary: worker code posts command results only; the app-loop drain method mutates `MenuState`, menu items, icons, and alerts.
 - While a slow command is running, disable other mutating menu items, show a busy/running status item inside the menu, and refresh state after completion.
 - Keep read-only refresh commands safe to run on demand, but avoid overlapping refreshes with mutating command completion refreshes.
 
@@ -348,6 +374,7 @@ Expected UX:
 - Update checkmark immediately after a successful refresh.
 - Show a small informational alert or notification: `Prompt will apply on next Claude launch.`
 - Do not rebuild binary patchsets for prompt-only changes.
+- V2 only passes prompt IDs returned by `list-prompts --json`; arbitrary prompt paths remain CLI-only and are not part of the v2 menu MVP.
 
 ### Patch enable/disable submenu
 
@@ -411,12 +438,12 @@ Permissions rules:
 
 ### Open report, logs, and folders
 
-Use macOS `open` through argv-list subprocess calls:
+Use macOS `open` through argv-list subprocess calls. Expand paths before invoking `open`; with `shell=False`, `~` will not expand. Prefer `stateDir`, `logsDir`, and `latestBuildReportPath` from `status --json`.
 
 ```bash
-open <latest-build-report-path>
-open ~/.claude-monkey/logs
-open ~/.claude-monkey
+open "$LATEST_BUILD_REPORT_PATH"
+open "$LOGS_DIR"
+open "$STATE_DIR"
 ```
 
 If the latest report path is missing, show an alert instead of failing silently.
@@ -504,6 +531,7 @@ Unit tests should cover the non-UI boundaries first:
 - Command failures preserve enough stderr for the user.
 - Mutating command runner serializes commands and refuses concurrent mutation.
 - Slow command execution does not run directly on the menu callback path.
+- Worker code posts results to a queue, and only the app-loop drain path mutates menu state, menu items, icons, or alerts.
 - Subprocess calls use argv lists with `shell=False`.
 
 Manual smoke tests on macOS:
@@ -521,16 +549,20 @@ Manual smoke tests on macOS:
 
 V1 contract acceptance checklist before any menu UI work:
 
-Substitute known patch and prompt IDs from the fixture or local `list-* --json` outputs. Run config-mutating commands against a disposable state directory or disposable `HOME`; do not mutate the user's real active profile just to prove the menu contract.
+Use one disposable fixture environment for all config-mutating contract checks. Seed or point that fixture at known patch packages and prompt profiles, then run `list-patches` and `list-prompts` in the same fixture before selecting IDs for mutation commands. Do not mutate the user's real active profile just to prove the menu contract.
 
 ```bash
-claude-monkey status --json
-claude-monkey list-patches --json
-claude-monkey list-prompts --json
-HOME="$(mktemp -d)" claude-monkey enable <known-patch-id> --json
-HOME="$(mktemp -d)" claude-monkey disable <known-patch-id> --json
-HOME="$(mktemp -d)" claude-monkey set-prompt <known-prompt-id> --json
-HOME="$(mktemp -d)" claude-monkey clear-prompt --json
+TMP_HOME="$(mktemp -d)"
+mkdir -p "$TMP_HOME/.claude-patches" "$TMP_HOME/.claude-monkey/prompts"
+# Seed or symlink known fixture patch packages into "$TMP_HOME/.claude-patches".
+# Seed or write at least one known prompt profile under "$TMP_HOME/.claude-monkey/prompts".
+HOME="$TMP_HOME" claude-monkey status --json
+HOME="$TMP_HOME" claude-monkey list-patches --json
+HOME="$TMP_HOME" claude-monkey list-prompts --json
+HOME="$TMP_HOME" claude-monkey enable <known-patch-id-from-fixture-list> --json
+HOME="$TMP_HOME" claude-monkey disable <known-patch-id-from-fixture-list> --json
+HOME="$TMP_HOME" claude-monkey set-prompt <known-prompt-id-from-fixture-list> --json
+HOME="$TMP_HOME" claude-monkey clear-prompt --json
 claude-monkey build --json --dry-run
 claude-monkey install-shim --json --dry-run
 claude-monkey uninstall-shim --json --dry-run
@@ -538,12 +570,13 @@ claude-monkey uninstall-shim --json --dry-run
 
 Acceptance criteria:
 
-- Each command exits successfully in a normal configured environment, except the `HOME="$(mktemp -d)" ...` commands use disposable state and the build/install commands must use dry-run if a real mutation would be unsafe during contract testing.
+- Each command exits successfully in a normal configured environment, except the `HOME="$TMP_HOME" ...` commands use disposable fixture state and the build/install commands must use dry-run if a real mutation would be unsafe during contract testing.
 - JSON parses without fallback text scraping.
 - Status output includes state directory, logs directory, prompt state, desired patch state, active patch state, rebuild-required state, and latest report path if one exists.
 - Patch output includes every patch ID, display label, desired enabled state, active enabled state, availability, and compatibility status.
 - Prompt output includes every prompt ID, display label, active state, mode, and source path.
 - Command result envelopes for all mutating commands consistently expose `ok`, `summary`, and `error`, where `error` is either `null` or an object with `message` and `code`.
+- Dry-run result envelopes expose `dryRun: true` and `plannedActions`.
 - The CLI/core, not the menu bar app, owns all config mutation, build activation, shim installation, authorization, and rollback behavior.
 
 ## 12. Non-goals for v2

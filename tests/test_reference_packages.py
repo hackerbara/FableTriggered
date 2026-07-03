@@ -176,6 +176,22 @@ def test_hidden_context_drawer_package_uses_footer_overlay_without_global_ijo_ca
     )
 
 
+def test_hidden_context_drawer_scroll_step_is_three_for_keyboard_and_mouse():
+    package_dir = ROOT / "packages" / "hidden-context-drawer"
+    keyboard_payload = (
+        package_dir / "payloads" / "12-footer-hiddencontext-up-down-scroll.js"
+    ).read_text()
+    overlay_payload = (
+        package_dir / "payloads" / "15-uxl-refresh-bottom-overlay.js"
+    ).read_text()
+
+    assert "Bt-3" in keyboard_payload
+    assert "Bt+3" in keyboard_payload
+    assert "d.deltaY>0?3:-3" in overlay_payload
+    assert "Bt-1" not in keyboard_payload.split("if(cm&&Cs>0&&Os>zn)")[0]
+    assert "Bt+1" not in keyboard_payload.split("if(cm&&Cs>0)")[0]
+
+
 def test_hidden_context_drawer_payload_avoids_utf8_separator_mojibake_and_uses_warning_header():
     package_dir = ROOT / "packages" / "hidden-context-drawer"
     helper_payload = (

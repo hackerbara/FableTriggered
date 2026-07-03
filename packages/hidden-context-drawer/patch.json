@@ -3,7 +3,7 @@
   "id": "hidden-context-drawer",
   "name": "Hidden Context Drawer",
   "description": "Projects model-visible hidden attachment context into an integrated footer Hidden Context drawer.",
-  "packageVersion": "0.1.3",
+  "packageVersion": "0.1.4",
   "targets": [
     {
       "sourceIdentity": {
@@ -181,7 +181,7 @@
             },
             {
               "opId": "footer-hiddencontext-up-down-scroll",
-              "label": "footer hiddenContext up/down scroll v13",
+              "label": "footer hiddenContext up/down scroll v17 step3",
               "type": "replace_exact",
               "exact": "function tI(){if(cm&&Cs>0&&Os>zn){ec((Bt)=>Bt-1);return}if(jA&&oa>0){Pu((Bt)=>Bt-1);return}Z_(-1,!0)}function CH(){if(cm&&Cs>0){if(Os<Cs-1){ec((Bt)=>Bt+1);return}Z_(1);return}if(cm){if(!Z_(1))D(!0),Pc(null);return}if(jA){if(oa<Lr.length-1){Pu((Bt)=>Bt+1);return}Z_(1);return}Z_(1)}function aae",
               "requireWithinRange": [],
@@ -189,7 +189,7 @@
               "oldRangeLength": 293,
               "replacement": {
                 "path": "payloads/12-footer-hiddencontext-up-down-scroll.js",
-                "sha256": "3a444351e4ce4d9006f3cfe26183a392c1fdb1cdbe8986782abe4852a5cbbe27"
+                "sha256": "b5cdaa56b11302fcca12f739598a87834385cbc20a6e6b8bf3272491f7343ec5"
               }
             },
             {
@@ -301,6 +301,16 @@
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
           "value": "lineKinds"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "Bt+3"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "Bt-3"
         }
       ],
       "manualSmoke": {

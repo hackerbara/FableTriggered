@@ -4,6 +4,8 @@ Suppresses selected recurring reminder/accounting attachment families before the
 
 This is a ClaudeMonkey V1.5 schema-v2 package. It targets `/$bunfs/root/src/entrypoints/cli.js` in Bun module coordinates and relies on the Bun graph repack engine for positive-growth module splices.
 
+Package version: `1.0.0` (V1).
+
 ## Target
 
 - Claude Code `2.1.199 (Claude Code)`

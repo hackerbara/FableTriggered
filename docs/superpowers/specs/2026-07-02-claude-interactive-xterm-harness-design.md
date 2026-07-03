@@ -1,7 +1,7 @@
 # Claude interactive xterm harness design
 
 Date: 2026-07-02
-Status: draft approved for user review
+Status: draft for user review
 Project: ClaudeMonkey / Claude Code local interaction testing
 Scope: Design only; no implementation in this document
 
@@ -35,7 +35,7 @@ Why xterm.js is the v1 spine:
 
 Why not wterm/Ghostty in v1:
 
-- `@wterm/ghostty` provides a stronger VT emulation core, but the currently published wterm DOM input handler is keyboard/paste-oriented; click handling focuses the hidden textarea rather than translating mouse events into PTY input.
+- Current research against `@wterm/dom` 0.3.0 and `@wterm/ghostty` 0.3.0 found that `@wterm/ghostty` provides a stronger VT emulation core, but the published wterm DOM input handler is keyboard/paste-oriented; click handling focuses the hidden textarea rather than translating mouse events into PTY input.
 - Adding wterm would create a parallel terminal model without solving the first-order interaction need.
 - If xterm.js is insufficient later, Ghostty/libghostty can be reconsidered as a replacement terminal core or a deeper compatibility test, not as v1's second oracle.
 
@@ -76,24 +76,65 @@ interface HarnessLaunchConfig {
   env: Record<string, string>;
   cols: number;
   rows: number;
+  termName: string;
   runId?: string;
-  liveClaude?: boolean;
+  targetKind:
+    | "fixture"
+    | "realClaudeReadOnly"
+    | "realClaudeInteractiveLiveProfile"
+    | "copiedPatchedClaude";
+  profileMode: "isolatedHome" | "liveHome";
+  artifactRetention: "fixtureDefault" | "realPrivateOptIn";
 }
 ```
 
 The backend must not bake in `claude`. Test cases select either a fixture executable or a Claude binary path.
+
+The configured terminal name is part of the test surface. It should default to a known xterm-compatible value such as `xterm-256color`, and tests that depend on terminal identity must set it explicitly.
+
+#### 4.1.1 Byte-preserving transport
+
+The PTY bridge must be byte-preserving.
+
+- Spawn `node-pty` with raw-buffer output when supported, for example `encoding: null`.
+- Log PTY output as raw buffers with monotonic sequence numbers and timestamps.
+- Forward PTY output to the browser as binary WebSocket frames.
+- Forward xterm `onData` as UTF-8 text only when it is text.
+- Forward xterm `onBinary` as bytes, for example `Buffer.from(data, "binary")`.
+- If a JSON control message needs to carry bytes, base64-encode the byte payload.
+- Do not let implicit JavaScript string conversion be the only representation of mouse or control bytes.
+
+This is required because legacy mouse reports and some terminal control paths are not safe to round-trip through ordinary UTF-8 strings.
+
+#### 4.1.2 Local server security boundary
+
+The browser-to-PTY bridge is a local shell boundary. The browser must not be able to choose arbitrary launch parameters.
+
+Rules:
+
+- The browser never supplies `command`, `args`, `cwd`, or `env`.
+- The server launches a preselected target for a run id created by the test runner.
+- The server listens only on `127.0.0.1` and an ephemeral port.
+- Each run uses an unguessable per-run token.
+- The WebSocket endpoint validates the token and the browser origin.
+- One client is allowed by default.
+- The PTY closes when the client/test ends.
+- The server must never bind to a non-loopback interface.
 
 ### 4.2 Browser terminal page
 
 The browser page owns terminal behavior:
 
 - construct `@xterm/xterm` with deterministic rows, columns, font, and scrollback;
+- pin xterm options that affect key and mouse semantics, including `macOptionIsMeta`, `macOptionClickForcesSelection`, and `altClickMovesCursor`;
 - connect xterm `onData` and `onBinary` to the backend;
 - write PTY output into xterm;
 - expose a narrow test-only API on `window.__claudeHarness` for snapshots and cell geometry;
 - optionally load xterm's serialize addon for textual/framebuffer snapshots.
 
 The page is not a product UI. It is an instrumented terminal fixture.
+
+The chosen xterm option defaults must be documented in the harness README. On macOS in particular, Option/Alt and Option-click behavior can change whether input becomes terminal bytes, browser selection, or cursor movement.
 
 ### 4.3 Playwright driver
 
@@ -109,7 +150,7 @@ await harness.wheel({ deltaY: 240 });
 await harness.expectVisible(/Resume/);
 ```
 
-`clickCell(row, col)` converts a terminal cell coordinate into browser pixel coordinates using measured xterm geometry, then calls Playwright mouse APIs. It does not synthesize mouse escape bytes directly.
+`clickCell(row, col)` uses 0-based terminal cell coordinates. It converts a cell coordinate into browser pixel coordinates using measured xterm geometry, clicks the center of the cell with Playwright mouse APIs, and does not synthesize mouse escape bytes directly.
 
 ### 4.4 Protocol injection layer
 
@@ -122,6 +163,19 @@ await harness.sendSgrMouse({ row: 12, col: 40, button: "left", action: "press" }
 
 This is useful for low-level fixture tests or app-handler tests, but a test using this layer must not claim it proves browser click behavior.
 
+### 4.5 Readiness and settle contract
+
+All screen assertions need an explicit settle contract.
+
+The harness should offer:
+
+- `waitForPtyIdle(ms)` for cases where no fixture sentinel exists;
+- `waitForWriteDrain()` that resolves after all pending xterm `term.write(..., callback)` callbacks complete;
+- `waitForFixtureEvent(name)` for deterministic fixtures;
+- `expectVisible(...)` that waits for both write-drain and the requested screen condition before failing.
+
+Snapshots must not read xterm's buffer until pending write callbacks have drained. Tests that require exact event order should assert against the sequenced raw input/output logs rather than only the visible screen.
+
 ## 5. Mouse model
 
 Terminal mouse behavior depends on the application enabling a mouse reporting mode.
@@ -129,8 +183,10 @@ Terminal mouse behavior depends on the application enabling a mouse reporting mo
 The harness should expose and assert xterm's mode state before mouse-sensitive assertions:
 
 ```ts
-await harness.expectMouseTracking("vt200" | "drag" | "any" | "none");
+await harness.expectMouseTracking("x10" | "vt200" | "drag" | "any" | "none");
 ```
+
+Mouse tracking mode is only a precondition. It does not prove the application received the intended mouse input, and it does not by itself identify whether xterm is using SGR, legacy, or another mouse encoding path.
 
 Real-user mouse path:
 
@@ -148,7 +204,20 @@ The harness should support these gestures in order:
 4. drag start/move/end;
 5. modifier clicks if needed.
 
+Each real-user mouse test must prove three things:
+
+1. Precondition: xterm's mouse tracking mode matches the test's expected mode.
+2. Transport: the backend input log contains the expected mouse byte pattern after the Playwright event.
+3. Application effect: the fixture or Claude screen state changes as expected.
+
 The harness should prefer SGR mouse mode where possible, but it must not assume every application will use SGR mode. xterm may use binary paths for legacy reports; therefore `onBinary` must be wired to the backend as bytes.
+
+Wheel behavior needs two separate assertions:
+
+- browser scrollback wheel behavior when the terminal application has not captured the mouse;
+- application mouse-wheel reports when mouse tracking is enabled.
+
+Drag behavior likewise needs separate coverage for selection-style browser dragging and application drag/motion reports.
 
 ## 6. Assertions
 
@@ -161,7 +230,8 @@ Screen assertions:
 - specific row contains expected text;
 - cursor row/column equals expected coordinates;
 - active buffer state distinguishes normal vs alternate screen if exposed;
-- mouse/paste/focus modes equal expected values.
+- mouse/paste/focus modes equal expected values;
+- keyboard modes such as `applicationCursorKeysMode` and `applicationKeypadMode` equal expected values before raw key-byte assertions.
 
 Raw/log assertions:
 
@@ -188,6 +258,10 @@ Fixture programs should be small and deterministic. They should exercise termina
    - renders clickable rows;
    - updates selection on click;
    - records which cell was clicked.
+   - covers vt200 click/release;
+   - covers SGR mouse click/release when the fixture enables SGR mode;
+   - covers the legacy/binary mouse path where feasible;
+   - covers drag mode, any-motion mode, and wheel events.
 
 3. `fixture-redraw`
    - uses cursor movement and line clearing;
@@ -212,15 +286,28 @@ CLAUDE_HARNESS_CLAUDE=/Users/MAC/.local/bin/claude
 
 Real Claude runs may touch auth, network, settings, and session files depending on Claude Code behavior. The harness must not present them as read-only unless the specific invocation is proven read-only, such as `--version` or `--help`.
 
+Interactive live-profile runs require a second explicit gate:
+
+```text
+CLAUDE_HARNESS_LIVE_PROFILE_MUTATION_OK=1
+```
+
+Without that second gate, the harness must refuse `targetKind: "realClaudeInteractiveLiveProfile"`.
+
 For live interactive tests, the harness should:
 
 - print the target Claude path and version first;
+- print whether the run may mutate `~/.claude`, auth/session state, network state, and cwd;
 - use a temporary working directory unless a test explicitly requires this repo;
 - record the effective environment and argv with secrets redacted;
 - write run artifacts under `.development/harness-runs/<run-id>/`;
 - fail closed if the target executable is missing;
 - kill the child process on timeout;
 - never mutate the live Claude binary.
+
+If profile isolation is not proven for the current Claude Code version, label the run as live-profile mutation, not controlled isolation. Patch-correctness tests should target copied patched binaries, never the live install.
+
+Raw logs from real Claude can contain private conversation, file, and auth-adjacent context. Fixture raw logs are retained by default. Real-Claude raw logs are private opt-in artifacts, must live under ignored development paths, should redact secrets where possible, and must not be copied into public handoff material without explicit review.
 
 ## 9. Repository shape
 
@@ -231,6 +318,7 @@ Proposed layout:
 ```text
 terminal-harness/
   package.json
+  package-lock.json
   tsconfig.json
   playwright.config.ts
   src/
@@ -253,6 +341,14 @@ terminal-harness/
 
 This can remain a development harness rather than part of the published Python package. If it later becomes productized, it can move under a more formal package boundary.
 
+Dependency policy:
+
+- pin dependencies in `package.json` and commit a lockfile;
+- do not require global npm installs;
+- keep Playwright browser installation explicit in harness setup docs;
+- keep the harness separate from the Python package's published metadata until deliberately productized;
+- relate live tests to the existing pytest `local_real_smoke` marker by documenting that both are opt-in local-real checks, but the xterm harness remains Node/Playwright-owned.
+
 ## 10. Test tiers
 
 Tier 1: unit tests for helpers
@@ -267,6 +363,9 @@ Tier 2: fixture integration tests
 - spawn fixture TUI through `node-pty`;
 - drive xterm through Playwright;
 - assert visible screen/cursor/modes/logs.
+- prove keyboard mode handling for normal and application cursor keys;
+- prove cell click, wheel, and drag behavior through real browser events;
+- prove the byte log captures the expected mouse input bytes.
 
 Tier 3: local real-Claude smoke tests
 
@@ -298,6 +397,12 @@ Mitigation: measure xterm cell geometry in the browser and use cell-centered cli
 Risk: live Claude tests mutate user state.
 Mitigation: keep live tests opt-in, log target/env/argv, use temp workspaces by default, and avoid claims of read-only behavior for interactive sessions.
 
+Risk: PTY/WebSocket transport corrupts control or mouse bytes.
+Mitigation: use raw-buffer PTY output where supported, binary WebSocket frames, explicit `onBinary` forwarding, base64 for bytes in JSON messages, and sequenced raw logs.
+
+Risk: the local PTY server becomes a local shell exposed to other browser contexts.
+Mitigation: bind only to loopback on an ephemeral port, require a per-run token, validate origin, prevent browser-supplied launch parameters, and allow one client by default.
+
 Risk: dependency footprint is larger than the existing Python repo.
 Mitigation: keep the Node harness under a bounded `terminal-harness/` directory and do not make it part of the published Python package until needed.
 
@@ -307,8 +412,11 @@ The harness v1 is done when:
 
 - fixture tests launch through `node-pty` and render in xterm under Playwright;
 - tests can type, press arrows, press enter, and click cells;
+- tests can wheel and drag through real browser events;
 - fixture mouse mode can be detected and clicked through real browser events;
-- visible text, cursor position, mouse mode, and raw log assertions work;
+- visible text, cursor position, mouse mode, keyboard mode, and raw log assertions work;
+- every real-user mouse test proves mode precondition, transport bytes, and application effect;
 - failure artifacts include raw PTY logs and screenshots;
 - real Claude tests are present but skipped unless explicitly gated;
+- live-profile Claude tests require the second mutation gate;
 - documentation explains the distinction between real-user input and protocol injection.

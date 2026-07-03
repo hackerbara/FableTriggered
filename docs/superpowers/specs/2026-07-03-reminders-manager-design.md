@@ -19,7 +19,7 @@ Normal ClaudeMonkey V1.5 schema-v2 package: `packages/reminders-manager/`.
 
 - Anchored on **stock Claude Code 2.1.199** (`sha256 e3cb61ab…`), like every other package in this repo.
 - Stacks with other enabled packages in a single `build_patchset_v15` build. Composition requirement: **all splice ranges disjoint from the ported `hidden-context-drawer` ranges** (and from `fable-fallback`, `normal-channel-hidden-context` if enabled). Install either package alone or both together; the profile's `enabledPatches` list drives the stack.
-- **Conflicts with (supersedes) `upstream-attachment-suppression`**: both own the `ug`/`Hze` seams. Documented in both READMEs, same pattern as the existing drawer/normal-channel conflict note.
+- **Separate package from `upstream-attachment-suppression`, which stays maintained.** UAS remains the static all-off option; `reminders-manager` is the runtime-toggle drawer option. They **conflict** (both own the `ug`/`Hze` seams), so a profile enables one or the other, never both — documented in both READMEs, same pattern as the existing drawer/normal-channel conflict note. This package does not deprecate or replace UAS.
 
 ## Families
 

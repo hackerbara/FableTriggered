@@ -230,3 +230,34 @@ def test_value_from_env_and_secret_preview_redaction(tmp_path):
         {"kind": "option_env", "id": "secrets", "reason": "missing_value_from_env"}
         in result.skipped
     )
+
+
+def test_conflicts_with_env_error_blocks_option_argv_and_env(tmp_path):
+    option = option_manifest(
+        tmp_path,
+        "proxy",
+        argv=("--proxy-mode", "local"),
+        env={"CLAUDE_PROXY_MODE": EnvValue(value="local")},
+        conflicts_with_env=(EnvConflict(name="HTTP_PROXY", policy="error"),),
+    )
+
+    result = merge(process_env={"HTTP_PROXY": "http://proxy"}, options=[option])
+
+    assert result.errors == ["option proxy conflicts with process env HTTP_PROXY"]
+    assert result.argv == []
+    assert "CLAUDE_PROXY_MODE" not in result.env
+    assert {"kind": "option", "id": "proxy", "reason": "conflicts_with_env"} in result.skipped
+
+
+def test_secret_env_redacted_when_process_env_wins(tmp_path):
+    option = option_manifest(
+        tmp_path,
+        "secrets",
+        env={"API_KEY": EnvValue(value="option-secret", secret=True)},
+    )
+
+    result = merge(process_env={"API_KEY": "process-secret"}, options=[option])
+
+    assert result.env["API_KEY"] == "process-secret"
+    assert result.env_preview["API_KEY"] == "<redacted>"
+    assert {"kind": "option_env", "id": "secrets", "reason": "process_env_wins"} in result.skipped

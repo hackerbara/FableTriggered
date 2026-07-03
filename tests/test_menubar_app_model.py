@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import struct
+import sys
 import zlib
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,6 +20,7 @@ from claude_monkey.menubar import (
     command_for_uninstall_shim_dry_run,
     default_install_target,
     install_target_menu_label,
+    patch_menu_label,
 )
 from claude_monkey.menubar_state import MenuState, PatchMenuItem, PromptMenuItem
 
@@ -109,7 +111,9 @@ def sample_state(tmp_path):
         logs_dir=tmp_path / "logs",
         last_error=None,
         patch_items=(
-            PatchMenuItem("fable-fallback", "Fable", True, False, True, "compatible"),
+            PatchMenuItem(
+                "fable-fallback", "Fable", True, False, True, "compatible", None
+            ),
         ),
         prompt_items=(
             PromptMenuItem("research", "Research", True, "append", tmp_path / "research.md"),
@@ -462,6 +466,104 @@ def test_busy_render_disables_mutating_items_and_shows_running_status(tmp_path):
     for title in ("Rebuild / Apply…", "Install shim…", "Uninstall shim…", "Fable"):
         item = next(item for item in items if item.title == title)
         assert item.enabled is False
+
+
+def test_patch_menu_label_surfaces_incompatibility_message():
+    patch = PatchMenuItem(
+        "fable-fallback",
+        "Fable",
+        False,
+        False,
+        True,
+        "version_mismatch",
+        "Package targets Claude 2.1.198; current source is 2.1.199.",
+    )
+
+    assert (
+        patch_menu_label(patch)
+        == "Fable — Package targets Claude 2.1.198; current source is 2.1.199."
+    )
+
+
+def test_incompatible_unchecked_patch_cannot_be_enabled_from_menu(tmp_path):
+    bar, _rumps = make_bar(tmp_path, FakeRunner())
+    bar.state = sample_state(tmp_path)
+    bar.state = MenuState(
+        **{
+            **bar.state.__dict__,
+            "patch_items": (
+                PatchMenuItem(
+                    "fable-fallback",
+                    "Fable",
+                    False,
+                    False,
+                    True,
+                    "version_mismatch",
+                    "Package targets Claude 2.1.198; current source is 2.1.199.",
+                ),
+            ),
+        }
+    )
+
+    bar.render_menu()
+
+    item = next(
+        item for item in flat_items(bar.app.menu.items) if item.title.startswith("Fable — ")
+    )
+    assert item.enabled is False
+
+
+def test_modal_activation_sets_accessory_policy_before_alert(monkeypatch, tmp_path):
+    class FakeApp:
+        def __init__(self):
+            self.policy = 2
+            self.set_policy_calls = []
+            self.activate_calls = []
+
+        def activationPolicy(self):
+            return self.policy
+
+        def setActivationPolicy_(self, policy):
+            self.set_policy_calls.append(policy)
+            self.policy = policy
+            return True
+
+        def activateIgnoringOtherApps_(self, flag):
+            self.activate_calls.append(flag)
+
+    class FakeNSApplication:
+        app = FakeApp()
+
+        @classmethod
+        def sharedApplication(cls):
+            return cls.app
+
+    class FakeRunningApplication:
+        options = []
+
+        @classmethod
+        def currentApplication(cls):
+            return cls()
+
+        def activateWithOptions_(self, options):
+            self.options.append(options)
+            return True
+
+    fake_appkit = SimpleNamespace(
+        NSApplication=FakeNSApplication,
+        NSApplicationActivationPolicyAccessory=1,
+        NSApplicationActivateIgnoringOtherApps=1,
+        NSApplicationActivateAllWindows=2,
+        NSRunningApplication=FakeRunningApplication,
+    )
+    monkeypatch.setitem(sys.modules, "AppKit", fake_appkit)
+    bar = ClaudeMonkeyMenuBar.__new__(ClaudeMonkeyMenuBar)
+
+    bar._activate_for_modal()
+
+    assert FakeNSApplication.app.set_policy_calls == [1]
+    assert FakeRunningApplication.options == [3]
+    assert FakeNSApplication.app.activate_calls == [True]
 
 
 def test_rebuild_apply_enqueues_activating_build(tmp_path):

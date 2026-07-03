@@ -8,19 +8,19 @@
     {
       "sourceIdentity": {
         "arch": "arm64",
-        "claudeVersion": "2.1.198",
+        "claudeVersion": "2.1.199",
         "platform": "darwin",
-        "sha256": "ab6f7ee109816ede414f7c285446633f805b623aa609f425609a64266451d61e",
-        "sizeBytes": 229328464,
-        "versionOutput": "2.1.198 (Claude Code)"
+        "sha256": "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0",
+        "sizeBytes": 232155536,
+        "versionOutput": "2.1.199 (Claude Code)"
       },
       "requiredEngine": "bun_graph_repack",
       "requiredBinaryFormat": "bun_standalone_macho64",
       "modules": [
         {
           "path": "/$bunfs/root/src/entrypoints/cli.js",
-          "contentSha256": "d8f9b3c079edf689031a16c35e5abd3c61cca8b70fc5b0e1f7da3398d52206f1",
-          "contentLength": 18439743,
+          "contentSha256": "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55",
+          "contentLength": 18593981,
           "operations": [
             {
               "opId": "todo-reminder",
@@ -31,7 +31,7 @@
               "expectedStartMarkerCount": 1,
               "expectedEndMarkerCount": 1,
               "requireWithinRange": [],
-              "oldRangeSha256": "11e56c14aba2b8014529a4d62d0a4202600ad01035d41fef1b8166d6826cab9a",
+              "oldRangeSha256": "7313e66692c12fe30844e273fcd1e49b96b176be90819d55deaeaf44cad7b8ac",
               "oldRangeLength": 604,
               "replacement": {
                 "path": "payloads/todo-reminder.js",
@@ -47,7 +47,7 @@
               "expectedStartMarkerCount": 1,
               "expectedEndMarkerCount": 1,
               "requireWithinRange": [],
-              "oldRangeSha256": "b25fc1ec9746e4870c7e9f3049bc2b794ac66079b047951ec2b56c8190c4c2fe",
+              "oldRangeSha256": "d6f3de4e4e3180136fc20751727452bf624e01fcd102b73bf89effb4c379fde7",
               "oldRangeLength": 625,
               "replacement": {
                 "path": "payloads/task-reminder.js",
@@ -63,7 +63,7 @@
               "expectedStartMarkerCount": 1,
               "expectedEndMarkerCount": 1,
               "requireWithinRange": [],
-              "oldRangeSha256": "21b19d133b616fb7e1bdded64470dc8135c45cfe76f7adbca8fb3a25c74b30ba",
+              "oldRangeSha256": "c9c41265f5cd73cbf8fb6d7999c825bd185cbd6888279633cd3a9e501b692071",
               "oldRangeLength": 607,
               "replacement": {
                 "path": "payloads/tool-search-usage-reminder.js",
@@ -74,12 +74,12 @@
               "opId": "token-usage",
               "label": "Suppress token usage renderer",
               "type": "replace_between",
-              "startMarker": "token_usage:(e)=>[In({content:_v(`Token usage:",
+              "startMarker": "token_usage:(e)=>[Ln({content:Pv(`Token usage:",
               "endMarker": ",total_tokens_reminder:",
               "expectedStartMarkerCount": 1,
               "expectedEndMarkerCount": 1,
               "requireWithinRange": [],
-              "oldRangeSha256": "a5ad4931f2ce0ef3f30b8eaf511026c903ebc8d81af16303bdfaf16f181ada0b",
+              "oldRangeSha256": "cba8c1c5dfc294e7b6d0edb7db3d4a80e16ce0c04aafd79baeea7815966804a1",
               "oldRangeLength": 108,
               "replacement": {
                 "path": "payloads/token-usage.js",
@@ -90,12 +90,12 @@
               "opId": "total-tokens-reminder",
               "label": "Suppress total tokens reminder renderer",
               "type": "replace_between",
-              "startMarker": "total_tokens_reminder:(e)=>[In({content:_v(e.text),isMeta:!0})]",
+              "startMarker": "total_tokens_reminder:(e)=>[Ln({content:Pv(e.text),isMeta:!0})]",
               "endMarker": ",budget_usd:",
               "expectedStartMarkerCount": 1,
               "expectedEndMarkerCount": 1,
               "requireWithinRange": [],
-              "oldRangeSha256": "5821ef9d5706ef7f2566c2b83a125e4e13c47a2b01000a84f671d915f69d8805",
+              "oldRangeSha256": "50d04d59fca68d3f18cc66e7ba5ad05f5e7d8ffb7a792f555205b9308a3244fa",
               "oldRangeLength": 63,
               "replacement": {
                 "path": "payloads/total-tokens-reminder.js",
@@ -106,12 +106,12 @@
               "opId": "budget-usd",
               "label": "Suppress USD budget renderer",
               "type": "replace_between",
-              "startMarker": "budget_usd:(e)=>[In({content:_v(`USD budget:",
+              "startMarker": "budget_usd:(e)=>[Ln({content:Pv(`USD budget:",
               "endMarker": ",output_token_usage:",
               "expectedStartMarkerCount": 1,
               "expectedEndMarkerCount": 1,
               "requireWithinRange": [],
-              "oldRangeSha256": "c5b75ce93055c341e679c5a6128fd64a77b35627c01ea041fb3fca1ea0ab690b",
+              "oldRangeSha256": "27cf157773db5f522cd732d43e161235870541bbf4de2a4ff9f6151b70df93be",
               "oldRangeLength": 109,
               "replacement": {
                 "path": "payloads/budget-usd.js",
@@ -127,7 +127,7 @@
               "expectedStartMarkerCount": 1,
               "expectedEndMarkerCount": 1,
               "requireWithinRange": [],
-              "oldRangeSha256": "8dbfdc967917880348ff4de86d982cf13dffb62a7a5ceddcfde0df3b660252bd",
+              "oldRangeSha256": "536a63e68be01258341dc5a0be1f71f9e1b94e8aacfdde219acbdc4016c7261c",
               "oldRangeLength": 193,
               "replacement": {
                 "path": "payloads/output-token-usage.js",

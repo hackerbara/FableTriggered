@@ -147,3 +147,29 @@ def test_schema_v1_package_is_migration_required(tmp_path):
     )
     assert report.status == "failed"
     assert report.failureReason == "schema_v1_migration_required"
+
+
+def test_source_identity_mismatch_report_names_current_and_target(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    package = tmp_path / "pkg"
+    write_fixture_package(package, source)
+
+    report = build_patchset_v15(
+        BuildRequestV15(
+            source_path=source,
+            output_dir=tmp_path / "out",
+            package_dirs=[package],
+            source_version="2.1.199",
+            source_version_output="2.1.199 (Claude Code)",
+            platform="darwin",
+            arch="arm64",
+            command_runner=successful_runner,
+        )
+    )
+
+    assert report.status == "failed"
+    assert report.failureReason is not None
+    assert "source_identity_mismatch:fixture-v15" in report.failureReason
+    assert "current source is Claude 2.1.199" in report.failureReason
+    assert "package targets Claude fixture" in report.failureReason

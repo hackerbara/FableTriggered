@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform as platform_module
@@ -273,6 +274,133 @@ def _patch_label(patch_json: Path) -> str:
     return str(raw.get("name") or raw.get("label") or patch_json.parent.name)
 
 
+def _patch_label_from_raw(raw: dict[str, Any], patch_json: Path) -> str:
+    return str(raw.get("name") or raw.get("label") or patch_json.parent.name)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _source_identity_for_patch_status() -> dict[str, Any] | None:
+    source = _discover_source(None)
+    if source is None or not source.exists():
+        return None
+    version_output = _source_version_output(source, None)
+    version = _source_version(None, version_output)
+    if version_output is None or version is None:
+        return None
+    try:
+        size_bytes = source.stat().st_size
+    except OSError:
+        return None
+    return {
+        "path": source,
+        "claudeVersion": version,
+        "versionOutput": version_output,
+        "sizeBytes": size_bytes,
+        "platform": sys.platform,
+        "arch": platform_module.machine() or "unknown",
+    }
+
+
+def _source_status_sha256(source: dict[str, Any]) -> str | None:
+    sha = source.get("sha256")
+    if isinstance(sha, str):
+        return sha
+    path = source.get("path")
+    if not isinstance(path, Path):
+        return None
+    try:
+        sha = _file_sha256(path)
+    except OSError:
+        return None
+    source["sha256"] = sha
+    return sha
+
+
+def _target_source_identities(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    targets = raw.get("targets", [])
+    if not isinstance(targets, list):
+        return []
+    identities: list[dict[str, Any]] = []
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        identity = target.get("sourceIdentity")
+        if isinstance(identity, dict):
+            identities.append(identity)
+    return identities
+
+
+def _target_versions(identities: list[dict[str, Any]]) -> str:
+    versions = sorted(
+        {
+            str(identity.get("claudeVersion"))
+            for identity in identities
+            if identity.get("claudeVersion")
+        }
+    )
+    return ", ".join(versions) if versions else "unknown"
+
+
+def _patch_compatibility(
+    raw: dict[str, Any], source: dict[str, Any] | None
+) -> tuple[str, str | None]:
+    identities = _target_source_identities(raw)
+    if not identities:
+        return "unknown", "Patch manifest has no source identity target."
+    if source is None:
+        return "unknown", "No current Claude source was found to check compatibility."
+
+    current_version = str(source["claudeVersion"])
+    same_version = [
+        identity
+        for identity in identities
+        if str(identity.get("claudeVersion")) == current_version
+    ]
+    if not same_version:
+        return (
+            "version_mismatch",
+            f"Package targets Claude {_target_versions(identities)}; "
+            f"current source is {current_version}.",
+        )
+
+    current_size = int(source["sizeBytes"])
+    for identity in same_version:
+        target_size = identity.get("sizeBytes")
+        if isinstance(target_size, int) and target_size != current_size:
+            continue
+        if str(identity.get("versionOutput")) != str(source["versionOutput"]):
+            continue
+        if str(identity.get("platform")) != str(source["platform"]):
+            continue
+        if str(identity.get("arch")) != str(source["arch"]):
+            continue
+        target_sha = identity.get("sha256")
+        current_sha = _source_status_sha256(source)
+        if isinstance(target_sha, str) and current_sha == target_sha:
+            return "compatible", f"Compatible with current source {current_version}."
+
+    target = same_version[0]
+    current_sha = _source_status_sha256(source)
+    expected_sha = str(target.get("sha256") or "unknown")
+    expected_size = str(target.get("sizeBytes") or "unknown")
+    return (
+        "sha_mismatch",
+        f"Package targets Claude {current_version}, but source identity differs "
+        f"(expected {target.get('versionOutput') or 'unknown'}, "
+        f"{target.get('platform') or 'unknown'}/{target.get('arch') or 'unknown'}, "
+        f"sha256 {expected_sha[:12]}…, size {expected_size}; "
+        f"current {source['versionOutput']}, {source['platform']}/{source['arch']}, "
+        f"current sha256 {(current_sha or 'unknown')[:12]}…, size {current_size}).",
+    )
+
+
 def _list_patch_payload(paths: StatePaths, config) -> dict[str, Any]:
     profile = active_profile(config)
     desired = set(profile.enabledPatches)
@@ -280,6 +408,7 @@ def _list_patch_payload(paths: StatePaths, config) -> dict[str, Any]:
     active = set(_active_patch_ids_from_report(report))
     seen: set[str] = set()
     patches: list[dict[str, Any]] = []
+    source_identity = _source_identity_for_patch_status()
     for root in _package_roots(paths):
         if not root.exists():
             continue
@@ -288,14 +417,19 @@ def _list_patch_payload(paths: StatePaths, config) -> dict[str, Any]:
             if patch_id in seen:
                 continue
             seen.add(patch_id)
+            raw = _read_json_file(patch_json) or {}
+            compatibility_status, compatibility_message = _patch_compatibility(
+                raw, source_identity
+            )
             patches.append(
                 {
                     "id": patch_id,
-                    "label": _patch_label(patch_json),
+                    "label": _patch_label_from_raw(raw, patch_json),
                     "desiredEnabled": patch_id in desired,
                     "activeEnabled": patch_id in active,
                     "available": True,
-                    "compatibilityStatus": "unknown",
+                    "compatibilityStatus": compatibility_status,
+                    "compatibilityMessage": compatibility_message,
                 }
             )
     for patch_id in sorted((desired | active) - seen):
@@ -377,6 +511,35 @@ def _build_dry_run_payload() -> Any:
     )
 
 
+BUILD_ERROR_CODES = {
+    "source_identity_mismatch": "source_identity_mismatch",
+    "module_identity_failed": "module_identity_failed",
+    "operation_resolution_failed": "operation_resolution_failed",
+    "precondition_failed": "precondition_failed",
+    "postcondition_failed": "postcondition_failed",
+    "patch_conflict": "patch_conflict",
+    "signing_failed": "signing_failed",
+    "post_sign_inspection_failed": "post_sign_inspection_failed",
+    "smoke_failed": "smoke_failed",
+}
+
+
+def _build_error_code(summary: str) -> str:
+    prefix = summary.split(":", 1)[0]
+    return BUILD_ERROR_CODES.get(prefix, "build_failed")
+
+
+def _build_failure_summary(summary: str) -> str:
+    if summary.startswith("source_identity_mismatch:"):
+        parts = summary.split(":", 2)
+        if len(parts) == 3:
+            return (
+                f"Patch {parts[1]} is not compatible with this Claude Code source. "
+                f"{parts[2]}"
+            )
+    return summary
+
+
 def _build_report_json_payload(report: Any, report_path: Path | None = None) -> dict[str, Any]:
     report_payload = dict(to_jsonable(report))
     ok = report_payload.get("status") in {"verified", "manual_smoke_pending"}
@@ -390,8 +553,12 @@ def _build_report_json_payload(report: Any, report_path: Path | None = None) -> 
     elif report_payload.get("status") == "manual_smoke_pending":
         summary = "Build requires manual smoke before activation"
     else:
-        summary = str(
-            report_payload.get("failureReason") or report_payload.get("status") or "build failed"
+        summary = _build_failure_summary(
+            str(
+                report_payload.get("failureReason")
+                or report_payload.get("status")
+                or "build failed"
+            )
         )
     envelope = envelope_ok(
         summary,
@@ -405,7 +572,8 @@ def _build_report_json_payload(report: Any, report_path: Path | None = None) -> 
     payload["buildReportStatus"] = report_payload.get("status")
     if not ok:
         payload["ok"] = False
-        payload["error"] = {"message": summary, "code": "build_failed"}
+        raw_failure = str(report_payload.get("failureReason") or summary)
+        payload["error"] = {"message": summary, "code": _build_error_code(raw_failure)}
     return payload
 
 

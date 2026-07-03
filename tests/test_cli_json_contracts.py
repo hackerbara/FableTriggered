@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 from claude_monkey.cli import main
@@ -142,6 +143,196 @@ def test_build_json_success_uses_command_envelope_schema(monkeypatch, tmp_path, 
     assert payload["summary"] == "Build activated"
     assert payload["error"] is None
     assert payload["reportPath"] == str(tmp_path / "out" / "build-report.json")
+
+
+def test_list_patches_json_reports_source_version_mismatch(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    source = tmp_path / "claude"
+    source.write_bytes(b"latest source")
+    package_root = tmp_path / "packages"
+    package = package_root / "fable-fallback"
+    package.mkdir(parents=True)
+    (package / "patch.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "id": "fable-fallback",
+                "name": "Fable fallback visibility",
+                "targets": [
+                    {
+                        "sourceIdentity": {
+                            "claudeVersion": "2.1.198",
+                            "versionOutput": "2.1.198 (Claude Code)",
+                            "sha256": "a" * 64,
+                            "sizeBytes": 229328464,
+                            "platform": "darwin",
+                            "arch": "arm64",
+                        }
+                    }
+                ],
+            }
+        )
+    )
+    monkeypatch.setattr("claude_monkey.cli._package_roots", lambda paths: [package_root])
+    monkeypatch.setattr("claude_monkey.cli._discover_source", lambda source_arg: source)
+    monkeypatch.setattr(
+        "claude_monkey.cli._source_version_output",
+        lambda source_path, explicit_output: "2.1.199 (Claude Code)",
+    )
+
+    assert main(["list-patches", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    patch = payload["patches"][0]
+    assert patch["compatibilityStatus"] == "version_mismatch"
+    assert "Package targets Claude 2.1.198" in patch["compatibilityMessage"]
+    assert "current source is 2.1.199" in patch["compatibilityMessage"]
+
+
+def test_list_patches_json_reports_exact_source_compatibility(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    source = tmp_path / "claude"
+    source.write_bytes(b"latest source")
+    package_root = tmp_path / "packages"
+    package = package_root / "fable-fallback"
+    package.mkdir(parents=True)
+    (package / "patch.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "id": "fable-fallback",
+                "name": "Fable fallback visibility",
+                "targets": [
+                    {
+                        "sourceIdentity": {
+                            "claudeVersion": "2.1.199",
+                            "versionOutput": "2.1.199 (Claude Code)",
+                            "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                            "sizeBytes": source.stat().st_size,
+                            "platform": "darwin",
+                            "arch": "arm64",
+                        }
+                    }
+                ],
+            }
+        )
+    )
+    monkeypatch.setattr("claude_monkey.cli._package_roots", lambda paths: [package_root])
+    monkeypatch.setattr("claude_monkey.cli._discover_source", lambda source_arg: source)
+    monkeypatch.setattr(
+        "claude_monkey.cli._source_version_output",
+        lambda source_path, explicit_output: "2.1.199 (Claude Code)",
+    )
+
+    assert main(["list-patches", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    patch = payload["patches"][0]
+    assert patch["compatibilityStatus"] == "compatible"
+    assert patch["compatibilityMessage"] == "Compatible with current source 2.1.199."
+
+
+def test_list_patches_json_requires_exact_builder_source_identity(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    source = tmp_path / "claude"
+    source.write_bytes(b"latest source")
+    package_root = tmp_path / "packages"
+    package = package_root / "fable-fallback"
+    package.mkdir(parents=True)
+    (package / "patch.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "id": "fable-fallback",
+                "name": "Fable fallback visibility",
+                "targets": [
+                    {
+                        "sourceIdentity": {
+                            "claudeVersion": "2.1.199",
+                            "versionOutput": "2.1.199-beta (Claude Code)",
+                            "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                            "sizeBytes": source.stat().st_size,
+                            "platform": "linux",
+                            "arch": "x86_64",
+                        }
+                    }
+                ],
+            }
+        )
+    )
+    monkeypatch.setattr("claude_monkey.cli._package_roots", lambda paths: [package_root])
+    monkeypatch.setattr("claude_monkey.cli._discover_source", lambda source_arg: source)
+    monkeypatch.setattr(
+        "claude_monkey.cli._source_version_output",
+        lambda source_path, explicit_output: "2.1.199 (Claude Code)",
+    )
+    monkeypatch.setattr("claude_monkey.cli.sys.platform", "darwin")
+    monkeypatch.setattr("claude_monkey.cli.platform_module.machine", lambda: "arm64")
+
+    assert main(["list-patches", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    patch = payload["patches"][0]
+    assert patch["compatibilityStatus"] == "sha_mismatch"
+    assert "source identity differs" in patch["compatibilityMessage"]
+    assert "linux/x86_64" in patch["compatibilityMessage"]
+    assert "darwin/arm64" in patch["compatibilityMessage"]
+
+
+def test_build_json_source_identity_failure_uses_specific_error_code(
+    monkeypatch, tmp_path, capsys
+):
+    from claude_monkey.reports_v2 import BuildReportV2
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    source = tmp_path / "claude"
+    source.write_text("source")
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "patch.json").write_text("{}")
+
+    def fake_build(request):
+        request.output_dir.mkdir(parents=True, exist_ok=True)
+        return BuildReportV2(
+            status="failed",
+            automatedStatus="failed",
+            sourceClaudePath=str(source),
+            sourceVersion="2.1.199",
+            sourceVersionOutput="2.1.199 (Claude Code)",
+            failureReason=(
+                "source_identity_mismatch:fable-fallback: current source is Claude 2.1.199; "
+                "package targets Claude 2.1.198"
+            ),
+        )
+
+    monkeypatch.setattr("claude_monkey.cli.build_patchset_v15", fake_build)
+    assert (
+        main(
+            [
+                "build",
+                "--source",
+                str(source),
+                "--package",
+                str(package),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--source-version",
+                "2.1.199",
+                "--source-version-output",
+                "2.1.199 (Claude Code)",
+                "--json",
+            ]
+        )
+        == 1
+    )
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "source_identity_mismatch"
+    assert "current source is Claude 2.1.199" in payload["error"]["message"]
+    assert "package targets Claude 2.1.198" in payload["error"]["message"]
 
 
 def test_status_ignores_stale_install_record(monkeypatch, tmp_path, capsys):

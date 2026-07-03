@@ -43,6 +43,7 @@ class PatchMenuItem:
     active_enabled: bool
     available: bool
     compatibility_status: str
+    compatibility_message: str | None = None
 
 
 @dataclass(frozen=True)
@@ -211,6 +212,9 @@ def parse_menu_state(
             active_enabled=_required_bool(item, "activeEnabled"),
             available=_optional_bool(item, "available", True),
             compatibility_status=str(item.get("compatibilityStatus", "unknown")),
+            compatibility_message=str(item["compatibilityMessage"])
+            if item.get("compatibilityMessage")
+            else None,
         )
         for item in _dict_list(patches_raw, "patches")
     )

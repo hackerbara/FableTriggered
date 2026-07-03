@@ -106,6 +106,25 @@ def build_menu_labels(state: MenuState) -> list[str]:
     ]
 
 
+def patch_menu_label(patch) -> str:
+    if not patch.available:
+        return f"{patch.label} — unavailable"
+    if patch.compatibility_status not in {"compatible", "unknown"}:
+        detail = patch.compatibility_message or patch.compatibility_status
+        return f"{patch.label} — {detail}"
+    return patch.label
+
+
+def patch_menu_item_enabled(patch, *, mutating_enabled: bool) -> bool:
+    if not mutating_enabled:
+        return False
+    if patch.checked:
+        return True
+    if not patch.available:
+        return False
+    return patch.compatibility_status in {"compatible", "unknown"}
+
+
 def install_target_menu_label(target: Path, *, state_dir: Path) -> str:
     plan = install_plan_for_target(target, state_dir=state_dir)
     status = "protected" if plan.authorization_required else "user-writable"
@@ -206,6 +225,7 @@ class ClaudeMonkeyMenuBar:
             template=True,
             quit_button=None,
         )
+        self._ensure_modal_activation_policy()
         self.timer = rumps.Timer(self.drain_results, 0.25)
         self.refresh()
         self.timer.start()
@@ -259,25 +279,45 @@ class ClaudeMonkeyMenuBar:
         if callable(log_ui_event):
             log_ui_event(event, **fields)
 
-    def _activate_for_modal(self) -> None:
+    def _ensure_modal_activation_policy(self) -> None:
         try:
             from AppKit import (  # type: ignore[import-not-found]
                 NSApplication,
-                NSApplicationActivateIgnoringOtherApps,
-                NSRunningApplication,
+                NSApplicationActivationPolicyAccessory,
             )
         except Exception:
             return
         try:
             app = NSApplication.sharedApplication()
-            if app is not None:
-                app.activateIgnoringOtherApps_(True)
+            if (
+                app is not None
+                and app.activationPolicy() != NSApplicationActivationPolicyAccessory
+            ):
+                app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+        except Exception:
+            pass
+
+    def _activate_for_modal(self) -> None:
+        try:
+            from AppKit import (  # type: ignore[import-not-found]
+                NSApplication,
+                NSApplicationActivateAllWindows,
+                NSApplicationActivateIgnoringOtherApps,
+                NSRunningApplication,
+            )
+        except Exception:
+            return
+        self._ensure_modal_activation_policy()
+        try:
+            NSRunningApplication.currentApplication().activateWithOptions_(
+                NSApplicationActivateIgnoringOtherApps | NSApplicationActivateAllWindows
+            )
         except Exception:
             pass
         try:
-            NSRunningApplication.currentApplication().activateWithOptions_(
-                NSApplicationActivateIgnoringOtherApps
-            )
+            app = NSApplication.sharedApplication()
+            if app is not None:
+                app.activateIgnoringOtherApps_(True)
         except Exception:
             pass
 
@@ -320,9 +360,9 @@ class ClaudeMonkeyMenuBar:
         patches = rumps.MenuItem("Patches")
         for patch in self.state.patch_items:
             item = self._menu_item(
-                patch.label,
+                patch_menu_label(patch),
                 callback=lambda _sender, p=patch: self.toggle_patch(p.patch_id, p.checked),
-                enabled=mutating_enabled,
+                enabled=patch_menu_item_enabled(patch, mutating_enabled=mutating_enabled),
             )
             item.state = 1 if patch.checked else 0
             patches.add(item)

@@ -13,6 +13,7 @@ from claude_monkey.binary_inspect import inspect_binary_bytes
 from claude_monkey.bun_graph import BunGraphError, parse_bun_section
 from claude_monkey.install import use_official
 from claude_monkey.macho import MachOError, find_macho_layout
+from claude_monkey.package_model import PackageKind, load_package_manifest
 from claude_monkey.manifest_v2 import (
     AssertionV2,
     ManifestV2,
@@ -64,10 +65,33 @@ class BuildRequestV15:
     activate: bool = False
     current_path: Path | None = None
     command_runner: CommandRunner = run_command
+    manifest_digests: dict[str, str] | None = None
+    build_input_snapshot: dict[str, Any] | None = None
+
+
+def _v3_manifest_as_v2_dict(package_dir: Path) -> dict[str, Any]:
+    manifest = load_package_manifest(package_dir, PackageKind.PATCH)
+    if manifest.patch is None:
+        raise ManifestV2Error("patch_required")
+    return {
+        "schemaVersion": 2,
+        "id": manifest.id,
+        "name": manifest.label,
+        "description": manifest.description,
+        "packageVersion": "0.0.0",
+        "targets": list(manifest.patch.targets),
+    }
 
 
 def load_manifest_v2(package_dir: Path) -> ManifestV2:
-    return load_manifest_v2_dict(json.loads((package_dir / "patch.json").read_text()))
+    patch_json = package_dir / "patch.json"
+    if patch_json.exists():
+        data = json.loads(patch_json.read_text())
+        if data.get("schemaVersion") == 2 or (
+            data.get("schemaVersion") == 1 and "kind" not in data
+        ):
+            return load_manifest_v2_dict(data)
+    return load_manifest_v2_dict(_v3_manifest_as_v2_dict(package_dir))
 
 
 def load_payload(ref: PayloadRefV2, package_dir: Path) -> bytes:
@@ -221,12 +245,26 @@ def _safe_runner(runner: CommandRunner) -> CommandRunner:
 
 def _base_report(request: BuildRequestV15, source: bytes | None = None) -> BuildReportV2:
     source_bytes = source if source is not None else b""
+    source_sha = hashlib.sha256(source_bytes).hexdigest() if source is not None else ""
+    source_size = len(source_bytes) if source is not None else 0
+    source_identity = {
+        "claudeVersion": request.source_version,
+        "versionOutput": request.source_version_output,
+        "sha256": source_sha,
+        "sizeBytes": source_size,
+        "platform": request.platform,
+        "arch": request.arch,
+    }
     return BuildReportV2(
         sourceClaudePath=str(request.source_path),
         sourceVersion=request.source_version,
         sourceVersionOutput=request.source_version_output,
-        sourceSha256=hashlib.sha256(source_bytes).hexdigest() if source is not None else "",
-        sourceSizeBytes=len(source_bytes) if source is not None else 0,
+        sourceSha256=source_sha,
+        sourceSizeBytes=source_size,
+        packageManifestDigests=dict(request.manifest_digests or {}),
+        sourceIdentity=source_identity,
+        buildInputSnapshot=dict(request.build_input_snapshot or {}),
+        compatibility={"status": "compatible", "warnings": []},
     )
 
 
@@ -243,6 +281,8 @@ def _write_failed(
     report.automatedStatus = "failed"
     report.enabledPatches = enabled or []
     report.failureReason = reason
+    if reason.startswith("source_identity_mismatch:"):
+        report.compatibility = {"status": "source_sha_mismatch", "warnings": []}
     report.activationEligible = False
     report.activationStatus = "blocked" if request.activate else "skipped"
     report.write(report_path)

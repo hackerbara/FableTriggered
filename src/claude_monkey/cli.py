@@ -40,6 +40,7 @@ from claude_monkey.package_model import (
     PackageValidationError,
     discover_packages,
     load_package_manifest,
+    manifest_digest,
 )
 from claude_monkey.paths import StatePaths, default_paths
 from claude_monkey.shim_entry import compute_launch_with_paths
@@ -895,6 +896,27 @@ def _source_version(explicit_version: str | None, version_output: str | None) ->
     return first or None
 
 
+
+
+def _manifest_digests_for_build(package_dirs: list[Path]) -> dict[str, str]:
+    digests: dict[str, str] = {}
+    for package_dir in package_dirs:
+        try:
+            manifest = load_package_manifest(package_dir, PackageKind.PATCH)
+        except PackageValidationError:
+            continue
+        digests[manifest.id] = manifest_digest(manifest)
+    return digests
+
+
+def _build_input_snapshot(config) -> dict[str, Any]:
+    profile = active_profile(config)
+    return {
+        "patches": list(profile.patches),
+        "promptAtBuildTime": profile.prompt,
+        "optionsAtBuildTime": list(profile.options),
+    }
+
 def _default_output_dir(paths: StatePaths, config, source_version: str) -> Path:
     return paths.patchset_dir(source_version, config.activeProfile)
 
@@ -967,6 +989,8 @@ def handle_build(args: argparse.Namespace, paths: StatePaths, config) -> int:
             run_smoke=not args.skip_smoke,
             activate=args.activate,
             current_path=paths.current_path,
+            manifest_digests=_manifest_digests_for_build(package_dirs),
+            build_input_snapshot=_build_input_snapshot(config),
         )
     )
     if report.status == "verified" and report.activationStatus == "activated":

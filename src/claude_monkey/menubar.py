@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -222,6 +224,7 @@ class ClaudeMonkeyMenuBar:
         self.user_selected_install_target = False
         self.busy_command: str | None = None
         self.last_error_message: str | None = None
+        self.last_build_report_path: Path | None = None
         self.app = rumps.App(
             name="ClaudeMonkey",
             title=None,
@@ -282,6 +285,11 @@ class ClaudeMonkeyMenuBar:
         log_ui_event = getattr(self.runner, "log_ui_event", None)
         if callable(log_ui_event):
             log_ui_event(event, **fields)
+
+    def _remember_report_path(self, payload: dict[str, Any]) -> None:
+        report = payload.get("reportPath")
+        if report:
+            self.last_build_report_path = Path(str(report)).expanduser()
 
     def _ensure_modal_activation_policy(self) -> None:
         try:
@@ -530,12 +538,15 @@ class ClaudeMonkeyMenuBar:
         self._alert(f"ClaudeMonkey {action} preflight failed", message)
 
     def open_build_report(self, _sender: Any = None) -> None:
-        if not self.state or not self.state.latest_build_report_path:
+        report_path = self.last_build_report_path or (
+            self.state.latest_build_report_path if self.state else None
+        )
+        if not report_path:
             self._alert(
                 "No build report", "No active or failed build report is available yet."
             )
             return
-        self.runner.open_path(self.state.latest_build_report_path)
+        self.runner.open_path(report_path)
 
     def open_logs(self, _sender: Any = None) -> None:
         logs_dir = self.state.logs_dir if self.state else Path.home() / ".claude-monkey" / "logs"
@@ -553,6 +564,8 @@ class ClaudeMonkeyMenuBar:
             return
         refresh_failed = False
         for name, payload in results:
+            if name == "build":
+                self._remember_report_path(payload)
             if self.busy_command == name:
                 self.busy_command = None
             try:
@@ -590,7 +603,17 @@ class ClaudeMonkeyMenuBar:
         self.app.run()
 
 
+def refuse_root_menu_process() -> bool:
+    return getattr(os, "geteuid", lambda: 1)() == 0
+
+
 def main() -> int:
+    if refuse_root_menu_process():
+        print(
+            "refusing to run claude-monkey menu bar as root; start it as your user",
+            file=sys.stderr,
+        )
+        return 1
     runner = CommandRunner(logs_dir=Path.home() / ".claude-monkey" / "logs")
     ClaudeMonkeyMenuBar(runner=runner).run()
     return 0

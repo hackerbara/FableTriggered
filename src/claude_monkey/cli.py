@@ -741,7 +741,7 @@ def _target_from_args_or_record(args: argparse.Namespace, record_path: Path) -> 
         return None
     try:
         raw = json.loads(record_path.read_text())
-    except json.JSONDecodeError as exc:
+    except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"invalid install record JSON: {record_path}") from exc
     if not isinstance(raw, dict):
         raise ValueError(f"invalid install record JSON: {record_path}")
@@ -872,6 +872,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.version:
         print(__version__)
         return 0
+    if getattr(os, "geteuid", lambda: 1)() == 0:
+        message = (
+            "refusing to run claude-monkey manager as root; use the normal user "
+            "process and let ClaudeMonkey request narrow authorization for protected "
+            "install/restore file operations"
+        )
+        payload = envelope_error(message, code="root_process_refused")
+        if getattr(args, "json", False):
+            print_json(payload)
+        else:
+            print(message, file=sys.stderr)
+        return 1
     paths = default_paths()
     config = load_config(paths.config_path)
     if args.command == "status":

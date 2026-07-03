@@ -457,6 +457,28 @@ def test_malformed_uninstall_record_json_returns_envelope(monkeypatch, tmp_path,
     assert payload["error"]["code"] == "invalid_record"
 
 
+def test_unreadable_uninstall_record_json_returns_envelope(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    record = tmp_path / "record-dir"
+    record.mkdir()
+    assert main(["uninstall-shim", "--record", str(record), "--json"]) == 2
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_record"
+    assert str(record) in payload["error"]["message"]
+
+
+def test_manager_cli_refuses_root_process(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr("claude_monkey.cli.os.geteuid", lambda: 0, raising=False)
+
+    assert main(["status", "--json"]) == 1
+
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "root_process_refused"
+
+
 def test_manual_smoke_pending_json_summary_does_not_claim_activation(monkeypatch, tmp_path, capsys):
     from claude_monkey.reports_v2 import BuildReportV2
 

@@ -21,6 +21,7 @@ from claude_monkey.menubar import (
     default_install_target,
     install_target_menu_label,
     patch_menu_label,
+    refuse_root_menu_process,
 )
 from claude_monkey.menubar_state import MenuState, PatchMenuItem, PromptMenuItem
 
@@ -84,6 +85,12 @@ def test_menubar_icon_asset_has_visible_template_pixels():
     rows = _png_rgba_rows(icon)
     alphas = [row[index + 3] for row in rows for index in range(0, len(row), 4)]
     assert any(alpha > 0 for alpha in alphas)
+
+
+def test_menubar_refuses_root_process(monkeypatch):
+    monkeypatch.setattr("claude_monkey.menubar.os.geteuid", lambda: 0, raising=False)
+
+    assert refuse_root_menu_process() is True
 
 
 def sample_state(tmp_path):
@@ -351,6 +358,7 @@ def make_bar(tmp_path, runner):
     bar.user_selected_install_target = False
     bar.busy_command = None
     bar.last_error_message = None
+    bar.last_build_report_path = None
     bar.activation_calls = []
     bar._activate_for_modal = lambda: bar.activation_calls.append("activate")
     bar.app = SimpleNamespace(menu=FakeMenu())
@@ -635,3 +643,18 @@ def test_open_state_creates_directory_before_opening(tmp_path):
 
     assert missing_state.exists()
     assert bar.runner.opened == [missing_state]
+
+
+def test_open_build_report_uses_last_failed_report_after_refresh(tmp_path):
+    bar, _rumps = make_bar(tmp_path, FakeRunner())
+    active_report = tmp_path / "active-report.json"
+    failed_report = tmp_path / "failed-report.json"
+    bar.last_build_report_path = None
+    bar.state = MenuState(
+        **{**bar.state.__dict__, "latest_build_report_path": active_report}
+    )
+    bar._remember_report_path({"ok": False, "reportPath": str(failed_report)})
+
+    bar.open_build_report()
+
+    assert bar.runner.opened == [failed_report]

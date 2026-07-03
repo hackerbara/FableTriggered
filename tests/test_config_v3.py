@@ -54,3 +54,31 @@ def test_v3_config_rejects_multiple_profiles(tmp_path):
         assert "only_default_profile_supported" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_v3_config_rejects_non_default_active_profile(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text(
+        '{"schemaVersion":1,"activeProfile":"custom","profiles":{"default":{"prompt":null,"patches":[],"options":[]}}}'
+    )
+    try:
+        load_config(path)
+    except ValueError as exc:
+        assert "active_profile_must_be_default" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_active_profile_never_creates_non_default_profile():
+    from claude_monkey.cli import active_profile
+
+    config = ClaudeMonkeyConfig(
+        activeProfile="custom",
+        profiles={"default": LaunchProfile(patches=["fable-fallback"])},
+    )
+
+    profile = active_profile(config)
+
+    assert profile is config.profiles["default"]
+    assert profile.patches == ["fable-fallback"]
+    assert set(config.profiles) == {"default"}

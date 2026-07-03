@@ -122,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def active_profile(config):
-    return config.profiles.setdefault(config.activeProfile, LaunchProfile())
+    return config.profiles.setdefault("default", LaunchProfile())
 
 
 def emit(

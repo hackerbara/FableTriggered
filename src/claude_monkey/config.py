@@ -43,6 +43,8 @@ def load_config(path: Path) -> ClaudeMonkeyConfig:
     profiles_raw = raw["profiles"]
     if set(profiles_raw.keys()) != {"default"}:
         raise ValueError("only_default_profile_supported")
+    if raw["activeProfile"] != "default":
+        raise ValueError("active_profile_must_be_default")
     return ClaudeMonkeyConfig(
         schemaVersion=raw.get("schemaVersion", 1),
         activeProfile=raw["activeProfile"],

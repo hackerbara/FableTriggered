@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 
+import pytest
 from tests.test_manifest import valid_manifest
 
 from claude_monkey.cli import main
@@ -34,12 +35,13 @@ def test_high_impact_commands_require_explicit_targets_or_inputs(monkeypatch, tm
     assert "not implemented" not in err
 
 
-def test_enable_handles_missing_active_profile(monkeypatch, tmp_path):
+def test_enable_rejects_missing_active_profile(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     config_path = tmp_path / ".claude-monkey" / "config.json"
     config_path.parent.mkdir(parents=True)
     config_path.write_text('{"activeProfile":"missing","profiles":{}}\n')
-    assert main(["enable", "fable-fallback"]) == 0
+    with pytest.raises(ValueError, match="only_default_profile_supported"):
+        main(["enable", "fable-fallback"])
 
 
 def test_cli_build_with_explicit_source_and_package(monkeypatch, tmp_path, capsys):

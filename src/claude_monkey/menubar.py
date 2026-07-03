@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,19 @@ from claude_monkey.menubar_state import MenuState, parse_menu_state
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ICON = ROOT / "assets" / "claude-monkey-menubar-template.png"
+REBUILD_CONFIRMATION_BODY = (
+    "This will build a copied Claude Code binary from the selected patches, verify it, "
+    "sign it, smoke-test it, and activate it only if the build succeeds. The official "
+    "Claude binary will not be modified."
+)
+
+
+@dataclass(frozen=True)
+class AlertPlan:
+    title: str
+    message: str
+    ok: str = "OK"
+    open_path: Path | None = None
 
 
 def default_install_target(state: MenuState | None = None) -> Path:
@@ -84,6 +98,56 @@ def build_menu_labels(state: MenuState) -> list[str]:
     ]
 
 
+def install_target_menu_label(target: Path, *, state_dir: Path) -> str:
+    plan = install_plan_for_target(target, state_dir=state_dir)
+    status = "protected" if plan.authorization_required else "user-writable"
+    return f"Install target… {plan.target} ({status})"
+
+
+def alert_for_result(
+    name: str, payload: dict[str, Any], state: MenuState | None
+) -> AlertPlan | None:
+    if payload.get("ok") is False:
+        error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+        message = str(error.get("message") or payload.get("summary") or "Command failed")
+        report = payload.get("reportPath")
+        logs_dir = state.logs_dir if state else Path.home() / ".claude-monkey" / "logs"
+        if name == "build":
+            if report:
+                return AlertPlan(
+                    "ClaudeMonkey build failed",
+                    f"{message}\n\nOpen report or use Open logs folder for details.",
+                    ok="Open report",
+                    open_path=Path(str(report)).expanduser(),
+                )
+            return AlertPlan(
+                "ClaudeMonkey build failed",
+                f"{message}\n\nOpen logs folder for details.",
+                ok="Open logs",
+                open_path=logs_dir,
+            )
+        return AlertPlan("ClaudeMonkey command failed", message)
+
+    if name == "set_prompt":
+        return AlertPlan(
+            "ClaudeMonkey prompt selected", "Prompt will apply on next Claude launch."
+        )
+    if name == "build":
+        summary = str(payload.get("summary") or "Build activated")
+        active_patch_set = state.active_patch_set if state else None
+        report = payload.get("reportPath") or (
+            str(state.latest_build_report_path)
+            if state and state.latest_build_report_path is not None
+            else None
+        )
+        return AlertPlan(
+            "ClaudeMonkey build complete",
+            f"{summary}\nActive patch set: {active_patch_set or 'unknown'}\n"
+            f"Report: {report or 'unknown'}",
+        )
+    return None
+
+
 class ClaudeMonkeyMenuBar:
     def __init__(self, *, runner: CommandRunner, icon_path: Path = DEFAULT_ICON) -> None:
         try:
@@ -97,6 +161,8 @@ class ClaudeMonkeyMenuBar:
         self.install_target = default_install_target()
         self.install_record: Path | None = None
         self.user_selected_install_target = False
+        self.busy_command: str | None = None
+        self.last_error_message: str | None = None
         self.app = rumps.App(
             name="ClaudeMonkey",
             title=None,
@@ -115,11 +181,43 @@ class ClaudeMonkeyMenuBar:
         return parse_menu_state(status, patches, prompts)
 
     def refresh(self, _sender: Any = None) -> None:
-        self.state = self.load_state()
+        try:
+            state = self.load_state()
+        except Exception as exc:
+            self.last_error_message = str(exc)
+            if self.state is None:
+                self.render_error_menu()
+            else:
+                self.render_menu()
+            self.rumps.alert("ClaudeMonkey refresh failed", self.last_error_message)
+            return
+        self.state = state
+        self.last_error_message = None
         self.install_record = self.state.install_record_path
         if not self.user_selected_install_target:
             self.install_target = default_install_target(self.state)
         self.render_menu()
+
+    def _set_menu_item_enabled(self, item: Any, enabled: bool) -> None:
+        item.enabled = enabled
+        native = getattr(item, "_menuitem", None)
+        if native is not None and hasattr(native, "setEnabled_"):
+            native.setEnabled_(enabled)
+
+    def _menu_item(self, label: str, callback: Any = None, *, enabled: bool = True) -> Any:
+        item = self.rumps.MenuItem(label, callback=callback if enabled else None)
+        self._set_menu_item_enabled(item, enabled)
+        return item
+
+    def render_error_menu(self) -> None:
+        self.app.menu.clear()
+        self.app.menu.add(self._menu_item("ClaudeMonkey: Error", enabled=False))
+        if self.last_error_message:
+            self.app.menu.add(self._menu_item(self.last_error_message, enabled=False))
+        self.app.menu.add(None)
+        self.app.menu.add(self._menu_item("Open logs folder", callback=self.open_logs))
+        self.app.menu.add(self._menu_item("Refresh", callback=self.refresh))
+        self.app.menu.add(self._menu_item("Quit", callback=self.rumps.quit_application))
 
     def render_menu(self) -> None:
         rumps = self.rumps
@@ -127,17 +225,27 @@ class ClaudeMonkeyMenuBar:
             return
         self.app.menu.clear()
         for label in build_menu_labels(self.state)[:4]:
-            self.app.menu.add(rumps.MenuItem(label, callback=None))
+            self.app.menu.add(self._menu_item(label, callback=None, enabled=False))
+        mutating_enabled = self.busy_command is None
+        if self.busy_command:
+            self.app.menu.add(self._menu_item(f"Running: {self.busy_command}", enabled=False))
         self.app.menu.add(None)
 
         prompts = rumps.MenuItem("Prompts")
-        prompts.add(rumps.MenuItem("none", callback=lambda _sender: self.set_prompt(None, None)))
+        none_item = self._menu_item(
+            "none",
+            callback=lambda _sender: self.set_prompt(None, None),
+            enabled=mutating_enabled,
+        )
+        none_item.state = 1 if self.state.active_prompt is None else 0
+        prompts.add(none_item)
         for prompt in self.state.prompt_items:
-            item = rumps.MenuItem(
+            item = self._menu_item(
                 prompt.label,
                 callback=lambda _sender, p=prompt: self.set_prompt(
                     p.prompt_id, p.source_path
                 ),
+                enabled=mutating_enabled,
             )
             item.state = 1 if prompt.checked else 0
             prompts.add(item)
@@ -145,49 +253,70 @@ class ClaudeMonkeyMenuBar:
 
         patches = rumps.MenuItem("Patches")
         for patch in self.state.patch_items:
-            item = rumps.MenuItem(
+            item = self._menu_item(
                 patch.label,
                 callback=lambda _sender, p=patch: self.toggle_patch(p.patch_id, p.checked),
+                enabled=mutating_enabled,
             )
             item.state = 1 if patch.checked else 0
             patches.add(item)
         self.app.menu.add(patches)
 
         self.app.menu.add(None)
-        self.app.menu.add(rumps.MenuItem("Rebuild / Apply…", callback=self.rebuild))
         self.app.menu.add(
-            rumps.MenuItem(
-                f"Install target… {self.install_target}",
-                callback=self.choose_install_target,
+            self._menu_item(
+                "Rebuild / Apply…", callback=self.rebuild, enabled=mutating_enabled
             )
         )
-        self.app.menu.add(rumps.MenuItem("Install shim…", callback=self.install_shim))
-        self.app.menu.add(rumps.MenuItem("Uninstall shim…", callback=self.uninstall_shim))
-        self.app.menu.add(rumps.MenuItem("Open build report", callback=self.open_build_report))
-        self.app.menu.add(rumps.MenuItem("Open logs folder", callback=self.open_logs))
-        self.app.menu.add(rumps.MenuItem("Open state folder", callback=self.open_state))
-        self.app.menu.add(rumps.MenuItem("Refresh", callback=self.refresh))
-        self.app.menu.add(rumps.MenuItem("Quit", callback=rumps.quit_application))
+        state_dir = self.state.state_dir if self.state else Path.home() / ".claude-monkey"
+        self.app.menu.add(
+            self._menu_item(
+                install_target_menu_label(self.install_target, state_dir=state_dir),
+                callback=self.choose_install_target,
+                enabled=mutating_enabled,
+            )
+        )
+        self.app.menu.add(
+            self._menu_item("Install shim…", callback=self.install_shim, enabled=mutating_enabled)
+        )
+        self.app.menu.add(
+            self._menu_item(
+                "Uninstall shim…", callback=self.uninstall_shim, enabled=mutating_enabled
+            )
+        )
+        self.app.menu.add(self._menu_item("Open build report", callback=self.open_build_report))
+        self.app.menu.add(self._menu_item("Open logs folder", callback=self.open_logs))
+        self.app.menu.add(self._menu_item("Open state folder", callback=self.open_state))
+        self.app.menu.add(self._menu_item("Refresh", callback=self.refresh))
+        self.app.menu.add(self._menu_item("Quit", callback=rumps.quit_application))
+
+    def _start_mutating_command(self, name: str, args: list[str]) -> None:
+        if self.busy_command is not None:
+            self.rumps.alert(
+                "ClaudeMonkey is busy", f"{self.busy_command} is already running."
+            )
+            return
+        self.busy_command = name
+        self.render_menu()
+        self.runner.run_background(name, args, mutating=True)
 
     def set_prompt(self, prompt_id: str | None, source_path: Path | None) -> None:
-        self.runner.run_background(
-            "set_prompt", command_for_prompt(prompt_id, source_path), mutating=True
-        )
+        self._start_mutating_command("set_prompt", command_for_prompt(prompt_id, source_path))
 
     def toggle_patch(self, patch_id: str, enabled: bool) -> None:
-        self.runner.run_background(
-            "toggle_patch", command_for_patch_toggle(patch_id, enabled=enabled), mutating=True
+        self._start_mutating_command(
+            "toggle_patch", command_for_patch_toggle(patch_id, enabled=enabled)
         )
 
     def rebuild(self, _sender: Any = None) -> None:
         response = self.rumps.alert(
             "Rebuild ClaudeMonkey patched binary?",
-            "The official Claude binary will not be modified.",
+            REBUILD_CONFIRMATION_BODY,
             ok="Rebuild",
             cancel=True,
         )
         if response == 1:
-            self.runner.run_background("build", ["build", "--json"], mutating=True)
+            self._start_mutating_command("build", ["build", "--json"])
 
     def choose_install_target(self, _sender: Any = None) -> None:
         response = self.rumps.Window(
@@ -209,6 +338,9 @@ class ClaudeMonkeyMenuBar:
         dry_run = self.runner.run_json(
             command_for_install_shim_dry_run(plan.target), mutating=False
         )
+        if dry_run.get("ok") is False:
+            self._alert_preflight_failure("install", dry_run)
+            return
         message = "This changes which claude command your shell finds."
         if dry_run.get("authorizationRequired"):
             message += (
@@ -218,9 +350,7 @@ class ClaudeMonkeyMenuBar:
         if dry_run.get("plannedActions"):
             message += "\n\nPlanned: " + "; ".join(str(item) for item in dry_run["plannedActions"])
         if self.rumps.alert("Install ClaudeMonkey shim?", message, ok="Install", cancel=True) == 1:
-            self.runner.run_background(
-                "install_shim", command_for_install_shim(plan.target), mutating=True
-            )
+            self._start_mutating_command("install_shim", command_for_install_shim(plan.target))
 
     def uninstall_shim(self, _sender: Any = None) -> None:
         record = (
@@ -239,6 +369,9 @@ class ClaudeMonkeyMenuBar:
             else command_for_uninstall_shim(target=self.install_target)
         )
         dry_run = self.runner.run_json(dry_run_args, mutating=False)
+        if dry_run.get("ok") is False:
+            self._alert_preflight_failure("uninstall", dry_run)
+            return
         message = "This restores the previous claude command path when possible."
         if dry_run.get("authorizationRequired"):
             message += (
@@ -253,7 +386,12 @@ class ClaudeMonkeyMenuBar:
             )
             == 1
         ):
-            self.runner.run_background("uninstall_shim", real_args, mutating=True)
+            self._start_mutating_command("uninstall_shim", real_args)
+
+    def _alert_preflight_failure(self, action: str, payload: dict[str, Any]) -> None:
+        error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+        message = str(error.get("message") or payload.get("summary") or "Preflight failed")
+        self.rumps.alert(f"ClaudeMonkey {action} preflight failed", message)
 
     def open_build_report(self, _sender: Any = None) -> None:
         if not self.state or not self.state.latest_build_report_path:
@@ -270,19 +408,44 @@ class ClaudeMonkeyMenuBar:
 
     def open_state(self, _sender: Any = None) -> None:
         if self.state:
+            self.state.state_dir.mkdir(parents=True, exist_ok=True)
             self.runner.open_path(self.state.state_dir)
 
     def drain_results(self, _timer: Any = None) -> None:
         results = self.runner.drain_results()
         if not results:
             return
-        for _name, payload in results:
-            if payload.get("ok") is False:
-                error = payload.get("error") or {
-                    "message": payload.get("summary", "Command failed")
-                }
-                self.rumps.alert("ClaudeMonkey command failed", str(error.get("message")))
-        self.refresh()
+        for name, payload in results:
+            if self.busy_command == name:
+                self.busy_command = None
+            try:
+                state = self.load_state()
+            except Exception as exc:
+                self.last_error_message = str(exc)
+                self.rumps.alert("ClaudeMonkey refresh failed", self.last_error_message)
+            else:
+                self.state = state
+                self.last_error_message = None
+                self.install_record = self.state.install_record_path
+                if not self.user_selected_install_target:
+                    self.install_target = default_install_target(self.state)
+            alert = alert_for_result(name, payload, self.state)
+            if alert is not None:
+                self._show_alert(alert)
+        if self.state is None:
+            self.render_error_menu()
+        else:
+            self.render_menu()
+
+    def _show_alert(self, alert: AlertPlan) -> None:
+        response = self.rumps.alert(
+            alert.title,
+            alert.message,
+            ok=alert.ok,
+            cancel=alert.open_path is not None,
+        )
+        if response == 1 and alert.open_path is not None:
+            self.runner.open_path(alert.open_path)
 
     def run(self) -> None:
         self.app.run()

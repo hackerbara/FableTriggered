@@ -215,27 +215,35 @@ def test_hidden_context_drawer_footer_flashes_blue_until_selection_clears():
     assert "flashUntil=0" in keyboard_payload
 
 
-def test_hidden_context_drawer_ctrl_escape_closes_without_plain_escape_hotkey():
+def test_hidden_context_drawer_ctrl_period_closes_and_enter_opens():
     package_dir = ROOT / "packages" / "hidden-context-drawer"
     globals_payload = (
         package_dir / "payloads" / "14-selected-only-bottom-overlay-hidden-context-globals.js"
     ).read_text()
-    main_escape_payload = (
-        package_dir / "payloads" / "17-main-keydown-ctrl-escape-hiddencontext.js"
+    main_close_payload = (
+        package_dir / "payloads" / "17-main-keydown-ctrl-period-hiddencontext.js"
+    ).read_text()
+    open_payload = (
+        package_dir / "payloads" / "13-footer-clearselection-consumes-hiddencontext.js"
     ).read_text()
     overlay_payload = (
         package_dir / "payloads" / "15-uxl-refresh-bottom-overlay.js"
     ).read_text()
 
-    assert 'onKeyDown:(Bt)=>{if(hC&&Bt.ctrl&&Bt.name==="escape")' in globals_payload
-    assert 'if(hC&&Bt.name==="escape")' not in globals_payload
-    assert 'if(hC&&Bt.ctrl&&Bt.name==="escape")' in main_escape_payload
-    assert "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1" in main_escape_payload
-    assert "hCp(!1)" in main_escape_payload
-    assert "Pc(null)" in main_escape_payload
-    assert "Bt.consume?.()" in main_escape_payload
-    assert 'return}if(EP(Bt),Bt.name==="escape")' in main_escape_payload
-    assert "ctrl+esc closes" in overlay_payload
+    assert 'onKeyDown:(Bt)=>{if(hC&&Bt.ctrl&&Bt.key===".")' in globals_payload
+    assert 'Bt.ctrl&&Bt.name==="escape"' not in globals_payload
+    assert 'if(hC&&Bt.ctrl&&Bt.key===".")' in main_close_payload
+    assert 'Bt.ctrl&&Bt.name==="escape"' not in main_close_payload
+    assert "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1" in main_close_payload
+    assert "hCp(!1)" in main_close_payload
+    assert "Pc(null)" in main_close_payload
+    assert "Bt.consume?.()" in main_close_payload
+    assert 'return}if(EP(Bt),Bt.name==="escape")' in main_close_payload
+    assert 'case"hiddenContext"' in open_payload
+    assert "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!0" in open_payload
+    assert "hCp(!0)" in open_payload
+    assert "ctrl+. closes" in overlay_payload
+    assert "ctrl+esc closes" not in overlay_payload
     assert "| esc closes" not in overlay_payload
 
 

@@ -1,0 +1,1 @@
+if(hC&&Bt.ctrl&&Bt.key==="."){globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1,hCp(!1),Pc(null),Bt.consume?.(),Bt.preventDefault?.(),Bt.stopImmediatePropagation?.();return}if(EP(Bt),Bt.name==="escape"){if(Wee())return;if(g1()&&ae!=="NORMAL")return;if(!E3()){if(Xe.some(jj)){yL();return}}if(p&&!ee&&!a)WS()}if(Bt.name==="return"&&ce)le(!1)}function EP(Bt){

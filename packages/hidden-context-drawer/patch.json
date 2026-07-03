@@ -3,7 +3,7 @@
   "id": "hidden-context-drawer",
   "name": "Hidden Context Drawer",
   "description": "Projects model-visible hidden attachment context into an integrated footer Hidden Context drawer.",
-  "packageVersion": "0.1.7",
+  "packageVersion": "0.1.8",
   "targets": [
     {
       "sourceIdentity": {
@@ -38,7 +38,7 @@
             },
             {
               "opId": "uxl-refresh-bottom-overlay",
-              "label": "UXl refresh bottom overlay Hidden Context drawer v20 ctrl-escape header",
+              "label": "UXl refresh bottom overlay Hidden Context drawer v21 ctrl-period header",
               "type": "replace_exact",
               "exact": "function UXl(){let e=$Ye.c(2),t=yXl();if(!t)return null;let n;if(e[0]!==t)n=Xd.jsx(B,{position:\"absolute\",bottom:\"100%\",left:0,right:0,opaque:!0,children:t}),e[0]=t,e[1]=n;else n=e[1];return n}",
               "requireWithinRange": [],
@@ -46,7 +46,7 @@
               "oldRangeLength": 193,
               "replacement": {
                 "path": "payloads/15-uxl-refresh-bottom-overlay.js",
-                "sha256": "5597bae61c8decc70609ae04ed1a3b3b385d0363beff590b6b6f40538e706404"
+                "sha256": "d44467b4119a2eb70a95f27aa8cf2382f424e17c6e2c0ab6d3e500d56410a4be"
               }
             },
             {
@@ -194,7 +194,7 @@
             },
             {
               "opId": "footer-clearselection-consumes-hiddencontext",
-              "label": "footer clearSelection consumes hiddenContext v13",
+              "label": "footer openSelected/clearSelection Hidden Context v21 enter opens",
               "type": "replace_exact",
               "exact": "case\"tmux\":break;case\"bagel\":break;case\"bridge\":$s(!0),Pc(null);break;case\"frame\":{let Bt=ht.getState(),nr=Object.entries(Bt.frameUrls),To=nr[Yhr(nr,Bt.frameNavPath)]?.[1]?.url;if(To)kc(To),Ie(\"frame_link_open\");It((ja)=>ja.frameExpanded?ja:{...ja,frameExpanded:!0});break}}},\"footer:clearSelection\":()=>{if(qS&&ht.getState().frameExpanded){It((Bt)=>!Bt.frameExpanded?Bt:{...Bt,frameExpanded:!1});return}Wee(),Pc(null)},\"footer:close\"",
               "requireWithinRange": [],
@@ -202,12 +202,12 @@
               "oldRangeLength": 434,
               "replacement": {
                 "path": "payloads/13-footer-clearselection-consumes-hiddencontext.js",
-                "sha256": "e72320405013df991f8ec4a442e11857b510112538005a58980d37ea05ff114f"
+                "sha256": "98d35179a99687da7fb7854d5279117fc2579cae67f11d22855eb33a62d6b366"
               }
             },
             {
               "opId": "selected-only-bottom-overlay-hidden-context-globals",
-              "label": "selected-only bottom overlay Hidden Context globals v20 ctrl-escape only",
+              "label": "selected-only bottom overlay Hidden Context globals v21 ctrl-period close",
               "type": "replace_exact",
               "exact": "return Nd.jsxs(B,{flexDirection:\"column\",marginTop:jt||hae?0:1,children:[Ym&&!se&&Nd.jsx(B,{tabIndex:0,autoFocus:!0,onKeyDown:az}),!js()&&Nd.jsx(ogr,{}),J&&",
               "requireWithinRange": [],
@@ -215,7 +215,7 @@
               "oldRangeLength": 156,
               "replacement": {
                 "path": "payloads/14-selected-only-bottom-overlay-hidden-context-globals.js",
-                "sha256": "5d644ef0b2452017756a4eda652862044aaa5f6456f90a00055dc1f676dd34e9"
+                "sha256": "cdcb271c9e00fa65c02de4545e8e51352bc0e824a6d5963f1a1f102124e801d7"
               }
             },
             {
@@ -232,16 +232,16 @@
               }
             },
             {
-              "opId": "main-keydown-ctrl-escape-hiddencontext",
-              "label": "main prompt keydown Hidden Context ctrl-escape guard v20",
+              "opId": "main-keydown-ctrl-period-hiddencontext",
+              "label": "main prompt keydown Hidden Context ctrl-period guard v21",
               "type": "replace_exact",
               "exact": "if(EP(Bt),Bt.name===\"escape\"){if(Wee())return;if(g1()&&ae!==\"NORMAL\")return;if(!E3()){if(Xe.some(jj)){yL();return}}if(p&&!ee&&!a)WS()}if(Bt.name===\"return\"&&ce)le(!1)}function EP(Bt){",
               "requireWithinRange": [],
               "oldRangeSha256": "55a9d63d2e274509ed6fd0a62461f414bb3d9572e8ebc368eeea9e79c3585221",
               "oldRangeLength": 183,
               "replacement": {
-                "path": "payloads/17-main-keydown-ctrl-escape-hiddencontext.js",
-                "sha256": "7445d102c6e78e81c3018af8690ae8b6e6df7c1e43f6287a299daa2f5f2ba8fb"
+                "path": "payloads/17-main-keydown-ctrl-period-hiddencontext.js",
+                "sha256": "01ab25f81dfb49fddb1bf93fe9c773d1855480b47c4924ef899cbe40d90b3b85"
               }
             }
           ]
@@ -368,17 +368,32 @@
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "onKeyDown:(Bt)=>{if(hC&&Bt.ctrl&&Bt.name===\"escape\")"
+          "value": "onKeyDown:(Bt)=>{if(hC&&Bt.ctrl&&Bt.key===\".\")"
         },
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "if(hC&&Bt.ctrl&&Bt.name===\"escape\"){globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1"
+          "value": "if(hC&&Bt.ctrl&&Bt.key===\".\"){globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1"
         },
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "ctrl+esc closes"
+          "value": "ctrl+. closes"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "case\"hiddenContext\""
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!0"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "hCp(!0)"
         }
       ],
       "manualSmoke": {

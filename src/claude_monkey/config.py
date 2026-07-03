@@ -1,27 +1,38 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 
 @dataclass
-class Profile:
-    enabledPatches: list[str]
-    promptProfile: str | None = None
+class LaunchProfile:
+    prompt: str | None = None
+    patches: list[str] = field(default_factory=list)
+    options: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ClaudeMonkeyConfig:
     activeProfile: str
-    profiles: dict[str, Profile]
+    profiles: dict[str, LaunchProfile]
+    schemaVersion: int = 1
     installMode: str = "shim"
     activePatchSet: str | None = None
+    officialClaudePath: str | None = None
 
 
 def default_config() -> ClaudeMonkeyConfig:
     return ClaudeMonkeyConfig(
-        activeProfile="default", profiles={"default": Profile(enabledPatches=[])}
+        activeProfile="default", profiles={"default": LaunchProfile()}
+    )
+
+
+def _load_profile(value: dict) -> LaunchProfile:
+    return LaunchProfile(
+        prompt=value.get("prompt"),
+        patches=list(value.get("patches", [])),
+        options=list(value.get("options", [])),
     )
 
 
@@ -29,11 +40,16 @@ def load_config(path: Path) -> ClaudeMonkeyConfig:
     if not path.exists():
         return default_config()
     raw = json.loads(path.read_text())
+    profiles_raw = raw["profiles"]
+    if set(profiles_raw.keys()) != {"default"}:
+        raise ValueError("only_default_profile_supported")
     return ClaudeMonkeyConfig(
+        schemaVersion=raw.get("schemaVersion", 1),
         activeProfile=raw["activeProfile"],
-        profiles={name: Profile(**value) for name, value in raw["profiles"].items()},
+        profiles={name: _load_profile(value) for name, value in profiles_raw.items()},
         installMode=raw.get("installMode", "shim"),
         activePatchSet=raw.get("activePatchSet"),
+        officialClaudePath=raw.get("officialClaudePath"),
     )
 
 

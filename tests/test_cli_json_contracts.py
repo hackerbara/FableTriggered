@@ -528,7 +528,7 @@ def test_manual_smoke_pending_json_summary_does_not_claim_activation(monkeypatch
 
 def test_status_with_report_but_no_current_is_not_ok(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("HOME", str(tmp_path))
-    report_dir = tmp_path / ".claude-monkey" / "patchsets" / "fixture" / "default"
+    report_dir = tmp_path / ".claude-monkey" / "versions" / "fixture" / "patchsets" / "default"
     report_dir.mkdir(parents=True)
     (report_dir / "build-report.json").write_text(
         json.dumps({"schemaVersion": 2, "status": "verified", "enabledPatches": []})
@@ -538,7 +538,7 @@ def test_status_with_report_but_no_current_is_not_ok(monkeypatch, tmp_path, caps
         json.dumps(
             {
                 "activeProfile": "default",
-                "profiles": {"default": {"enabledPatches": []}},
+                "profiles": {"default": {"prompt": None, "patches": [], "options": []}},
                 "activePatchSet": str(report_dir),
             }
         )
@@ -633,7 +633,7 @@ def test_status_with_installed_shim_and_missing_active_report_is_rebuild_require
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
     state = tmp_path / ".claude-monkey"
-    patchset = state / "patchsets" / "fixture" / "default"
+    patchset = state / "versions" / "fixture" / "patchsets" / "default"
     patchset.mkdir(parents=True)
     executable = tmp_path / "current-claude"
     executable.write_text("#!/bin/sh\n")
@@ -644,7 +644,7 @@ def test_status_with_installed_shim_and_missing_active_report_is_rebuild_require
         json.dumps(
             {
                 "activeProfile": "default",
-                "profiles": {"default": {"enabledPatches": []}},
+                "profiles": {"default": {"prompt": None, "patches": [], "options": []}},
                 "activePatchSet": str(patchset),
             }
         )

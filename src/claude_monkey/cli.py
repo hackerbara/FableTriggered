@@ -25,7 +25,7 @@ from claude_monkey.builder_v15 import (
     validate_package,
 )
 from claude_monkey.cli_json import envelope_error, envelope_ok, print_json, to_jsonable
-from claude_monkey.config import Profile, load_config, save_config
+from claude_monkey.config import LaunchProfile, load_config, save_config
 from claude_monkey.install import (
     ProtectedTargetRestoreUnavailable,
     clean_source_from_install_record,
@@ -122,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def active_profile(config):
-    return config.profiles.setdefault(config.activeProfile, Profile(enabledPatches=[]))
+    return config.profiles.setdefault(config.activeProfile, LaunchProfile())
 
 
 def emit(
@@ -221,7 +221,7 @@ def _shim_is_installed(record_path: Path) -> bool:
 
 def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
     profile = active_profile(config)
-    desired = list(profile.enabledPatches)
+    desired = list(profile.patches)
     report_path, report = _latest_build_report(config.activePatchSet)
     active = _active_patch_ids_from_report(report)
     install_record = _install_record_path(paths)
@@ -253,7 +253,7 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
         "installMode": config.installMode,
         "shimInstalled": shim_installed,
         "activeProfile": config.activeProfile,
-        "activePrompt": profile.promptProfile,
+        "activePrompt": profile.prompt,
         "desiredPatchIds": desired,
         "activePatchIds": active,
         "rebuildRequired": rebuild_required,
@@ -267,7 +267,7 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
         "changedModules": (report or {}).get("changedModules", []),
         "repackSummary": (report or {}).get("repackSummary"),
         "stateDir": str(paths.state_dir),
-        "logsDir": str(paths.state_dir / "logs"),
+        "logsDir": str(paths.logs_dir),
         "lastError": None,
     }
 
@@ -406,7 +406,7 @@ def _patch_compatibility(
 
 def _list_patch_payload(paths: StatePaths, config) -> dict[str, Any]:
     profile = active_profile(config)
-    desired = set(profile.enabledPatches)
+    desired = set(profile.patches)
     _, report = _latest_build_report(config.activePatchSet)
     active = set(_active_patch_ids_from_report(report))
     seen: set[str] = set()
@@ -451,7 +451,7 @@ def _list_patch_payload(paths: StatePaths, config) -> dict[str, Any]:
 
 def _list_prompt_payload(paths: StatePaths, config) -> dict[str, Any]:
     profile = active_profile(config)
-    prompt_dir = paths.state_dir / "prompts"
+    prompt_dir = paths.prompts_dir
     prompts: list[dict[str, Any]] = []
     if prompt_dir.exists():
         for prompt_json in sorted(prompt_dir.glob("*.json")):
@@ -462,7 +462,7 @@ def _list_prompt_payload(paths: StatePaths, config) -> dict[str, Any]:
                 {
                     "id": prompt_id,
                     "label": str(raw.get("name") or raw.get("label") or prompt_id),
-                    "active": profile.promptProfile == prompt_id,
+                    "active": profile.prompt == prompt_id,
                     "mode": str(raw.get("mode") or "append"),
                     "sourcePath": str(source_path),
                 }
@@ -603,7 +603,7 @@ def _enabled_package_dirs(args: argparse.Namespace, paths: StatePaths, config) -
     if args.packages:
         return [_resolve_package(item, paths) for item in args.packages]
     profile = active_profile(config)
-    return [_resolve_package(item, paths) for item in profile.enabledPatches]
+    return [_resolve_package(item, paths) for item in profile.patches]
 
 
 def _detected_claude_command_path() -> Path | None:
@@ -647,7 +647,7 @@ def _source_version(explicit_version: str | None, version_output: str | None) ->
 
 
 def _default_output_dir(paths: StatePaths, config, source_version: str) -> Path:
-    return paths.state_dir / "patchsets" / source_version / config.activeProfile
+    return paths.patchset_dir(source_version, config.activeProfile)
 
 
 def _print_report_summary(report) -> None:
@@ -833,7 +833,7 @@ def handle_restore(args: argparse.Namespace, paths: StatePaths) -> int:
 
 
 def handle_set_prompt(args: argparse.Namespace, paths: StatePaths, config) -> int:
-    profile_dir = paths.state_dir / "prompts"
+    profile_dir = paths.prompts_dir
     profile_dir.mkdir(parents=True, exist_ok=True)
     if args.from_file:
         source_path = Path(args.prompt).expanduser()
@@ -861,7 +861,7 @@ def handle_set_prompt(args: argparse.Namespace, paths: StatePaths, config) -> in
         )
         + "\n"
     )
-    active_profile(config).promptProfile = args.id
+    active_profile(config).prompt = args.id
     save_config(paths.config_path, config)
     return emit(args, f"set prompt profile {args.id}", envelope_ok(f"prompt set to {args.id}"))
 
@@ -899,8 +899,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "enable":
         profile = active_profile(config)
-        if args.patch_id not in profile.enabledPatches:
-            profile.enabledPatches.append(args.patch_id)
+        if args.patch_id not in profile.patches:
+            profile.patches.append(args.patch_id)
         save_config(paths.config_path, config)
         return emit(
             args,
@@ -909,7 +909,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command == "disable":
         profile = active_profile(config)
-        profile.enabledPatches = [item for item in profile.enabledPatches if item != args.patch_id]
+        profile.patches = [item for item in profile.patches if item != args.patch_id]
         save_config(paths.config_path, config)
         return emit(
             args,
@@ -929,7 +929,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.json:
             print_json(_list_prompt_payload(paths, config))
         else:
-            prompt_dir = paths.state_dir / "prompts"
+            prompt_dir = paths.prompts_dir
             if prompt_dir.exists():
                 for prompt_json in sorted(prompt_dir.glob("*.json")):
                     print(prompt_json.stem)
@@ -937,7 +937,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "set-prompt":
         return handle_set_prompt(args, paths, config)
     if args.command == "clear-prompt":
-        active_profile(config).promptProfile = None
+        active_profile(config).prompt = None
         save_config(paths.config_path, config)
         return emit(args, "cleared active prompt profile", envelope_ok("prompt cleared"))
     if args.command == "inspect-binary":

@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-from claude_monkey.config import ClaudeMonkeyConfig, Profile, load_config, save_config
+from claude_monkey.config import ClaudeMonkeyConfig, LaunchProfile, load_config, save_config
 from claude_monkey.prompts import PromptProfile, prompt_args_for_invocation
 
 
 def test_config_round_trip(tmp_path):
     config = ClaudeMonkeyConfig(
         activeProfile="default",
-        profiles={"default": Profile(enabledPatches=["fable-fallback"], promptProfile="research")},
+        profiles={"default": LaunchProfile(patches=["fable-fallback"], prompt="research")},
         installMode="shim",
         activePatchSet="2.1.198-default",
     )
     path = tmp_path / "config.json"
     save_config(path, config)
     loaded = load_config(path)
-    assert loaded.profiles["default"].enabledPatches == ["fable-fallback"]
+    assert loaded.profiles["default"].patches == ["fable-fallback"]
 
 
 def test_prompt_append_file_injected_for_session_invocation(tmp_path):

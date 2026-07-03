@@ -162,8 +162,21 @@ def _which_from_env(process_env: dict[str, str]):
 
 
 def select_launch_target(
-    paths: StatePaths, config: ClaudeMonkeyConfig, process_env: dict[str, str]
+    paths: StatePaths,
+    config: ClaudeMonkeyConfig,
+    process_env: dict[str, str],
+    *,
+    prefer_official: bool = False,
 ) -> LaunchTarget | None:
+    which = _which_from_env(process_env)
+    official = (
+        discover_official_claude(config, paths, process_env, which)
+        if prefer_official
+        else None
+    )
+    if official is not None:
+        return LaunchTarget(path=official, kind="official_fallback")
+
     try:
         current = paths.current_path.resolve(strict=True)
     except OSError:
@@ -176,9 +189,8 @@ def select_launch_target(
     ):
         return LaunchTarget(path=current, kind="patched")
 
-    official = discover_official_claude(
-        config, paths, process_env, _which_from_env(process_env)
-    )
+    if official is None:
+        official = discover_official_claude(config, paths, process_env, which)
     if official is not None:
         return LaunchTarget(path=official, kind="official_fallback")
     return None

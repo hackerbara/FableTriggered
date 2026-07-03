@@ -10,6 +10,7 @@ from claude_monkey.launch_profile import (
     LaunchMergeInput,
     LaunchMergeResult,
     LaunchTarget,
+    is_management_invocation,
     load_active_launch_packages,
     merge_launch_profile,
     select_launch_target,
@@ -34,7 +35,12 @@ def compute_launch_with_paths(
 ) -> LaunchMergeResult:
     loaded = load_active_launch_packages(paths, config)
     env = dict(process_env)
-    target = select_launch_target(paths, config, env)
+    target = select_launch_target(
+        paths,
+        config,
+        env,
+        prefer_official=is_management_invocation(user_argv),
+    )
     if target is None:
         return LaunchMergeResult(
             target=LaunchTarget(path=paths.current_path, kind="missing"),

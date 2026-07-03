@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from claude_monkey.menubar_state import parse_menu_state
 
 
@@ -121,6 +123,116 @@ def test_parse_menu_state_captures_v3_status_and_option_payloads():
 
     assert not hasattr(state, "launch_preview_action")
     assert not hasattr(state, "refresh_action")
+
+
+def test_parse_menu_state_accepts_v3_patch_records_from_list_patches_payload():
+    state = parse_menu_state(
+        base_status(
+            desiredPatchIds=["fable-fallback", "bad-patch"],
+            activePatchIds=["fable-fallback"],
+        ),
+        {
+            "schemaVersion": 1,
+            "patches": [
+                {
+                    "id": "fable-fallback",
+                    "label": "Fable Fallback",
+                    "kind": "patch",
+                    "enabled": True,
+                    "valid": True,
+                    "compatibilityStatus": "constrained",
+                    "riskLevel": "low",
+                    "errors": [],
+                },
+                {
+                    "id": "legacy-active",
+                    "label": "Legacy Active",
+                    "kind": "patch",
+                    "enabled": False,
+                    "activeEnabled": True,
+                    "valid": True,
+                    "compatibilityStatus": "compatible",
+                    "riskLevel": "low",
+                    "errors": [],
+                },
+                {
+                    "id": "bad-patch",
+                    "label": "bad-patch",
+                    "kind": "patch",
+                    "enabled": True,
+                    "valid": False,
+                    "compatibilityStatus": "unknown",
+                    "riskLevel": "unknown",
+                    "errors": ["id_must_match_folder: different != bad-patch"],
+                },
+            ],
+        },
+        {"schemaVersion": 1, "prompts": []},
+        {"schemaVersion": 1, "options": []},
+    )
+
+    first, legacy_active, invalid = state.patch_items
+    assert first.patch_id == "fable-fallback"
+    assert first.checked is True
+    assert first.active_enabled is True
+    assert first.available is True
+    assert first.compatibility_status == "constrained"
+
+    assert legacy_active.patch_id == "legacy-active"
+    assert legacy_active.checked is False
+    assert legacy_active.active_enabled is True
+    assert legacy_active.available is True
+    assert legacy_active.compatibility_status == "compatible"
+
+    assert invalid.patch_id == "bad-patch"
+    assert invalid.checked is True
+    assert invalid.active_enabled is False
+    assert invalid.available is False
+    assert invalid.compatibility_status == "unknown"
+
+
+def test_parse_menu_state_accepts_v3_prompt_records_from_list_prompts_payload():
+    state = parse_menu_state(
+        base_status(activePrompt="status-prompt"),
+        {"schemaVersion": 1, "patches": []},
+        {
+            "schemaVersion": 1,
+            "prompts": [
+                {
+                    "id": "research-prompt",
+                    "label": "Research Prompt",
+                    "kind": "prompt",
+                    "enabled": True,
+                    "valid": True,
+                    "compatibilityStatus": "unconstrained",
+                    "riskLevel": "low",
+                    "errors": [],
+                },
+                {
+                    "id": "status-prompt",
+                    "label": "Status Prompt",
+                    "kind": "prompt",
+                    "enabled": False,
+                    "valid": True,
+                    "compatibilityStatus": "unconstrained",
+                    "riskLevel": "low",
+                    "errors": [],
+                },
+            ],
+        },
+        {"schemaVersion": 1, "options": []},
+    )
+
+    enabled_prompt, status_prompt = state.prompt_items
+    assert enabled_prompt.prompt_id == "research-prompt"
+    assert enabled_prompt.checked is True
+    assert enabled_prompt.mode == "append"
+    assert enabled_prompt.source_path == Path("")
+
+    assert status_prompt.prompt_id == "status-prompt"
+    assert status_prompt.checked is True
+    assert status_prompt.mode == "append"
+    assert status_prompt.source_path == Path("")
 
 
 def test_parse_menu_state_tolerates_missing_options_payload_for_v2_callers():

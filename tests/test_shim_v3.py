@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from claude_monkey.paths import StatePaths
 from claude_monkey.shim_entry import compute_launch
 
 
@@ -16,6 +17,14 @@ def make_executable(path: Path) -> Path:
     path.write_text("#!/bin/sh\necho claude\n")
     path.chmod(0o755)
     return path
+
+
+def install_patched_current(state: Path) -> Path:
+    paths = StatePaths(state_dir=state)
+    patched = make_executable(paths.patchset_dir("2.1.199", "default") / "claude")
+    paths.current_path.parent.mkdir(parents=True, exist_ok=True)
+    paths.current_path.symlink_to(patched)
+    return patched
 
 
 def base_state(tmp_path: Path, *, prompt: str | None = None, options: list[str] | None = None):
@@ -122,6 +131,27 @@ def test_compute_launch_skips_profile_for_management_invocation(tmp_path):
     assert result.skipped == [
         {"kind": "launch_profile", "id": "default", "reason": "management_invocation"}
     ]
+
+
+def test_compute_launch_management_prefers_configured_official_over_patched_current(
+    tmp_path,
+):
+    state, official = base_state(tmp_path, prompt="research", options=["local-session-defaults"])
+    patched = install_patched_current(state)
+    prompt_package(state, "research")
+    option_package(state, argv=["--model", "sonnet"])
+
+    management = compute_launch(state, ["--help"], {"PATH": ""})
+    normal = compute_launch(state, ["--resume"], {"PATH": ""})
+
+    assert management.management is True
+    assert management.target.kind == "official_management"
+    assert management.target.path == official.resolve()
+    assert management.argv == ["--help"]
+
+    assert normal.management is False
+    assert normal.target.kind == "patched"
+    assert normal.target.path == patched.resolve()
 
 
 def test_compute_launch_uses_official_fallback_when_current_missing(tmp_path):

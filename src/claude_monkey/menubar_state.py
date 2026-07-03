@@ -147,6 +147,15 @@ def _optional_bool(raw: dict[str, Any], key: str, default: bool = False) -> bool
     return value
 
 
+def _bool_if_present(raw: dict[str, Any], key: str) -> bool | None:
+    if key not in raw:
+        return None
+    value = raw[key]
+    if not isinstance(value, bool):
+        raise ValueError(f"{key} must be boolean")
+    return value
+
+
 def _planned_actions(raw: dict[str, Any]) -> tuple[str, ...]:
     value = raw.get("plannedActions", [])
     if not isinstance(value, list):
@@ -261,6 +270,41 @@ def _option_items(options_raw: dict[str, Any] | None) -> tuple[OptionMenuItem, .
     )
 
 
+def _patch_checked(raw: dict[str, Any], desired_patch_ids: tuple[str, ...]) -> bool:
+    desired = _bool_if_present(raw, "desiredEnabled")
+    if desired is not None:
+        return desired
+    enabled = _bool_if_present(raw, "enabled")
+    if enabled is not None:
+        return enabled
+    return str(raw["id"]) in desired_patch_ids
+
+
+def _patch_active_enabled(raw: dict[str, Any], active_patch_ids: tuple[str, ...]) -> bool:
+    active = _bool_if_present(raw, "activeEnabled")
+    if active is not None:
+        return active
+    return str(raw["id"]) in active_patch_ids
+
+
+def _patch_available(raw: dict[str, Any]) -> bool:
+    available = _bool_if_present(raw, "available")
+    if available is None:
+        available = True
+    valid = _bool_if_present(raw, "valid")
+    if valid is False:
+        return False
+    return available
+
+
+def _prompt_checked(raw: dict[str, Any], active_prompt: Any) -> bool:
+    active = _bool_if_present(raw, "active")
+    if active is None:
+        active = _bool_if_present(raw, "enabled")
+    checked = bool(active) if active is not None else False
+    return checked or str(raw["id"]) == active_prompt
+
+
 def parse_menu_state(
     status_raw: dict[str, Any],
     patches_raw: dict[str, Any],
@@ -276,13 +320,16 @@ def parse_menu_state(
         str(status_raw.get("status", "unknown")), rebuild_required, last_error
     )
     rebuild_required = rebuild_required or status == "rebuild_required"
+    desired_patch_ids = _string_list(status_raw, "desiredPatchIds")
+    active_patch_ids = _string_list(status_raw, "activePatchIds")
+    active_prompt = status_raw.get("activePrompt")
     patch_items = tuple(
         PatchMenuItem(
             patch_id=str(item["id"]),
             label=str(item.get("label", item["id"])),
-            checked=_required_bool(item, "desiredEnabled"),
-            active_enabled=_required_bool(item, "activeEnabled"),
-            available=_optional_bool(item, "available", True),
+            checked=_patch_checked(item, desired_patch_ids),
+            active_enabled=_patch_active_enabled(item, active_patch_ids),
+            available=_patch_available(item),
             compatibility_status=str(item.get("compatibilityStatus", "unknown")),
             compatibility_message=str(item["compatibilityMessage"])
             if item.get("compatibilityMessage")
@@ -294,7 +341,7 @@ def parse_menu_state(
         PromptMenuItem(
             prompt_id=str(item["id"]),
             label=str(item.get("label", item["id"])),
-            checked=_required_bool(item, "active"),
+            checked=_prompt_checked(item, active_prompt),
             mode=str(item.get("mode", "append")),
             source_path=Path(str(item.get("sourcePath", ""))).expanduser(),
         )
@@ -309,9 +356,9 @@ def parse_menu_state(
         install_mode=str(status_raw.get("installMode", "shim")),
         shim_installed=_optional_bool(status_raw, "shimInstalled", False),
         active_profile=status_raw.get("activeProfile"),
-        active_prompt=status_raw.get("activePrompt"),
-        desired_patch_ids=_string_list(status_raw, "desiredPatchIds"),
-        active_patch_ids=_string_list(status_raw, "activePatchIds"),
+        active_prompt=active_prompt,
+        desired_patch_ids=desired_patch_ids,
+        active_patch_ids=active_patch_ids,
         rebuild_required=rebuild_required,
         latest_build_report_path=_optional_path(status_raw.get("latestBuildReportPath")),
         active_patch_set=status_raw.get("activePatchSet"),

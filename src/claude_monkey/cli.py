@@ -580,12 +580,8 @@ def _build_report_json_payload(report: Any, report_path: Path | None = None) -> 
     return payload
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
-
-
 def _package_roots(paths: StatePaths) -> list[Path]:
-    return [paths.patches_dir, _repo_root() / "packages"]
+    return [paths.patches_dir]
 
 
 def _resolve_package(package_id_or_path: str, paths: StatePaths) -> Path:

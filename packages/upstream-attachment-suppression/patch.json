@@ -3,7 +3,7 @@
   "id": "upstream-attachment-suppression",
   "name": "Upstream attachment suppression",
   "description": "Suppresses selected recurring reminder/accounting attachments before generator telemetry and transcript row creation.",
-  "packageVersion": "0.1.0",
+  "packageVersion": "1.0.0",
   "targets": [
     {
       "sourceIdentity": {

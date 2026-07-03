@@ -157,6 +157,7 @@ def test_upstream_attachment_suppression_manifest_targets_upstream_only():
     manifest_data = json.loads((PACKAGE_DIR / "patch.json").read_text())
     manifest = load_manifest_v2_dict(manifest_data)
     assert manifest.id == "upstream-attachment-suppression"
+    assert manifest.package_version == "1.0.0"
     assert len(manifest.targets) == 1
     target = manifest.targets[0]
     assert target.required_engine == "bun_graph_repack"

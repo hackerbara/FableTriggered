@@ -14,3 +14,9 @@ def test_shim_script_uses_exec_and_bypass():
 def test_shim_script_detects_equals_prompt_flags():
     script = render_shim_script("/tmp/state")
     assert "startswith(flag + '=')" in script
+
+
+def test_shim_script_reads_v3_prompt_key_not_legacy_prompt_profile():
+    script = render_shim_script("/tmp/state")
+    assert '.get("prompt")' in script
+    assert "promptProfile" not in script

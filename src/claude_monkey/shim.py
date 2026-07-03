@@ -49,7 +49,7 @@ def active_prompt_args(argv):
     profile_name = (
         config.get("profiles", {{}})
         .get(config.get("activeProfile", "default"), {{}})
-        .get("promptProfile")
+        .get("prompt")
     )
     if not profile_name:
         return argv

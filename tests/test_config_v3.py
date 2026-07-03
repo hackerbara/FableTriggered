@@ -13,7 +13,9 @@ def test_default_paths_keep_all_packages_and_builds_under_state(monkeypatch, tmp
     assert paths.options_dir == paths.state_dir / "options"
     assert paths.logs_dir == paths.state_dir / "logs"
     assert paths.versions_dir == paths.state_dir / "versions"
-    assert paths.patchset_dir("2.1.199", "default") == paths.state_dir / "versions" / "2.1.199" / "patchsets" / "default"
+    assert paths.patchset_dir("2.1.199", "default") == (
+        paths.state_dir / "versions" / "2.1.199" / "patchsets" / "default"
+    )
 
 
 def test_v3_config_round_trip(tmp_path):

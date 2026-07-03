@@ -70,3 +70,74 @@ def test_real_install_uninstall_json_wraps_cli_core_transaction(monkeypatch, tmp
     assert uninstall_payload["ok"] is True
     assert uninstall_payload["dryRun"] is False
     assert uninstall_payload["targetPath"] == str(target)
+
+
+def test_fresh_status_json_is_not_installed(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert main(["status", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["status"] == "not_installed"
+    assert payload["currentClaudePath"] is None
+    assert payload["latestBuildReportPath"] is None
+
+
+def test_build_json_preflight_failure_is_error_envelope(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    missing = tmp_path / "missing-claude"
+    assert main(["build", "--source", str(missing), "--json"]) == 2
+    payload = parse_json_output(capsys)
+    assert payload["schemaVersion"] == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "error"
+    assert payload["error"]["message"] == f"source does not exist: {missing}"
+
+
+def test_build_json_success_uses_command_envelope_schema(monkeypatch, tmp_path, capsys):
+    from claude_monkey.reports_v2 import BuildReportV2
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    source = tmp_path / "claude"
+    source.write_text("source")
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "patch.json").write_text("{}")
+
+    def fake_build(request):
+        request.output_dir.mkdir(parents=True, exist_ok=True)
+        report = BuildReportV2(
+            status="verified",
+            automatedStatus="passed",
+            sourceClaudePath=str(source),
+            sourceVersion="fixture",
+            sourceVersionOutput="fixture (Claude Code)",
+            activationEligible=True,
+        )
+        report.outputPath = str(request.output_dir / "claude")
+        return report
+
+    monkeypatch.setattr("claude_monkey.cli.build_patchset_v15", fake_build)
+    assert (
+        main(
+            [
+                "build",
+                "--source",
+                str(source),
+                "--package",
+                str(package),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--source-version",
+                "fixture",
+                "--source-version-output",
+                "fixture (Claude Code)",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    payload = parse_json_output(capsys)
+    assert payload["schemaVersion"] == 1
+    assert payload["ok"] is True
+    assert payload["summary"] == "Build activated"
+    assert payload["error"] is None
+    assert payload["reportPath"] == str(tmp_path / "out" / "build-report.json")

@@ -83,20 +83,23 @@ def test_validate_package_json_resolves_module_operation(tmp_path, capsys):
         ],
     }
     (package / "patch.json").write_text(json.dumps(manifest))
-    assert main(
-        [
-            "validate-package",
-            "--source",
-            str(binary),
-            "--package",
-            str(package),
-            "--source-version",
-            "fixture",
-            "--source-version-output",
-            "fixture",
-            "--json",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "validate-package",
+                "--source",
+                str(binary),
+                "--package",
+                str(package),
+                "--source-version",
+                "fixture",
+                "--source-version-output",
+                "fixture",
+                "--json",
+            ]
+        )
+        == 0
+    )
     payload = read_json(capsys)
     assert payload["ok"] is True
     assert payload["operationsResolved"][0]["moduleStart"] == 0
@@ -138,9 +141,12 @@ def test_build_json_uses_v15_repack_engine_with_skip_gates(tmp_path, capsys):
         == 1
     )
     payload = read_json(capsys)
-    assert payload["engine"] == "bun_graph_repack"
-    assert payload["status"] == "skipped_gates"
-    assert payload["activationEligible"] is False
+    assert payload["schemaVersion"] == 1
+    assert payload["ok"] is False
+    assert payload["status"] == "error"
+    assert payload["buildStrategy"] == "bun_graph_repack"
+    assert payload["buildReportStatus"] == "skipped_gates"
+    assert payload["error"]["code"] == "build_failed"
     assert (out_dir / "claude").exists()
 
 

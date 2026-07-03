@@ -5,23 +5,22 @@ import json
 import platform as platform_module
 import shutil
 import sys
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from claude_monkey import __version__
+from claude_monkey.authorization import (
+    AuthorizationDenied,
+    AuthorizationRequired,
+    authorization_method_for_target,
+    target_needs_authorization,
+)
 from claude_monkey.binary_inspect import inspect_binary_bytes
 from claude_monkey.builder_v15 import (
     BuildRequestV15,
     ValidationRequestV15,
     build_patchset_v15,
     validate_package,
-)
-from claude_monkey.authorization import (
-    AuthorizationDenied,
-    AuthorizationRequired,
-    authorization_method_for_target,
-    target_needs_authorization,
 )
 from claude_monkey.cli_json import envelope_error, envelope_ok, print_json, to_jsonable
 from claude_monkey.config import Profile, load_config, save_config
@@ -119,9 +118,9 @@ def active_profile(config):
     return config.profiles.setdefault(config.activeProfile, Profile(enabledPatches=[]))
 
 
-
-
-def emit(args: argparse.Namespace, text: str, payload: Any | None = None, *, error: bool = False) -> int:
+def emit(
+    args: argparse.Namespace, text: str, payload: Any | None = None, *, error: bool = False
+) -> int:
     if getattr(args, "json", False):
         print_json(payload if payload is not None else envelope_ok(text))
     else:
@@ -142,8 +141,21 @@ def _read_json_file(path: Path) -> dict[str, Any] | None:
 def _latest_build_report(active_patch_set: str | None) -> tuple[Path | None, dict[str, Any] | None]:
     if not active_patch_set:
         return None, None
-    report_path = Path(active_patch_set).expanduser() / "build-report.json"
-    return report_path, _read_json_file(report_path)
+    patch_set_path = Path(active_patch_set).expanduser()
+    if not patch_set_path.is_absolute():
+        patch_set_path = patch_set_path.resolve()
+    report_path = patch_set_path / "build-report.json"
+    report = _read_json_file(report_path)
+    return (report_path, report) if report is not None else (None, None)
+
+
+def _display_patch_set(active_patch_set: str | None) -> str | None:
+    if not active_patch_set:
+        return None
+    patch_set_path = Path(active_patch_set).expanduser()
+    if not patch_set_path.is_absolute():
+        patch_set_path = patch_set_path.resolve()
+    return str(patch_set_path)
 
 
 def _active_patch_ids_from_report(report: dict[str, Any] | None) -> list[str]:
@@ -183,7 +195,16 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
     rebuild_required = desired != active
     install_record = _install_record_path(paths)
     current_known = paths.current_path.exists() or paths.current_path.is_symlink()
-    status = "rebuild_required" if rebuild_required else "ok"
+    installed = current_known or install_record.exists() or report is not None
+    if not installed:
+        status = "not_installed"
+    elif rebuild_required:
+        status = "rebuild_required"
+    else:
+        status = "ok"
+    build_strategy = (
+        (report or {}).get("buildStrategy") or (report or {}).get("engine") or "unknown"
+    )
     return {
         "schemaVersion": 1,
         "status": status,
@@ -197,12 +218,12 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
         "activePatchIds": active,
         "rebuildRequired": rebuild_required,
         "latestBuildReportPath": str(report_path) if report_path is not None else None,
-        "activePatchSet": config.activePatchSet,
+        "activePatchSet": _display_patch_set(config.activePatchSet),
         "currentClaudePath": _safe_resolve(paths.current_path) if current_known else None,
         "shimTargetPath": _shim_target_from_record(install_record),
         "installRecordPath": str(install_record) if install_record.exists() else None,
-        "buildStrategy": (report or {}).get("buildStrategy") or (report or {}).get("engine") or "unknown",
-        "lastBuildStrategy": (report or {}).get("buildStrategy") or (report or {}).get("engine") or "unknown",
+        "buildStrategy": build_strategy,
+        "lastBuildStrategy": build_strategy,
         "changedModules": (report or {}).get("changedModules", []),
         "repackSummary": (report or {}).get("repackSummary"),
         "stateDir": str(paths.state_dir),
@@ -304,21 +325,30 @@ def _build_dry_run_payload() -> Any:
 
 
 def _build_report_json_payload(report: Any, report_path: Path | None = None) -> dict[str, Any]:
-    payload = dict(to_jsonable(report))
-    ok = payload.get("status") in {"verified", "manual_smoke_pending"}
-    payload.setdefault("schemaVersion", 1)
-    payload["ok"] = ok
-    payload["summary"] = "Build activated" if ok else str(payload.get("failureReason") or payload.get("status") or "build failed")
-    payload["reportPath"] = str(report_path) if report_path is not None else None
-    payload["targetPath"] = None
-    payload["authorizationRequired"] = False
-    payload["authorizationMethod"] = None
-    payload["buildStrategy"] = payload.get("buildStrategy") or payload.get("engine")
-    payload["repackSummary"] = payload.get("repackSummary")
-    payload["dryRun"] = False
-    payload["plannedActions"] = []
-    payload["error"] = None if ok else {"message": payload["summary"], "code": "build_failed"}
+    report_payload = dict(to_jsonable(report))
+    ok = report_payload.get("status") in {"verified", "manual_smoke_pending"}
+    summary = (
+        "Build activated"
+        if ok
+        else str(
+            report_payload.get("failureReason") or report_payload.get("status") or "build failed"
+        )
+    )
+    envelope = envelope_ok(
+        summary,
+        report_path=report_path,
+        status="ok" if ok else "error",
+        build_strategy=report_payload.get("buildStrategy") or report_payload.get("engine"),
+        changed_modules=report_payload.get("changedModules", []),
+        repack_summary=report_payload.get("repackSummary"),
+    )
+    payload = to_jsonable(envelope)
+    payload["buildReportStatus"] = report_payload.get("status")
+    if not ok:
+        payload["ok"] = False
+        payload["error"] = {"message": summary, "code": "build_failed"}
     return payload
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -391,29 +421,47 @@ def handle_build(args: argparse.Namespace, paths: StatePaths, config) -> int:
         return emit(args, "planned build; no activation performed", _build_dry_run_payload())
     source = _discover_source(args.source)
     if source is None:
-        print("build requires --source or a claude executable on PATH", file=sys.stderr)
+        message = "build requires --source or a claude executable on PATH"
+        if args.json:
+            print_json(envelope_error(message, code="missing_source"))
+        else:
+            print(message, file=sys.stderr)
         return 2
     if not source.exists():
-        print(f"source does not exist: {source}", file=sys.stderr)
+        message = f"source does not exist: {source}"
+        if args.json:
+            print_json(envelope_error(message, code="missing_source"))
+        else:
+            print(message, file=sys.stderr)
         return 2
     version_output = _source_version_output(source, args.source_version_output)
     source_version = _source_version(args.source_version, version_output)
     if version_output is None or source_version is None:
-        print(
-            "build requires --source-version-output/--source-version or a working --version",
-            file=sys.stderr,
-        )
+        message = "build requires --source-version-output/--source-version or a working --version"
+        if args.json:
+            print_json(envelope_error(message, code="missing_source_version"))
+        else:
+            print(message, file=sys.stderr)
         return 2
     try:
         package_dirs = _enabled_package_dirs(args, paths, config)
     except FileNotFoundError as exc:
-        print(str(exc), file=sys.stderr)
+        if args.json:
+            print_json(envelope_error(str(exc), code="missing_package"))
+        else:
+            print(str(exc), file=sys.stderr)
         return 2
     if not package_dirs:
-        print("build requires enabled patches or at least one --package", file=sys.stderr)
+        message = "build requires enabled patches or at least one --package"
+        if args.json:
+            print_json(envelope_error(message, code="missing_package"))
+        else:
+            print(message, file=sys.stderr)
         return 2
-    output_dir = Path(args.output_dir).expanduser() if args.output_dir else _default_output_dir(
-        paths, config, source_version
+    output_dir = (
+        Path(args.output_dir).expanduser()
+        if args.output_dir
+        else _default_output_dir(paths, config, source_version)
     )
     report = build_patchset_v15(
         BuildRequestV15(
@@ -459,11 +507,17 @@ def handle_restore(args: argparse.Namespace, paths: StatePaths) -> int:
     record_path = _record_path(args, state_dir)
     target = _target_from_args_or_record(args, record_path)
     if target is None:
-        payload = envelope_error("restore requires --target or an install record with targetPath", code="missing_target")
+        payload = envelope_error(
+            "uninstall-shim requires --target or an install record with targetPath",
+            code="missing_target",
+        )
         if getattr(args, "json", False):
             print_json(payload)
         else:
-            print("restore requires --target or an install record with targetPath", file=sys.stderr)
+            print(
+                "uninstall-shim requires --target or an install record with targetPath",
+                file=sys.stderr,
+            )
         return 2
     if getattr(args, "dry_run", False):
         payload = _dry_run_install_payload(target, uninstall=True)
@@ -476,14 +530,36 @@ def handle_restore(args: argparse.Namespace, paths: StatePaths) -> int:
     try:
         restored = restore_install_transaction(target, record_path, force=args.force)
     except (AuthorizationRequired, AuthorizationDenied) as exc:
-        code = "authorization_denied" if isinstance(exc, AuthorizationDenied) else "authorization_required"
-        print_json(envelope_error(str(exc), code=code, target_path=target, authorization_required=True, authorization_method=exc.method))
+        code = (
+            "authorization_denied"
+            if isinstance(exc, AuthorizationDenied)
+            else "authorization_required"
+        )
+        print_json(
+            envelope_error(
+                str(exc),
+                code=code,
+                target_path=target,
+                authorization_required=True,
+                authorization_method=exc.method,
+            )
+        )
+        return 1
+    except OSError as exc:
+        if getattr(args, "json", False):
+            print_json(envelope_error(str(exc), code="filesystem_error", target_path=target))
+        else:
+            print(str(exc), file=sys.stderr)
         return 1
     if getattr(args, "json", False):
         if restored:
             print_json(envelope_ok("uninstalled managed claude shim", target_path=target))
         else:
-            print_json(envelope_error("managed shim was not restored", code="restore_failed", target_path=target))
+            print_json(
+                envelope_error(
+                    "managed shim was not restored", code="restore_failed", target_path=target
+                )
+            )
     else:
         print(f"restored={str(restored).lower()}")
     return 0 if restored else 1
@@ -629,8 +705,26 @@ def main(argv: list[str] | None = None) -> int:
         try:
             record = install_shim_transaction(target, state_dir, dry_run=False)
         except (AuthorizationRequired, AuthorizationDenied) as exc:
-            code = "authorization_denied" if isinstance(exc, AuthorizationDenied) else "authorization_required"
-            print_json(envelope_error(str(exc), code=code, target_path=target, authorization_required=True, authorization_method=exc.method))
+            code = (
+                "authorization_denied"
+                if isinstance(exc, AuthorizationDenied)
+                else "authorization_required"
+            )
+            print_json(
+                envelope_error(
+                    str(exc),
+                    code=code,
+                    target_path=target,
+                    authorization_required=True,
+                    authorization_method=exc.method,
+                )
+            )
+            return 1
+        except OSError as exc:
+            if args.json:
+                print_json(envelope_error(str(exc), code="filesystem_error", target_path=target))
+            else:
+                print(str(exc), file=sys.stderr)
             return 1
         if args.json:
             print_json(envelope_ok("installed managed claude shim", target_path=target))

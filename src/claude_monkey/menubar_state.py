@@ -93,9 +93,23 @@ def parse_error(raw: Any) -> ErrorInfo | None:
     return ErrorInfo(message=str(raw["message"]), code=str(code) if code is not None else None)
 
 
+def _required_bool(raw: dict[str, Any], key: str) -> bool:
+    value = raw.get(key)
+    if not isinstance(value, bool):
+        raise ValueError(f"{key} must be boolean")
+    return value
+
+
+def _optional_bool(raw: dict[str, Any], key: str, default: bool = False) -> bool:
+    value = raw.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"{key} must be boolean")
+    return value
+
+
 def parse_command_envelope(raw: dict[str, Any]) -> CommandEnvelope:
     error = parse_error(raw.get("error"))
-    ok = bool(raw.get("ok"))
+    ok = _required_bool(raw, "ok")
     if ok and error is not None:
         raise ValueError("ok envelope must have error=null")
     if not ok and error is None:
@@ -106,9 +120,9 @@ def parse_command_envelope(raw: dict[str, Any]) -> CommandEnvelope:
         summary=str(raw.get("summary", "")),
         report_path=_optional_path(raw.get("reportPath")),
         target_path=_optional_path(raw.get("targetPath")),
-        authorization_required=bool(raw.get("authorizationRequired", False)),
+        authorization_required=_optional_bool(raw, "authorizationRequired", False),
         authorization_method=raw.get("authorizationMethod"),
-        dry_run=bool(raw.get("dryRun", False)),
+        dry_run=_optional_bool(raw, "dryRun", False),
         planned_actions=tuple(str(item) for item in raw.get("plannedActions", [])),
         error=error,
     )
@@ -130,15 +144,17 @@ def parse_menu_state(
     status_raw: dict[str, Any], patches_raw: dict[str, Any], prompts_raw: dict[str, Any]
 ) -> MenuState:
     last_error = parse_error(status_raw.get("lastError"))
-    rebuild_required = bool(status_raw.get("rebuildRequired"))
-    status = normalize_status(str(status_raw.get("status", "unknown")), rebuild_required, last_error)
+    rebuild_required = _required_bool(status_raw, "rebuildRequired")
+    status = normalize_status(
+        str(status_raw.get("status", "unknown")), rebuild_required, last_error
+    )
     patch_items = tuple(
         PatchMenuItem(
             patch_id=str(item["id"]),
             label=str(item.get("label", item["id"])),
-            checked=bool(item.get("desiredEnabled")),
-            active_enabled=bool(item.get("activeEnabled")),
-            available=bool(item.get("available", True)),
+            checked=_required_bool(item, "desiredEnabled"),
+            active_enabled=_required_bool(item, "activeEnabled"),
+            available=_optional_bool(item, "available", True),
             compatibility_status=str(item.get("compatibilityStatus", "unknown")),
         )
         for item in patches_raw.get("patches", [])
@@ -147,7 +163,7 @@ def parse_menu_state(
         PromptMenuItem(
             prompt_id=str(item["id"]),
             label=str(item.get("label", item["id"])),
-            checked=bool(item.get("active")),
+            checked=_required_bool(item, "active"),
             mode=str(item.get("mode", "append")),
             source_path=Path(str(item.get("sourcePath", ""))).expanduser(),
         )
@@ -159,7 +175,7 @@ def parse_menu_state(
         source_claude_version=status_raw.get("sourceClaudeVersion"),
         source_claude_path=_optional_path(status_raw.get("sourceClaudePath")),
         install_mode=str(status_raw.get("installMode", "shim")),
-        shim_installed=bool(status_raw.get("shimInstalled", False)),
+        shim_installed=_optional_bool(status_raw, "shimInstalled", False),
         active_profile=status_raw.get("activeProfile"),
         active_prompt=status_raw.get("activePrompt"),
         desired_patch_ids=tuple(str(item) for item in status_raw.get("desiredPatchIds", [])),

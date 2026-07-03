@@ -8,6 +8,7 @@ import stat
 from pathlib import Path
 from time import time
 
+from claude_monkey import authorization
 from claude_monkey.shim import write_shim
 
 OWNER_MARKER = "ClaudeMonkey managed shim"
@@ -40,6 +41,46 @@ def describe_existing(path: Path) -> dict:
     }
 
 
+def _privileged_mkdir(path: Path) -> None:
+    authorization.run_privileged_argv(
+        ["/bin/mkdir", "-p", str(path)],
+        reason=f"ClaudeMonkey needs permission to create {path}",
+    )
+
+
+def _privileged_replace(tmp_path: Path, target_path: Path) -> None:
+    authorization.run_privileged_argv(
+        ["/bin/mv", str(tmp_path), str(target_path)],
+        reason=f"ClaudeMonkey needs permission to update {target_path}",
+    )
+
+
+def _privileged_remove(target_path: Path) -> None:
+    authorization.run_privileged_argv(
+        ["/bin/rm", "-f", str(target_path)],
+        reason=f"ClaudeMonkey needs permission to restore {target_path}",
+    )
+
+
+def _privileged_symlink(target_path: Path, previous_target: str) -> None:
+    authorization.run_privileged_argv(
+        ["/bin/ln", "-s", previous_target, str(target_path)],
+        reason=f"ClaudeMonkey needs permission to restore {target_path}",
+    )
+
+
+def _write_shim_to_target(target_path: Path, state_dir: Path) -> None:
+    if authorization.target_needs_authorization(target_path):
+        tmp = state_dir / (target_path.name + ".claude-monkey.tmp")
+        write_shim(tmp, state_dir)
+        _privileged_mkdir(target_path.parent)
+        _privileged_replace(tmp, target_path)
+        return
+    tmp = target_path.with_suffix(target_path.suffix + ".claude-monkey.tmp")
+    write_shim(tmp, state_dir)
+    tmp.replace(target_path)
+
+
 def install_shim_transaction(target_path: Path, state_dir: Path, dry_run: bool) -> Path:
     record_path = state_dir / "install-record.json"
     record = {
@@ -54,9 +95,7 @@ def install_shim_transaction(target_path: Path, state_dir: Path, dry_run: bool) 
         return record_path
     state_dir.mkdir(parents=True, exist_ok=True)
     record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
-    tmp = target_path.with_suffix(target_path.suffix + ".claude-monkey.tmp")
-    write_shim(tmp, state_dir)
-    tmp.replace(target_path)
+    _write_shim_to_target(target_path, state_dir)
     return record_path
 
 
@@ -78,18 +117,34 @@ def restore_install_transaction(target_path: Path, record_path: Path, force: boo
     if not force and not current_target_is_installed_shim(target_path, record):
         return False
     previous_type = record.get("previousType")
+    needs_authorization = authorization.target_needs_authorization(target_path)
     if previous_type == "missing":
-        target_path.unlink(missing_ok=True)
+        if needs_authorization:
+            _privileged_remove(target_path)
+        else:
+            target_path.unlink(missing_ok=True)
     elif previous_type == "symlink":
-        target_path.unlink(missing_ok=True)
-        target_path.symlink_to(record["previousTarget"])
+        if needs_authorization:
+            _privileged_remove(target_path)
+            _privileged_symlink(target_path, record["previousTarget"])
+        else:
+            target_path.unlink(missing_ok=True)
+            target_path.symlink_to(record["previousTarget"])
     elif previous_type == "file":
         content = base64.b64decode(record["previousContentBase64"].encode("ascii"), validate=True)
-        tmp = target_path.with_suffix(target_path.suffix + ".restore.tmp")
+        tmp = (
+            record_path.parent / (target_path.name + ".restore.tmp")
+            if needs_authorization
+            else target_path.with_suffix(target_path.suffix + ".restore.tmp")
+        )
         tmp.write_bytes(content)
         tmp.chmod(int(record.get("previousMode", 0o755)))
-        target_path.unlink(missing_ok=True)
-        tmp.replace(target_path)
+        if needs_authorization:
+            _privileged_remove(target_path)
+            _privileged_replace(tmp, target_path)
+        else:
+            target_path.unlink(missing_ok=True)
+            tmp.replace(target_path)
     else:
         return False
     return True

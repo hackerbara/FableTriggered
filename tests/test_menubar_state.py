@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from claude_monkey.menubar_state import MenuState, parse_command_envelope, parse_menu_state
+from claude_monkey.menubar_state import parse_command_envelope, parse_menu_state
 
 
 def test_parse_menu_state_applies_status_precedence():
@@ -78,8 +78,51 @@ def test_prompt_and_patch_items_are_checked():
             "logsDir": "/tmp/state/logs",
             "lastError": None,
         },
-        {"schemaVersion": 1, "patches": [{"id": "fable-fallback", "label": "Fable", "desiredEnabled": True, "activeEnabled": True, "available": True, "compatibilityStatus": "compatible"}]},
-        {"schemaVersion": 1, "prompts": [{"id": "research", "label": "Research", "active": True, "mode": "append", "sourcePath": "/tmp/research.md"}]},
+        {
+            "schemaVersion": 1,
+            "patches": [
+                {
+                    "id": "fable-fallback",
+                    "label": "Fable",
+                    "desiredEnabled": True,
+                    "activeEnabled": True,
+                    "available": True,
+                    "compatibilityStatus": "compatible",
+                }
+            ],
+        },
+        {
+            "schemaVersion": 1,
+            "prompts": [
+                {
+                    "id": "research",
+                    "label": "Research",
+                    "active": True,
+                    "mode": "append",
+                    "sourcePath": "/tmp/research.md",
+                }
+            ],
+        },
     )
     assert state.patch_items[0].checked is True
     assert state.prompt_items[0].checked is True
+
+
+def test_command_envelope_rejects_string_booleans():
+    try:
+        parse_command_envelope(
+            {
+                "schemaVersion": 1,
+                "ok": "false",
+                "status": "error",
+                "summary": "failed",
+                "reportPath": None,
+                "dryRun": False,
+                "plannedActions": [],
+                "error": {"message": "failed", "code": "boom"},
+            }
+        )
+    except ValueError as exc:
+        assert "ok must be boolean" in str(exc)
+    else:
+        raise AssertionError("expected strict boolean validation")

@@ -42,8 +42,11 @@ def target_needs_authorization(target_path: Path) -> bool:
     expanded = target_path.expanduser()
     parent = expanded.parent
     if any(expanded == root or root in expanded.parents for root in PROTECTED_ROOTS):
-        return not os.access(parent if parent.exists() else parent.parent, os.W_OK)
-    return False
+        return True
+    writable_parent = parent
+    while not writable_parent.exists() and writable_parent != writable_parent.parent:
+        writable_parent = writable_parent.parent
+    return not os.access(writable_parent, os.W_OK)
 
 
 def authorization_method_for_target(target_path: Path) -> str | None:
@@ -58,7 +61,7 @@ def run_privileged_argv(argv: list[str], *, reason: str) -> AuthorizationResult:
     osascript = Path("/usr/bin/osascript")
     if osascript.exists():
         command = " ".join(shlex.quote(item) for item in argv)
-        script = f'do shell script {command!r} with administrator privileges'
+        script = f"do shell script {command!r} with administrator privileges"
         result = subprocess.run(
             [str(osascript), "-e", script],
             shell=False,

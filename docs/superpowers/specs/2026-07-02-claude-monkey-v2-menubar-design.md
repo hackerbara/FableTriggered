@@ -1,40 +1,45 @@
 # ClaudeMonkey v2 menu bar design and runbook
 
 Date: 2026-07-02
-Status: approved design direction; adversarial review fixes incorporated; implementation not started
+Status: approved full V2 design direction on current main; implementation not started
 Project: ClaudeMonkey
-Scope: v2 fast-follow menu bar companion after the v1 Python CLI/core lands
+Scope: full V2 macOS menu bar companion on current main
 
 ## 1. Product position
 
-ClaudeMonkey v2 is a thin, optional macOS menu bar companion over the v1 Python CLI/core. It is not a second patch manager and must not duplicate binary-patching, prompt-injection, signing, shim, or manifest logic.
+ClaudeMonkey v2 is a full macOS menu bar companion over the Python CLI/core. It is not a second patch manager and must not duplicate binary-patching, prompt-injection, signing, shim, manifest, Bun graph, or repack logic.
 
-The v2 app exists to make the common safe operations visible and quick:
+The V2 app exists to make the common safe operations visible and quick:
 
 - See current ClaudeMonkey status.
 - Pick the active prompt profile.
 - Toggle desired patch state.
 - Rebuild/apply staged patch changes with confirmation.
 - Install or uninstall the managed shim.
+- Handle protected-path install/restore through a narrow elevation flow.
 - Open logs, state folders, and build reports.
 
-The implementation should optimize for source-first local utility, not polished app distribution. A developer/user should be able to run it from source while v1 continues to own the real product spine.
+The implementation should optimize for a proper source-first macOS utility: real menu-bar icon, complete status/actions, protected-path UX, and clear recovery paths. It does not need notarized distribution to be V2, but core install/permissions behavior is part of V2.
 
-## 2. V1 contracts v2 depends on
+Current main is the build-mechanism baseline. V2 is a UI/control surface over that baseline. V2 calls the CLI and reads JSON status/reports; it must never parse Bun graphs, patch binaries, or know module-coordinate patching details.
 
-V2 assumes v1 has landed these stable CLI/core behaviors:
+## 2. CLI/core contracts V2 depends on
+
+Current main includes the Bun graph-aware repack path as the internal build mechanism. V2 depends only on these strategy-agnostic CLI/core behaviors:
 
 - State directory: `~/.claude-monkey/`.
 - Patch package directory: `~/.claude-patches/`.
 - Active profile state in `~/.claude-monkey/config.json`.
-- Default install mode is a managed `claude` shim plus copied patched binary symlink.
+- Default install mode is a managed `claude` shim plus copied patched binary/current symlink.
 - The official Claude binary is never mutated in the normal path.
 - `enable` and `disable` mutate desired patch state and imply rebuild-required when desired state differs from active build state.
 - `set-prompt` and `clear-prompt` update prompt config and take effect on the next Claude launch.
-- `build` creates a copied patched binary, verifies/signs/smokes it, writes `build-report.json`, and activates `~/.claude-monkey/current` only on success.
+- `build` creates a copied patched binary through whatever current build strategy the CLI/core owns, verifies/signs/smokes it, writes `build-report.json`, and activates `~/.claude-monkey/current` only on success.
 - `install-shim` and `uninstall-shim` own shim installation/removal and handle rollback.
 
-V2 should ask v1 for machine-readable state. If v1 does not already expose these commands, v2 implementation should add them before building the UI:
+V2 must not branch on whether a build used `slot`, `repack`, `auto`, or another future strategy. It may display strategy details if the CLI/report provides them, but build success, active patches, rebuild-required, and errors come from generic status/report fields.
+
+V2 should ask the CLI/core for machine-readable state. If the current CLI/core does not already expose these commands, V2 implementation should add them before building the UI:
 
 ```bash
 claude-monkey status --json
@@ -42,21 +47,25 @@ claude-monkey list-patches --json
 claude-monkey list-prompts --json
 claude-monkey enable <patch-id> --json
 claude-monkey disable <patch-id> --json
-claude-monkey set-prompt <prompt-id> --json
+claude-monkey set-prompt <source-path-or-content> --id <prompt-id> --from-file --json
 claude-monkey clear-prompt --json
 claude-monkey build --json
 claude-monkey build --json --dry-run
-claude-monkey install-shim --json
-claude-monkey install-shim --json --dry-run
-claude-monkey uninstall-shim --json
-claude-monkey uninstall-shim --json --dry-run
+claude-monkey install-shim --target <selected-target> --json
+claude-monkey install-shim --target <selected-target> --json --dry-run
+claude-monkey uninstall-shim --target <selected-target> --json
+claude-monkey uninstall-shim --target <selected-target> --json --dry-run
+claude-monkey uninstall-shim --record <install-record> --json
+claude-monkey uninstall-shim --record <install-record> --json --dry-run
 ```
 
-The menu bar may tolerate early text output during a spike, but the implementation plan should treat JSON CLI output as a required seam before a usable MVP.
+The implementation plan should treat JSON CLI output as a required seam before V2 is usable. JSON mode is additive: existing human CLI output and tests must keep working unless a separately tested migration explicitly changes them.
 
-### Minimal JSON contracts
+V2 must augment the current parser and handlers. It must not replace rich existing flags or simplify behavior for `build`, `set-prompt`, `install-shim`, `uninstall-shim`, `rollback`, or `use-official`.
 
-The exact v1 implementation can add fields, but v2 needs these minimum shapes before any `rumps` UI code depends on them.
+### Required JSON contracts
+
+The exact CLI/core implementation can add fields, but V2 needs these required shapes before any `rumps` UI code depends on them.
 
 `claude-monkey status --json`:
 
@@ -74,6 +83,14 @@ The exact v1 implementation can add fields, but v2 needs these minimum shapes be
   "activePatchIds": ["fable-fallback"],
   "rebuildRequired": true,
   "latestBuildReportPath": "/Users/example/.claude-monkey/versions/2.1.198/patchsets/example/build-report.json",
+  "activePatchSet": "/Users/example/.claude-monkey/patchsets/2.1.198/default",
+  "currentClaudePath": "/Users/example/.claude-monkey/current",
+  "shimTargetPath": "/usr/local/bin/claude",
+  "installRecordPath": "/Users/example/.claude-monkey/shims/usr-local-bin-claude.json",
+  "buildStrategy": "repack",
+  "lastBuildStrategy": "repack",
+  "changedModules": [],
+  "repackSummary": null,
   "stateDir": "/Users/example/.claude-monkey",
   "logsDir": "/Users/example/.claude-monkey/logs",
   "lastError": null
@@ -96,11 +113,42 @@ Status precedence:
 error > not_installed > rebuild_required > ok > unknown
 ```
 
-If `rebuildRequired` is true and no higher-priority state applies, `status` should be `rebuild_required`. V2 may recompute that precedence defensively, but v1 should emit a non-contradictory status.
+If `rebuildRequired` is true and no higher-priority state applies, `status` should be `rebuild_required`. V2 may recompute that precedence defensively, but the CLI/core should emit a non-contradictory status.
 
-`unknown` is not a competing positive state. Use it only when v1 or v2 cannot classify the state.
+`unknown` is not a competing positive state. Use it only when the CLI/core or menu cannot classify the state.
 
 `lastError` must use the same shape as command-envelope `error`: either `null` or `{"message": string, "code": string | null}`.
+
+Status must derive active state from `config.activePatchSet` and the latest available `build-report.json` when present:
+
+- `desiredPatchIds` comes from the active profile's enabled patch IDs.
+- `activePatchIds` comes from the active build report's enabled patches, changed patch IDs, or equivalent strategy-agnostic field.
+- `activePatchSet` mirrors the active configured patch-set path or identifier.
+- `latestBuildReportPath` points at the active/latest report used for active-state derivation when available.
+- `currentClaudePath` points at the CLI/core's current executable or symlink target when known.
+- `shimTargetPath` points at the active/recorded shim target when known.
+- `installRecordPath` points at the CLI/core install record used for restore/uninstall when known.
+- `rebuildRequired` is true when desired patch IDs, prompt/build-relevant state, source identity, or current build report state differ enough that the CLI/core would require a rebuild.
+
+The menu bar must not treat `activePatchIds: []` as a harmless placeholder. Empty active patches mean either a real active build with no patches, no active build, or a status error; `status`, `activePatchSet`, `latestBuildReportPath`, and `lastError` must disambiguate.
+
+Strategy/repack fields are optional and forward-compatible:
+
+```json
+{
+  "buildStrategy": "slot | repack | auto | unknown",
+  "lastBuildStrategy": "slot | repack | auto | unknown",
+  "changedModules": [
+    {"path": "/$bunfs/root/src/entrypoints/cli.js", "operationCount": 1}
+  ],
+  "repackSummary": {
+    "changedModuleCount": 1,
+    "growthBytes": 16384
+  }
+}
+```
+
+Missing strategy/repack fields must not break the menu. V2 may display them in status/report details, but must not branch behavior on them.
 
 `claude-monkey list-patches --json`:
 
@@ -147,7 +195,7 @@ unknown
 }
 ```
 
-Mutating commands such as `enable --json`, `disable --json`, `set-prompt --json`, `clear-prompt --json`, `build --json`, `install-shim --json`, and `uninstall-shim --json` should return a command result envelope:
+Mutating commands such as `enable --json`, `disable --json`, `set-prompt ... --json`, `clear-prompt --json`, `build --json`, `install-shim --target <selected-target> --json`, and `uninstall-shim --target <selected-target>|--record <install-record> --json` should return a command result envelope:
 
 ```json
 {
@@ -156,6 +204,12 @@ Mutating commands such as `enable --json`, `disable --json`, `set-prompt --json`
   "status": "ok",
   "summary": "Build activated",
   "reportPath": "/Users/example/.claude-monkey/versions/2.1.198/patchsets/example/build-report.json",
+  "targetPath": null,
+  "authorizationRequired": false,
+  "authorizationMethod": null,
+  "buildStrategy": "repack",
+  "changedModules": [],
+  "repackSummary": null,
   "dryRun": false,
   "plannedActions": [],
   "error": null
@@ -176,6 +230,8 @@ Envelope invariants:
 - `ok: true` requires `error: null`.
 - `ok: false` requires `error.message` to be a non-empty string. `error.code` may be `null`.
 - `reportPath` is optional and may be `null`; it is primarily meaningful for build/build-like failures. V2 should refresh state and use `status.latestBuildReportPath` for persistent report discovery.
+- `targetPath`, `authorizationRequired`, and `authorizationMethod` are required for install/uninstall result envelopes. `authorizationMethod` may be `null`, `macos_gui`, `sudo`, or `not_available`.
+- `buildStrategy`, `changedModules`, and `repackSummary` are optional display metadata. V2 should parse them tolerantly and ignore unknown nested fields.
 - `dryRun` is required for `build`, `install-shim`, and `uninstall-shim` result envelopes; it should be `true` when the command was invoked with `--dry-run`, otherwise `false`.
 - `plannedActions` is required for `--dry-run` result envelopes and should list concise strings for the changes that would have happened. It may be an empty list for non-dry-run or simple config mutations.
 
@@ -187,27 +243,29 @@ Dry-run semantics for `build`, `install-shim`, and `uninstall-shim`:
 - Must return the same result envelope shape as the real command.
 - Must set `dryRun: true`.
 - Must include `plannedActions`, even if the result is a failure discovered during preflight.
-- May write temporary diagnostic data under the active state directory only if v1 already treats that as safe diagnostic output; it must not change active profile, active patch set, current symlink, or shim install state.
+- `build --dry-run` must not claim verified applicability unless it actually performed source/package discovery and preflight. If it only prepared a planning envelope, its summary/planned actions must say so plainly.
+- If current main supports richer planning, `build --dry-run` may include planned strategy, planned modules, changed modules, and repack summary. V2 may show these as preflight detail, but must not depend on dry-run proving visual correctness.
+- May write temporary diagnostic data under the active state directory only if the CLI/core already treats that as safe diagnostic output; it must not change active profile, active patch set, current symlink, or shim install state.
 
 ## 3. Chosen implementation approach
 
-Use `rumps` for the v2 MVP.
+Use `rumps` for V2.
 
 Rationale:
 
 - `rumps` is designed for simple macOS status bar apps that control console programs or launch separate commands.
 - It can create a real menu bar app with a proper icon while keeping the implementation in Python.
 - It exposes menu items, checked states, alerts, notifications, and timers without direct PyObjC ceremony.
-- It keeps the app source-first and thin over the v1 Python CLI/core.
+- It keeps the app source-first and CLI-owned instead of turning the menu bar into a second implementation.
 
 Fallback:
 
 - If `rumps` proves too brittle on current macOS/Python, fall back to a direct PyObjC `NSStatusItem` implementation.
-- Swift/AppKit is a later fallback only if Python menu bar approaches fail. Even in Swift, the app must still shell out to the CLI/core rather than reimplementing product logic.
+- Swift/AppKit is a fallback only if Python menu bar approaches fail. Even in Swift, the app must still shell out to the CLI/core rather than reimplementing product logic.
 
 ## 4. Menu bar icon requirements
 
-The v2 app should be an icon-only menu bar item, not a text title.
+The V2 app should be an icon-only menu bar item, not a text title.
 
 Required asset:
 
@@ -229,13 +287,13 @@ Icon rules:
 - Configure template mode so the icon adapts to light and dark menu bars.
 - Keep the status item icon-only; do not show persistent text like `ClaudeMonkey` in the menu bar.
 - Communicate detailed state inside the opened menu, not in the menu bar title.
-- If state-specific icon variants are not ready for the first spike, ship one template icon and represent OK/rebuild/error in the top status menu item.
+- If state-specific icon variants are not part of the source-run deliverable, ship one template icon and represent OK/rebuild/error in the top status menu item.
 
 Visual direction:
 
 - A small monkey head, monkey face, or monkey/wrench silhouette is enough.
 - The icon should be legible at menu bar size before it is cute.
-- Do not spend v2 time on a full app icon set unless packaging becomes part of the task.
+- Do not spend V2 time on a full app icon set unless packaging becomes part of the task.
 
 `rumps` wiring requirement:
 
@@ -253,7 +311,7 @@ The implementation can wrap this in a class, but the visible status item should 
 
 Because `quit_button=None` disables the default rumps quit item, the explicit `Quit` menu item must call `rumps.quit_application()`.
 
-## 5. MVP menu structure
+## 5. V2 menu structure
 
 Target menu with example values shown:
 
@@ -277,6 +335,7 @@ Patches
 Rebuild / Apply…
 Install shim…
 Uninstall shim…
+Install target…
 Open build report
 Open logs folder
 Open state folder
@@ -291,13 +350,14 @@ Notes:
 - `Patches` is a submenu populated from `list-patches --json`.
 - Prompt and patch items should use checked state rather than duplicating the current value in labels.
 - `Rebuild / Apply…` should remain visible in all states. When no rebuild is required, it can still allow a deliberate rebuild; when rebuild is required, it is the primary call to action.
+- `Install target…` should show the currently selected target, allow choosing/editing a target, and identify whether it appears user-writable or protected.
 - `Open build report` should open the latest active or failed report if one exists; otherwise it should show a small alert.
 - `Open logs folder` should reveal `~/.claude-monkey/logs/` in Finder, creating it if the menu bar log path is initialized.
 - `Open state folder` should reveal `~/.claude-monkey/` in Finder.
 
 ## 6. Data flow
 
-The menu bar app maintains an in-memory `MenuState` derived entirely from v1 CLI JSON output.
+The menu bar app maintains an in-memory `MenuState` derived entirely from CLI JSON output.
 
 Suggested state fields:
 
@@ -318,7 +378,7 @@ Suggested state fields:
 }
 ```
 
-The exact JSON shape can differ if v1 already has a better model. The invariant is that v2 should consume one clear state object and should not infer active patch state by scraping filenames or symlinks when the CLI can report it.
+The exact JSON shape can differ if the CLI/core already has a better model. The invariant is that V2 should consume one clear state object and should not infer active patch state by scraping filenames or symlinks when the CLI can report it.
 
 Refresh flow:
 
@@ -357,10 +417,10 @@ Command runner constraints:
 
 ### Prompt picker
 
-Clicking a prompt profile calls:
+Clicking an existing prompt profile calls the current `set-prompt` shape with the profile source path and id:
 
 ```bash
-claude-monkey set-prompt <prompt-id> --json
+claude-monkey set-prompt <source-path> --id <prompt-id> --from-file --json
 ```
 
 Clicking `none` calls:
@@ -374,7 +434,7 @@ Expected UX:
 - Update checkmark immediately after a successful refresh.
 - Show a small informational alert or notification: `Prompt will apply on next Claude launch.`
 - Do not rebuild binary patchsets for prompt-only changes.
-- V2 only passes prompt IDs returned by `list-prompts --json`; arbitrary prompt paths remain CLI-only and are not part of the v2 menu MVP.
+- V2 uses prompt IDs and source paths returned by `list-prompts --json`; arbitrary one-off prompt paths remain CLI-only unless this V2 implementation explicitly adds a file-picker flow.
 
 ### Patch enable/disable submenu
 
@@ -416,7 +476,7 @@ Expected UX:
 - Disable other mutating menu items while build is running.
 - On success, show summary with active patch set and report path.
 - On failure, show error summary and offer to open the build report/log.
-- Never activate a failed build in the UI. Activation is solely v1 builder responsibility.
+- Never activate a failed build in the UI. Activation is solely CLI/core builder responsibility.
 
 ### Install/uninstall shim
 
@@ -425,16 +485,39 @@ Clicking install or uninstall should show confirmation because it changes the us
 Commands:
 
 ```bash
-claude-monkey install-shim --json
-claude-monkey uninstall-shim --json
+claude-monkey install-shim --target <selected-target> --json
+claude-monkey install-shim --target <selected-target> --json --dry-run
+claude-monkey uninstall-shim --target <selected-target> --json
+claude-monkey uninstall-shim --target <selected-target> --json --dry-run
+claude-monkey uninstall-shim --record <install-record> --json
+claude-monkey uninstall-shim --record <install-record> --json --dry-run
 ```
+
+Target rules:
+
+- V2 must carry an explicit selected install target.
+- The default offered target may be `~/.claude-monkey/bin/claude` because it is user-writable and useful for PATH-first installs.
+- If an existing install record or current `claude` discovery identifies another target, V2 should show that target and allow the user to keep it.
+- V2 must allow protected/global targets such as a managed system/user bin location when the user explicitly selects them.
+- V2 must run `install-shim --target <selected-target> --json --dry-run` before confirmation so the user can see planned actions and whether elevation is expected from the CLI/core, not from a menu-only guess.
+- `uninstall-shim` should prefer the recorded install record when available, otherwise use the selected target; if neither is known, the UI must ask before running. It must dry-run the chosen uninstall command before confirmation.
 
 Permissions rules:
 
 - Do not run the menu bar process as root.
-- Prefer user-writable shim locations for the MVP.
-- If v1 needs elevation for a protected install/restore operation, v2 should call a narrow v1 elevation path for that operation only.
-- V2 should display v1's authorization prompt/result rather than inventing a second permissions model.
+- User-writable targets run without elevation.
+- Protected targets are in scope for V2 and must use a narrow elevation path for the protected install/restore operation only.
+- The preferred macOS UX is GUI authorization for the single protected operation, with terminal `sudo` fallback if GUI authorization is unavailable.
+- V2 should display the CLI/core authorization prompt/result and log the command outcome; it must not invent a second install transaction format.
+- V2 must preserve rollback/restore evidence and never silently overwrite an unrelated target without the CLI/core's transaction checks.
+
+Protected-target command contract:
+
+- `install-shim --target <protected> --json --dry-run` should return `authorizationRequired: true`, `authorizationMethod`, `targetPath`, and planned actions without writing the target.
+- `install-shim --target <protected> --json` may trigger the narrow CLI/core authorization path for that single target write.
+- `uninstall-shim --target <protected> --json --dry-run` should report whether restore authorization is required.
+- `uninstall-shim --target <protected> --json` may trigger the narrow CLI/core authorization path for that single restore/delete operation.
+- If authorization is unavailable or denied, the command should fail with `ok: false`, `error.code: "authorization_required"` or `"authorization_denied"`, and no partial install/restore should be reported as success.
 
 ### Open report, logs, and folders
 
@@ -493,13 +576,13 @@ Log entries should include:
 - short stderr summary
 - state refresh failures
 
-The build pipeline's authoritative evidence remains `build-report.json` from v1.
+The build pipeline's authoritative evidence remains `build-report.json` from the CLI/core.
 
 The menu should expose `Open logs folder` as a first-class action. The logs folder is for menu bar command-runner evidence and UI failures; it is not a replacement for build reports.
 
 ## 10. Packaging and launch stance
 
-V2 MVP source run command:
+V2 source run command:
 
 ```bash
 python3 -m claude_monkey.menubar
@@ -512,15 +595,15 @@ rumps
 PyObjC, as required by rumps on modern Python environments
 ```
 
-Packaging is not required for the first MVP. If packaging becomes necessary, use `py2app` with `LSUIElement=True` so ClaudeMonkey behaves as a background menu bar utility without a Dock icon.
+Packaging is not required for the source-first V2 delivery. If packaging becomes necessary, use `py2app` with `LSUIElement=True` so ClaudeMonkey behaves as a background menu bar utility without a Dock icon.
 
-Do not build login-item automation in v2 unless explicitly requested. A manual launch command is enough for the fast-follow MVP.
+Do not build login-item automation in V2 unless explicitly requested. A manual launch command is acceptable for source-first V2, but the menu bar behavior itself must be complete.
 
 ## 11. Testing and verification plan
 
 Unit tests should cover the non-UI boundaries first:
 
-- V1 JSON contract parsing for `status`, `list-patches`, `list-prompts`, and command result envelopes.
+- Current-main JSON contract parsing for `status`, `list-patches`, `list-prompts`, and command result envelopes.
 - CLI JSON parsing into `MenuState`.
 - Menu state derivation: OK, rebuild-required, error, not-installed.
 - Prompt click maps to the correct CLI command.
@@ -536,20 +619,22 @@ Unit tests should cover the non-UI boundaries first:
 
 Manual smoke tests on macOS:
 
-1. Run the V1 contract acceptance checklist below.
+1. Run the Current-main contract acceptance checklist below.
 2. Launch from source with the icon asset present.
 3. Verify the menu bar shows an icon only, not text.
 4. Verify the icon is visible in light and dark menu bar appearances.
 5. Toggle a patch and confirm the menu shows rebuild-required without building.
 6. Click `Rebuild / Apply…`, cancel, and confirm no command runs.
-7. Click `Rebuild / Apply…`, confirm, and verify v1 handles build/activation.
+7. Click `Rebuild / Apply…`, confirm, and verify the CLI/core handles build/activation.
 8. Select a prompt and verify the menu says it applies on next Claude launch.
-9. Open the build report, logs folder, and state folder.
-10. Simulate CLI failure and verify the menu enters error state with Refresh and logs access still available.
+9. Choose the managed user install target and verify install/uninstall call the CLI with `--target`.
+10. Choose a protected target in a safe test environment and verify V2 shows the authorization-required path without running the menu process as root.
+11. Open the build report, logs folder, and state folder.
+12. Simulate CLI failure and verify the menu enters error state with Refresh and logs access still available.
 
-V1 contract acceptance checklist before any menu UI work:
+Current-main contract acceptance checklist before any menu UI work:
 
-Use one disposable fixture environment for all config-mutating contract checks. Seed or point that fixture at known patch packages and prompt profiles, then run `list-patches` and `list-prompts` in the same fixture before selecting IDs for mutation commands. Do not mutate the user's real active profile just to prove the menu contract.
+Run this against current `main` with the graph-aware repack baseline present. Use one disposable fixture environment for all config-mutating contract checks. Seed or point that fixture at known patch packages and prompt profiles, then run `list-patches` and `list-prompts` in the same fixture before selecting IDs for mutation commands. Do not mutate the user's real active profile just to prove the menu contract.
 
 ```bash
 TMP_HOME="$(mktemp -d)"
@@ -561,30 +646,36 @@ HOME="$TMP_HOME" claude-monkey list-patches --json
 HOME="$TMP_HOME" claude-monkey list-prompts --json
 HOME="$TMP_HOME" claude-monkey enable <known-patch-id-from-fixture-list> --json
 HOME="$TMP_HOME" claude-monkey disable <known-patch-id-from-fixture-list> --json
-HOME="$TMP_HOME" claude-monkey set-prompt <known-prompt-id-from-fixture-list> --json
+HOME="$TMP_HOME" claude-monkey set-prompt <known-prompt-source-path-from-fixture-list> --id <known-prompt-id-from-fixture-list> --from-file --json
 HOME="$TMP_HOME" claude-monkey clear-prompt --json
-claude-monkey build --json --dry-run
-claude-monkey install-shim --json --dry-run
-claude-monkey uninstall-shim --json --dry-run
+HOME="$TMP_HOME" claude-monkey build --json --dry-run
+HOME="$TMP_HOME" claude-monkey install-shim --target "$TMP_HOME/.claude-monkey/bin/claude" --json --dry-run
+HOME="$TMP_HOME" claude-monkey install-shim --target "$TMP_HOME/.claude-monkey/bin/claude" --json
+HOME="$TMP_HOME" claude-monkey uninstall-shim --target "$TMP_HOME/.claude-monkey/bin/claude" --json --dry-run
+HOME="$TMP_HOME" claude-monkey uninstall-shim --target "$TMP_HOME/.claude-monkey/bin/claude" --json
+HOME="$TMP_HOME" claude-monkey uninstall-shim --record <known-install-record-from-fixture> --json --dry-run
+# Also run at least one protected-target dry-run or authorization-path test in an environment where it is safe.
 ```
 
 Acceptance criteria:
 
-- Each command exits successfully in a normal configured environment, except the `HOME="$TMP_HOME" ...` commands use disposable fixture state and the build/install commands must use dry-run if a real mutation would be unsafe during contract testing.
+- Each command exits successfully in a normal configured environment. Config mutations and user-writable shim install/uninstall run in disposable fixture state; protected-target checks use dry-run or a safe authorization test environment unless deliberately exercising real authorization.
 - JSON parses without fallback text scraping.
-- Status output includes state directory, logs directory, prompt state, desired patch state, active patch state, rebuild-required state, and latest report path if one exists.
+- Status output includes state directory, logs directory, prompt state, desired patch state, active patch state derived from active patch set/build report evidence, rebuild-required state, current Claude path, shim target/install record when known, and latest report path if one exists.
 - Patch output includes every patch ID, display label, desired enabled state, active enabled state, availability, and compatibility status.
 - Prompt output includes every prompt ID, display label, active state, mode, and source path.
 - Command result envelopes for all mutating commands consistently expose `ok`, `summary`, and `error`, where `error` is either `null` or an object with `message` and `code`.
 - Dry-run result envelopes expose `dryRun: true` and `plannedActions`.
+- Strategy/repack fields are optional and tolerated when present; their absence does not break the menu.
+- Install/uninstall JSON contract covers user-writable and protected targets, including the authorization-required failure/planning shape for protected targets.
 - The CLI/core, not the menu bar app, owns all config mutation, build activation, shim installation, authorization, and rollback behavior.
 
-## 12. Non-goals for v2
+## 12. Non-goals for V2
 
 V2 should not include:
 
 - Version drift automation.
-- Candidate compatibility builds beyond what v1 already exposes.
+- Candidate compatibility builds beyond what the CLI/core already exposes.
 - A full Preferences window.
 - Patch manifest editing.
 - Prompt file editing.
@@ -595,9 +686,9 @@ V2 should not include:
 - Full app packaging or notarization.
 - Any direct byte editing, signing, or activation logic in the menu bar layer.
 
-## 13. Implementation sequence after v1 lands
+## 13. Implementation sequence on current main
 
-1. Pass the V1 contract acceptance checklist with real JSON output or add the missing v1 JSON seams first.
+1. Pass the Current-main contract acceptance checklist with real JSON output or add the missing CLI JSON seams first.
 2. Add the menu bar icon asset under `assets/`.
 3. Add `claude_monkey.menubar_state` for parsing JSON and deriving UI state.
 4. Add `claude_monkey.menubar_commands` for safe argv-list subprocess execution, serialization, background slow-command handling, and menu bar logging.
@@ -606,6 +697,6 @@ V2 should not include:
 7. Wire prompt and patch clicks to CLI commands.
 8. Wire rebuild/install/uninstall confirmation flows.
 9. Add unit tests for state, command mapping, command serialization, safe subprocess invocation, and logs/report open behavior.
-10. Run the manual macOS smoke checklist.
+10. Run the manual macOS smoke checklist, including protected-target authorization or its safe test double.
 
-Stop after a working source-run menu bar MVP. Do not expand into packaging polish until the thin companion proves useful.
+Stop after a complete source-run V2 menu bar. Do not add unrelated registry, auto-update, or version-drift automation unless explicitly requested.

@@ -17,6 +17,13 @@ from claude_monkey.builder_v15 import (
     build_patchset_v15,
     validate_package,
 )
+from claude_monkey.authorization import (
+    AuthorizationDenied,
+    AuthorizationRequired,
+    authorization_method_for_target,
+    target_needs_authorization,
+)
+from claude_monkey.cli_json import envelope_error, envelope_ok, print_json, to_jsonable
 from claude_monkey.config import Profile, load_config, save_config
 from claude_monkey.install import (
     install_shim_transaction,
@@ -32,20 +39,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="store_true", help="print ClaudeMonkey version")
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("doctor")
-    sub.add_parser("list-patches")
-    sub.add_parser("status")
+    list_patches = sub.add_parser("list-patches")
+    list_patches.add_argument("--json", action="store_true")
+    status = sub.add_parser("status")
+    status.add_argument("--json", action="store_true")
     enable = sub.add_parser("enable")
+    enable.add_argument("--json", action="store_true")
     enable.add_argument("patch_id")
     disable = sub.add_parser("disable")
+    disable.add_argument("--json", action="store_true")
     disable.add_argument("patch_id")
-    sub.add_parser("list-prompts")
+    list_prompts = sub.add_parser("list-prompts")
+    list_prompts.add_argument("--json", action="store_true")
     set_prompt = sub.add_parser("set-prompt")
+    set_prompt.add_argument("--json", action="store_true")
     set_prompt.add_argument("prompt")
     set_prompt.add_argument("--id", default="default")
     set_prompt.add_argument("--name")
     set_prompt.add_argument("--mode", choices=("append", "replace"), default="append")
     set_prompt.add_argument("--from-file", action="store_true")
-    sub.add_parser("clear-prompt")
+    clear_prompt = sub.add_parser("clear-prompt")
+    clear_prompt.add_argument("--json", action="store_true")
 
     inspect_binary = sub.add_parser("inspect-binary")
     inspect_binary.add_argument("--source", required=True)
@@ -71,24 +85,30 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--skip-signing", action="store_true")
     build.add_argument("--skip-smoke", action="store_true")
     build.add_argument("--json", action="store_true")
+    build.add_argument("--dry-run", action="store_true")
     build.add_argument("--activate", action="store_true")
 
     install = sub.add_parser("install-shim")
     install.add_argument("--target")
     install.add_argument("--state-dir")
     install.add_argument("--dry-run", action="store_true")
+    install.add_argument("--json", action="store_true")
 
     uninstall = sub.add_parser("uninstall-shim")
     uninstall.add_argument("--target")
     uninstall.add_argument("--state-dir")
     uninstall.add_argument("--record")
     uninstall.add_argument("--force", action="store_true")
+    uninstall.add_argument("--dry-run", action="store_true")
+    uninstall.add_argument("--json", action="store_true")
 
     rollback = sub.add_parser("rollback")
     rollback.add_argument("--target")
     rollback.add_argument("--state-dir")
     rollback.add_argument("--record")
     rollback.add_argument("--force", action="store_true")
+    rollback.add_argument("--dry-run", action="store_true")
+    rollback.add_argument("--json", action="store_true")
 
     official = sub.add_parser("use-official")
     official.add_argument("--official")
@@ -98,6 +118,207 @@ def build_parser() -> argparse.ArgumentParser:
 def active_profile(config):
     return config.profiles.setdefault(config.activeProfile, Profile(enabledPatches=[]))
 
+
+
+
+def emit(args: argparse.Namespace, text: str, payload: Any | None = None, *, error: bool = False) -> int:
+    if getattr(args, "json", False):
+        print_json(payload if payload is not None else envelope_ok(text))
+    else:
+        print(text, file=sys.stderr if error else sys.stdout)
+    return 0
+
+
+def _read_json_file(path: Path) -> dict[str, Any] | None:
+    try:
+        if not path.exists():
+            return None
+        raw = json.loads(path.read_text())
+        return raw if isinstance(raw, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _latest_build_report(active_patch_set: str | None) -> tuple[Path | None, dict[str, Any] | None]:
+    if not active_patch_set:
+        return None, None
+    report_path = Path(active_patch_set).expanduser() / "build-report.json"
+    return report_path, _read_json_file(report_path)
+
+
+def _active_patch_ids_from_report(report: dict[str, Any] | None) -> list[str]:
+    if not report:
+        return []
+    for key in ("enabledPatches", "patchIds", "activePatchIds"):
+        value = report.get(key)
+        if isinstance(value, list):
+            return [str(item) for item in value]
+    return []
+
+
+def _safe_resolve(path: Path) -> str:
+    try:
+        return str(path.resolve())
+    except OSError:
+        return str(path)
+
+
+def _install_record_path(paths: StatePaths) -> Path:
+    return paths.state_dir / "install-record.json"
+
+
+def _shim_target_from_record(record_path: Path) -> str | None:
+    record = _read_json_file(record_path)
+    if not record:
+        return None
+    target = record.get("targetPath")
+    return target if isinstance(target, str) else None
+
+
+def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
+    profile = active_profile(config)
+    desired = list(profile.enabledPatches)
+    report_path, report = _latest_build_report(config.activePatchSet)
+    active = _active_patch_ids_from_report(report)
+    rebuild_required = desired != active
+    install_record = _install_record_path(paths)
+    current_known = paths.current_path.exists() or paths.current_path.is_symlink()
+    status = "rebuild_required" if rebuild_required else "ok"
+    return {
+        "schemaVersion": 1,
+        "status": status,
+        "sourceClaudeVersion": (report or {}).get("sourceVersion"),
+        "sourceClaudePath": (report or {}).get("sourceClaudePath"),
+        "installMode": config.installMode,
+        "shimInstalled": install_record.exists(),
+        "activeProfile": config.activeProfile,
+        "activePrompt": profile.promptProfile,
+        "desiredPatchIds": desired,
+        "activePatchIds": active,
+        "rebuildRequired": rebuild_required,
+        "latestBuildReportPath": str(report_path) if report_path is not None else None,
+        "activePatchSet": config.activePatchSet,
+        "currentClaudePath": _safe_resolve(paths.current_path) if current_known else None,
+        "shimTargetPath": _shim_target_from_record(install_record),
+        "installRecordPath": str(install_record) if install_record.exists() else None,
+        "buildStrategy": (report or {}).get("buildStrategy") or (report or {}).get("engine") or "unknown",
+        "lastBuildStrategy": (report or {}).get("buildStrategy") or (report or {}).get("engine") or "unknown",
+        "changedModules": (report or {}).get("changedModules", []),
+        "repackSummary": (report or {}).get("repackSummary"),
+        "stateDir": str(paths.state_dir),
+        "logsDir": str(paths.state_dir / "logs"),
+        "lastError": None,
+    }
+
+
+def _patch_label(patch_json: Path) -> str:
+    raw = _read_json_file(patch_json) or {}
+    return str(raw.get("name") or raw.get("label") or patch_json.parent.name)
+
+
+def _list_patch_payload(paths: StatePaths, config) -> dict[str, Any]:
+    profile = active_profile(config)
+    desired = set(profile.enabledPatches)
+    _, report = _latest_build_report(config.activePatchSet)
+    active = set(_active_patch_ids_from_report(report))
+    seen: set[str] = set()
+    patches: list[dict[str, Any]] = []
+    for root in _package_roots(paths):
+        if not root.exists():
+            continue
+        for patch_json in sorted(root.glob("*/patch.json")):
+            patch_id = patch_json.parent.name
+            if patch_id in seen:
+                continue
+            seen.add(patch_id)
+            patches.append(
+                {
+                    "id": patch_id,
+                    "label": _patch_label(patch_json),
+                    "desiredEnabled": patch_id in desired,
+                    "activeEnabled": patch_id in active,
+                    "available": True,
+                    "compatibilityStatus": "unknown",
+                }
+            )
+    for patch_id in sorted((desired | active) - seen):
+        patches.append(
+            {
+                "id": patch_id,
+                "label": patch_id,
+                "desiredEnabled": patch_id in desired,
+                "activeEnabled": patch_id in active,
+                "available": False,
+                "compatibilityStatus": "unknown",
+            }
+        )
+    return {"schemaVersion": 1, "patches": patches}
+
+
+def _list_prompt_payload(paths: StatePaths, config) -> dict[str, Any]:
+    profile = active_profile(config)
+    prompt_dir = paths.state_dir / "prompts"
+    prompts: list[dict[str, Any]] = []
+    if prompt_dir.exists():
+        for prompt_json in sorted(prompt_dir.glob("*.json")):
+            raw = _read_json_file(prompt_json) or {}
+            prompt_id = str(raw.get("id") or prompt_json.stem)
+            source_path = raw.get("sourcePath") or str(prompt_dir / f"{prompt_id}.md")
+            prompts.append(
+                {
+                    "id": prompt_id,
+                    "label": str(raw.get("name") or raw.get("label") or prompt_id),
+                    "active": profile.promptProfile == prompt_id,
+                    "mode": str(raw.get("mode") or "append"),
+                    "sourcePath": str(source_path),
+                }
+            )
+    return {"schemaVersion": 1, "prompts": prompts}
+
+
+def _dry_run_install_payload(target: Path, *, uninstall: bool = False) -> Any:
+    needs_auth = target_needs_authorization(target)
+    action = "uninstall managed claude shim" if uninstall else "install managed claude shim"
+    return envelope_ok(
+        f"would {action}",
+        target_path=target,
+        authorization_required=needs_auth,
+        authorization_method=authorization_method_for_target(target),
+        dry_run=True,
+        planned_actions=[action],
+    )
+
+
+def _build_dry_run_payload() -> Any:
+    return envelope_ok(
+        "planned build; no activation performed",
+        dry_run=True,
+        planned_actions=[
+            "resolve enabled patches",
+            "select current build strategy",
+            "run source/package preflight if the current builder supports dry-run preflight",
+            "build copied Claude binary only when the real build command is confirmed",
+            "activate current symlink only after a successful real build",
+        ],
+    )
+
+
+def _build_report_json_payload(report: Any, report_path: Path | None = None) -> dict[str, Any]:
+    payload = dict(to_jsonable(report))
+    ok = payload.get("status") in {"verified", "manual_smoke_pending"}
+    payload.setdefault("schemaVersion", 1)
+    payload["ok"] = ok
+    payload["summary"] = "Build activated" if ok else str(payload.get("failureReason") or payload.get("status") or "build failed")
+    payload["reportPath"] = str(report_path) if report_path is not None else None
+    payload["targetPath"] = None
+    payload["authorizationRequired"] = False
+    payload["authorizationMethod"] = None
+    payload["buildStrategy"] = payload.get("buildStrategy") or payload.get("engine")
+    payload["repackSummary"] = payload.get("repackSummary")
+    payload["dryRun"] = False
+    payload["plannedActions"] = []
+    payload["error"] = None if ok else {"message": payload["summary"], "code": "build_failed"}
+    return payload
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -166,6 +387,8 @@ def _print_report_summary(report) -> None:
 
 
 def handle_build(args: argparse.Namespace, paths: StatePaths, config) -> int:
+    if getattr(args, "dry_run", False):
+        return emit(args, "planned build; no activation performed", _build_dry_run_payload())
     source = _discover_source(args.source)
     if source is None:
         print("build requires --source or a claude executable on PATH", file=sys.stderr)
@@ -211,7 +434,7 @@ def handle_build(args: argparse.Namespace, paths: StatePaths, config) -> int:
         config.activePatchSet = str(output_dir)
         save_config(paths.config_path, config)
     if args.json:
-        print(json.dumps(asdict(report), indent=2, sort_keys=True))
+        print_json(_build_report_json_payload(report, output_dir / "build-report.json"))
     else:
         _print_report_summary(report)
     return 0 if report.status in {"verified", "manual_smoke_pending"} else 1
@@ -236,10 +459,33 @@ def handle_restore(args: argparse.Namespace, paths: StatePaths) -> int:
     record_path = _record_path(args, state_dir)
     target = _target_from_args_or_record(args, record_path)
     if target is None:
-        print("restore requires --target or an install record with targetPath", file=sys.stderr)
+        payload = envelope_error("restore requires --target or an install record with targetPath", code="missing_target")
+        if getattr(args, "json", False):
+            print_json(payload)
+        else:
+            print("restore requires --target or an install record with targetPath", file=sys.stderr)
         return 2
-    restored = restore_install_transaction(target, record_path, force=args.force)
-    print(f"restored={str(restored).lower()}")
+    if getattr(args, "dry_run", False):
+        payload = _dry_run_install_payload(target, uninstall=True)
+        if getattr(args, "json", False):
+            print_json(payload)
+        else:
+            print(f"target={target}")
+            print("dryRun=true")
+        return 0
+    try:
+        restored = restore_install_transaction(target, record_path, force=args.force)
+    except (AuthorizationRequired, AuthorizationDenied) as exc:
+        code = "authorization_denied" if isinstance(exc, AuthorizationDenied) else "authorization_required"
+        print_json(envelope_error(str(exc), code=code, target_path=target, authorization_required=True, authorization_method=exc.method))
+        return 1
+    if getattr(args, "json", False):
+        if restored:
+            print_json(envelope_ok("uninstalled managed claude shim", target_path=target))
+        else:
+            print_json(envelope_error("managed shim was not restored", code="restore_failed", target_path=target))
+    else:
+        print(f"restored={str(restored).lower()}")
     return 0 if restored else 1
 
 
@@ -270,8 +516,7 @@ def handle_set_prompt(args: argparse.Namespace, paths: StatePaths, config) -> in
     )
     active_profile(config).promptProfile = args.id
     save_config(paths.config_path, config)
-    print(f"set prompt profile {args.id}")
-    return 0
+    return emit(args, f"set prompt profile {args.id}", envelope_ok(f"prompt set to {args.id}"))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -283,45 +528,59 @@ def main(argv: list[str] | None = None) -> int:
     paths = default_paths()
     config = load_config(paths.config_path)
     if args.command == "status":
-        print(f"stateDir={paths.state_dir}")
-        print(f"patchesDir={paths.patches_dir}")
-        print(f"activeProfile={config.activeProfile}")
-        print(f"activePatchSet={config.activePatchSet}")
-        if paths.current_path.exists() or paths.current_path.is_symlink():
-            print(f"current={paths.current_path.resolve()}")
+        if args.json:
+            print_json(_status_payload(paths, config))
+        else:
+            print(f"stateDir={paths.state_dir}")
+            print(f"patchesDir={paths.patches_dir}")
+            print(f"activeProfile={config.activeProfile}")
+            print(f"activePatchSet={config.activePatchSet}")
+            if paths.current_path.exists() or paths.current_path.is_symlink():
+                print(f"current={paths.current_path.resolve()}")
         return 0
     if args.command == "enable":
         profile = active_profile(config)
         if args.patch_id not in profile.enabledPatches:
             profile.enabledPatches.append(args.patch_id)
         save_config(paths.config_path, config)
-        print(f"enabled {args.patch_id}; rebuild required")
-        return 0
+        return emit(
+            args,
+            f"enabled {args.patch_id}; rebuild required",
+            envelope_ok(f"enabled {args.patch_id}; rebuild required", status="rebuild_required"),
+        )
     if args.command == "disable":
         profile = active_profile(config)
         profile.enabledPatches = [item for item in profile.enabledPatches if item != args.patch_id]
         save_config(paths.config_path, config)
-        print(f"disabled {args.patch_id}; rebuild required")
-        return 0
+        return emit(
+            args,
+            f"disabled {args.patch_id}; rebuild required",
+            envelope_ok(f"disabled {args.patch_id}; rebuild required", status="rebuild_required"),
+        )
     if args.command == "list-patches":
-        for root in _package_roots(paths):
-            if root.exists():
-                for patch_json in sorted(root.glob("*/patch.json")):
-                    print(patch_json.parent.name)
+        if args.json:
+            print_json(_list_patch_payload(paths, config))
+        else:
+            for root in _package_roots(paths):
+                if root.exists():
+                    for patch_json in sorted(root.glob("*/patch.json")):
+                        print(patch_json.parent.name)
         return 0
     if args.command == "list-prompts":
-        prompt_dir = paths.state_dir / "prompts"
-        if prompt_dir.exists():
-            for prompt_json in sorted(prompt_dir.glob("*.json")):
-                print(prompt_json.stem)
+        if args.json:
+            print_json(_list_prompt_payload(paths, config))
+        else:
+            prompt_dir = paths.state_dir / "prompts"
+            if prompt_dir.exists():
+                for prompt_json in sorted(prompt_dir.glob("*.json")):
+                    print(prompt_json.stem)
         return 0
     if args.command == "set-prompt":
         return handle_set_prompt(args, paths, config)
     if args.command == "clear-prompt":
         active_profile(config).promptProfile = None
         save_config(paths.config_path, config)
-        print("cleared active prompt profile")
-        return 0
+        return emit(args, "cleared active prompt profile", envelope_ok("prompt cleared"))
     if args.command == "inspect-binary":
         source = Path(args.source).expanduser()
         payload = inspect_binary_bytes(source.read_bytes(), source_path=str(source))
@@ -352,11 +611,32 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "install-shim":
         state_dir = Path(args.state_dir).expanduser() if args.state_dir else paths.state_dir
         if not args.target:
-            print("install-shim requires --target", file=sys.stderr)
+            payload = envelope_error("install-shim requires --target", code="missing_target")
+            if args.json:
+                print_json(payload)
+            else:
+                print("install-shim requires --target", file=sys.stderr)
             return 2
-        record = install_shim_transaction(Path(args.target).expanduser(), state_dir, args.dry_run)
-        print(f"installRecord={record}")
-        print(f"dryRun={str(args.dry_run).lower()}")
+        target = Path(args.target).expanduser()
+        if args.dry_run:
+            payload = _dry_run_install_payload(target)
+            if args.json:
+                print_json(payload)
+            else:
+                print(f"installRecord={state_dir / 'install-record.json'}")
+                print("dryRun=true")
+            return 0
+        try:
+            record = install_shim_transaction(target, state_dir, dry_run=False)
+        except (AuthorizationRequired, AuthorizationDenied) as exc:
+            code = "authorization_denied" if isinstance(exc, AuthorizationDenied) else "authorization_required"
+            print_json(envelope_error(str(exc), code=code, target_path=target, authorization_required=True, authorization_method=exc.method))
+            return 1
+        if args.json:
+            print_json(envelope_ok("installed managed claude shim", target_path=target))
+        else:
+            print(f"installRecord={record}")
+            print("dryRun=false")
         return 0
     if args.command in {"uninstall-shim", "rollback"}:
         return handle_restore(args, paths)

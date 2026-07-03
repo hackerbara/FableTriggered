@@ -26,7 +26,8 @@ def test_enable_and_disable_patch_mutate_default_profile(monkeypatch, tmp_path):
     assert main(["disable", "fable-fallback"]) == 0
 
 
-def test_high_impact_commands_require_explicit_targets_or_inputs(capsys):
+def test_high_impact_commands_require_explicit_targets_or_inputs(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
     for command in ["build", "install-shim", "uninstall-shim", "rollback", "use-official"]:
         assert main([command]) in {1, 2}
     err = capsys.readouterr().err

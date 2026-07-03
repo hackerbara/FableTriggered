@@ -32,6 +32,8 @@ class AlertPlan:
 def default_install_target(state: MenuState | None = None) -> Path:
     if state and state.shim_target_path:
         return state.shim_target_path
+    if state and state.detected_claude_command_path:
+        return state.detected_claude_command_path
     return managed_user_target(Path.home() / ".claude-monkey")
 
 
@@ -138,6 +140,8 @@ def install_target_choices(state: MenuState | None) -> tuple[tuple[str, Path], .
     ]
     if state and state.shim_target_path:
         choices.append(("Use recorded target", state.shim_target_path))
+    if state and state.detected_claude_command_path:
+        choices.append(("Use detected claude command", state.detected_claude_command_path))
     for target in COMMON_INSTALL_TARGETS:
         choices.append((f"Use {target}", target))
 

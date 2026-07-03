@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 
 from claude_monkey.cli import main
 
@@ -333,6 +334,33 @@ def test_build_json_source_identity_failure_uses_specific_error_code(
     assert payload["error"]["code"] == "source_identity_mismatch"
     assert "current source is Claude 2.1.199" in payload["error"]["message"]
     assert "package targets Claude 2.1.198" in payload["error"]["message"]
+
+
+def test_default_source_discovery_resolves_managed_shim_to_cached_clean_source(
+    monkeypatch, tmp_path
+):
+    from claude_monkey.cli import _discover_source
+    from claude_monkey.install import install_shim_transaction
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    bin_dir = tmp_path / "bin"
+    target = bin_dir / "claude"
+    official = tmp_path / "versions" / "2.1.199"
+    official.parent.mkdir(parents=True)
+    official.write_bytes(b"official binary")
+    official.chmod(0o755)
+    bin_dir.mkdir()
+    target.symlink_to(official)
+    install_shim_transaction(target, tmp_path / "home" / ".claude-monkey", dry_run=False)
+    official.unlink()
+    monkeypatch.setenv("PATH", str(bin_dir))
+
+    discovered = _discover_source(None)
+
+    assert discovered is not None
+    assert discovered.read_bytes() == b"official binary"
+    assert discovered != target
+    assert os.access(discovered, os.X_OK)
 
 
 def test_status_ignores_stale_install_record(monkeypatch, tmp_path, capsys):

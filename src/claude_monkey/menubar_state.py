@@ -61,6 +61,7 @@ class MenuState:
     status_label: str
     source_claude_version: str | None
     source_claude_path: Path | None
+    detected_claude_command_path: Path | None
     install_mode: str
     shim_installed: bool
     active_profile: str | None
@@ -233,6 +234,7 @@ def parse_menu_state(
         status_label=STATUS_LABELS[status],
         source_claude_version=status_raw.get("sourceClaudeVersion"),
         source_claude_path=_optional_path(status_raw.get("sourceClaudePath")),
+        detected_claude_command_path=_optional_path(status_raw.get("detectedClaudeCommandPath")),
         install_mode=str(status_raw.get("installMode", "shim")),
         shim_installed=_optional_bool(status_raw, "shimInstalled", False),
         active_profile=status_raw.get("activeProfile"),

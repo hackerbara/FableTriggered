@@ -28,6 +28,7 @@ from claude_monkey.cli_json import envelope_error, envelope_ok, print_json, to_j
 from claude_monkey.config import Profile, load_config, save_config
 from claude_monkey.install import (
     ProtectedTargetRestoreUnavailable,
+    clean_source_from_install_record,
     current_target_is_installed_shim,
     install_shim_transaction,
     protected_install_requires_refusal,
@@ -242,11 +243,13 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
     build_strategy = (
         (report or {}).get("buildStrategy") or (report or {}).get("engine") or "unknown"
     )
+    detected_command = _detected_claude_command_path()
     return {
         "schemaVersion": 1,
         "status": status,
         "sourceClaudeVersion": (report or {}).get("sourceVersion"),
         "sourceClaudePath": (report or {}).get("sourceClaudePath"),
+        "detectedClaudeCommandPath": str(detected_command) if detected_command else None,
         "installMode": config.installMode,
         "shimInstalled": shim_installed,
         "activeProfile": config.activeProfile,
@@ -603,14 +606,26 @@ def _enabled_package_dirs(args: argparse.Namespace, paths: StatePaths, config) -
     return [_resolve_package(item, paths) for item in profile.enabledPatches]
 
 
+def _detected_claude_command_path() -> Path | None:
+    found = shutil.which("claude")
+    return Path(found) if found else None
+
+
+def _clean_source_for_detected_command(found: Path) -> Path | None:
+    paths = default_paths()
+    return clean_source_from_install_record(found, _install_record_path(paths))
+
+
 def _discover_source(source_arg: str | None) -> Path | None:
     if source_arg:
         return Path(source_arg).expanduser()
     env_source = __import__("os").environ.get("CLAUDE_MONKEY_SOURCE")
     if env_source:
         return Path(env_source).expanduser()
-    found = shutil.which("claude")
-    return Path(found) if found else None
+    found = _detected_claude_command_path()
+    if found is None:
+        return None
+    return _clean_source_for_detected_command(found) or found
 
 
 def _source_version_output(source: Path, explicit_output: str | None) -> str | None:

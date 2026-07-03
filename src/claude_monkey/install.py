@@ -45,6 +45,77 @@ def describe_existing(path: Path) -> dict:
     }
 
 
+def _existing_managed_record(record_path: Path, target_path: Path) -> dict | None:
+    if not record_path.exists():
+        return None
+    try:
+        record = json.loads(record_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    if record.get("targetPath") != str(target_path):
+        return None
+    try:
+        if current_target_is_installed_shim(target_path, record):
+            return record
+    except OSError:
+        return None
+    return None
+
+
+def _cache_previous_source(target_path: Path, state_dir: Path) -> dict:
+    if not (target_path.exists() or target_path.is_symlink()):
+        return {}
+    try:
+        source_path = target_path.resolve(strict=True)
+    except OSError:
+        return {}
+    if not source_path.is_file() or not os.access(source_path, os.X_OK):
+        return {}
+    data = source_path.read_bytes()
+    digest = sha256_bytes(data)
+    cache_path = state_dir / "sources" / digest / "claude"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    if not cache_path.exists():
+        cache_path.write_bytes(data)
+        cache_path.chmod(stat.S_IMODE(source_path.stat().st_mode) | 0o755)
+    return {
+        "previousResolvedPath": str(source_path),
+        "previousSourceCachePath": str(cache_path),
+        "previousSourceSha256": digest,
+        "previousSourceSizeBytes": len(data),
+    }
+
+
+def clean_source_from_install_record(target_path: Path, record_path: Path) -> Path | None:
+    record = _existing_managed_record(record_path, target_path)
+    if record is None:
+        return None
+    cache_raw = record.get("previousSourceCachePath")
+    expected_sha = record.get("previousSourceSha256")
+    if isinstance(cache_raw, str) and isinstance(expected_sha, str):
+        cache_path = Path(cache_raw)
+        try:
+            if (
+                cache_path.is_file()
+                and os.access(cache_path, os.X_OK)
+                and sha256_bytes(cache_path.read_bytes()) == expected_sha
+            ):
+                return cache_path
+        except OSError:
+            pass
+    previous_target = record.get("previousTarget")
+    if isinstance(previous_target, str):
+        try:
+            resolved = Path(previous_target).expanduser().resolve(strict=True)
+        except OSError:
+            return None
+        if resolved.is_file() and os.access(resolved, os.X_OK):
+            return resolved
+    return None
+
+
 def _privileged_mkdir(path: Path) -> None:
     authorization.run_privileged_argv(
         ["/bin/mkdir", "-p", str(path)],
@@ -106,17 +177,30 @@ def install_shim_transaction(target_path: Path, state_dir: Path, dry_run: bool) 
         raise ProtectedTargetRestoreUnavailable(
             f"refusing to overwrite protected existing target without safe restore: {target_path}"
         )
+    existing_record = _existing_managed_record(record_path, target_path)
+    previous = (
+        {
+            key: value
+            for key, value in existing_record.items()
+            if key.startswith("previous")
+        }
+        if existing_record is not None
+        else describe_existing(target_path)
+    )
+    if not dry_run:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        if existing_record is None:
+            previous.update(_cache_previous_source(target_path, state_dir))
     record = {
         "owner": OWNER_MARKER,
         "targetPath": str(target_path),
         "stateDir": str(state_dir),
         "timestamp": time(),
         "installedShimSha256": shim_digest(state_dir),
-        **describe_existing(target_path),
+        **previous,
     }
     if dry_run:
         return record_path
-    state_dir.mkdir(parents=True, exist_ok=True)
     record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     try:
         _write_shim_to_target(target_path, state_dir)

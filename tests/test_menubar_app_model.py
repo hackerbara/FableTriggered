@@ -92,6 +92,7 @@ def sample_state(tmp_path):
         status_label="Rebuild Required",
         source_claude_version="2.1.198",
         source_claude_path=None,
+        detected_claude_command_path=None,
         install_mode="shim",
         shim_installed=False,
         active_profile="default",
@@ -135,6 +136,14 @@ def test_install_target_label_identifies_writable_and_protected(tmp_path):
     assert "protected" in install_target_menu_label(
         Path("/usr/local/bin/claude"), state_dir=tmp_path
     )
+
+
+def test_default_install_target_prefers_detected_claude_command(tmp_path):
+    state = sample_state(tmp_path)
+    detected = tmp_path / ".local" / "bin" / "claude"
+    state = MenuState(**{**state.__dict__, "detected_claude_command_path": detected})
+
+    assert default_install_target(state) == detected
 
 
 def test_install_target_menu_uses_non_blocking_submenu(tmp_path):

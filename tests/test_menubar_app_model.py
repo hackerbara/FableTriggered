@@ -248,6 +248,7 @@ def test_command_mapping_uses_json():
         "--from-file",
         "--json",
     ]
+    assert command_for_prompt("research") == ["set-prompt", "research", "--json"]
     assert command_for_prompt(None) == ["clear-prompt", "--json"]
     assert command_for_install_shim_dry_run(target) == [
         "install-shim",

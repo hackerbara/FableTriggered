@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from claude_monkey.menubar_state import parse_menu_state
 
 
@@ -227,12 +225,12 @@ def test_parse_menu_state_accepts_v3_prompt_records_from_list_prompts_payload():
     assert enabled_prompt.prompt_id == "research-prompt"
     assert enabled_prompt.checked is True
     assert enabled_prompt.mode == "append"
-    assert enabled_prompt.source_path == Path("")
+    assert enabled_prompt.source_path is None
 
     assert status_prompt.prompt_id == "status-prompt"
     assert status_prompt.checked is True
     assert status_prompt.mode == "append"
-    assert status_prompt.source_path == Path("")
+    assert status_prompt.source_path is None
 
 
 def test_parse_menu_state_tolerates_missing_options_payload_for_v2_callers():

@@ -53,7 +53,7 @@ class PromptMenuItem:
     label: str
     checked: bool
     mode: str
-    source_path: Path
+    source_path: Path | None
 
 
 @dataclass(frozen=True)
@@ -251,6 +251,12 @@ def _high_risk_options(raw: dict[str, Any]) -> tuple[HighRiskOptionSummary, ...]
     )
 
 
+def _prompt_source_path(item: dict[str, Any]) -> Path | None:
+    if "sourcePath" not in item or item.get("sourcePath") in {None, ""}:
+        return None
+    return Path(str(item["sourcePath"])).expanduser()
+
+
 def _option_items(options_raw: dict[str, Any] | None) -> tuple[OptionMenuItem, ...]:
     if options_raw is None:
         return ()
@@ -343,7 +349,7 @@ def parse_menu_state(
             label=str(item.get("label", item["id"])),
             checked=_prompt_checked(item, active_prompt),
             mode=str(item.get("mode", "append")),
-            source_path=Path(str(item.get("sourcePath", ""))).expanduser(),
+            source_path=_prompt_source_path(item),
         )
         for item in _dict_list(prompts_raw, "prompts")
     )

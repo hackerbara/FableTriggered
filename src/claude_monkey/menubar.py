@@ -51,7 +51,7 @@ def command_for_prompt(prompt_id: str | None, source_path: Path | None = None) -
     if prompt_id is None:
         return ["clear-prompt", "--json"]
     if source_path is None:
-        raise ValueError("source_path is required when selecting an existing prompt profile")
+        return ["set-prompt", prompt_id, "--json"]
     return [
         "set-prompt",
         str(source_path.expanduser()),

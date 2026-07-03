@@ -290,6 +290,37 @@ def test_kind_list_commands_include_valid_and_invalid_packages(monkeypatch, tmp_
         } in records
 
 
+def test_list_options_marks_active_invalid_package_enabled(monkeypatch, tmp_path, capsys):
+    home = tmp_path / "home"
+    state = home / ".claude-monkey"
+    monkeypatch.setenv("HOME", str(home))
+    write_json(
+        state / "config.json",
+        {
+            "schemaVersion": 1,
+            "activeProfile": "default",
+            "profiles": {
+                "default": {"prompt": None, "patches": [], "options": ["bad-option"]}
+            },
+        },
+    )
+    write_invalid_package(state, "option", "bad-option")
+
+    assert main(["list-options", "--json"]) == 0
+
+    records = read_cli_json(capsys)["options"]
+    assert {
+        "id": "bad-option",
+        "label": "bad-option",
+        "kind": "option",
+        "enabled": True,
+        "valid": False,
+        "compatibilityStatus": "unknown",
+        "riskLevel": "unknown",
+        "errors": ["id_must_match_folder: different != bad-option"],
+    } in records
+
+
 def test_patch_and_prompt_mutation_commands_update_default_profile(monkeypatch, tmp_path, capsys):
     state, _official = configure_home(monkeypatch, tmp_path)
     write_patch_package(state, "fable-fallback")

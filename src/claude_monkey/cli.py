@@ -576,13 +576,13 @@ def _package_record(manifest: PackageManifest, enabled: set[str]) -> dict[str, A
 
 
 def _invalid_package_record(
-    package_dir: Path, kind: PackageKind, errors: tuple[str, ...]
+    package_dir: Path, kind: PackageKind, errors: tuple[str, ...], enabled: set[str]
 ) -> dict[str, Any]:
     return {
         "id": package_dir.name,
         "label": package_dir.name,
         "kind": kind.value,
-        "enabled": False,
+        "enabled": package_dir.name in enabled,
         "valid": False,
         "compatibilityStatus": "unknown",
         "riskLevel": "unknown",
@@ -595,7 +595,7 @@ def _list_kind_payload(paths: StatePaths, config, kind: PackageKind) -> dict[str
     enabled = _enabled_ids_for_kind(config, kind)
     records = [_package_record(manifest, enabled) for manifest in discovered.valid]
     records.extend(
-        _invalid_package_record(invalid.package_dir, kind, invalid.errors)
+        _invalid_package_record(invalid.package_dir, kind, invalid.errors, enabled)
         for invalid in discovered.invalid
     )
     records.sort(key=lambda item: (str(item["id"])))

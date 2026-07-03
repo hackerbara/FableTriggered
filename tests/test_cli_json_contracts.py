@@ -355,6 +355,43 @@ def test_installed_shim_without_current_is_rebuild_required_not_ok(monkeypatch, 
     assert payload["shimInstalled"] is True
     assert payload["currentClaudePath"] is None
     assert payload["status"] == "rebuild_required"
+    assert payload["rebuildRequired"] is True
+
+
+def test_status_with_installed_shim_and_missing_active_report_is_rebuild_required(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    state = tmp_path / ".claude-monkey"
+    patchset = state / "patchsets" / "fixture" / "default"
+    patchset.mkdir(parents=True)
+    executable = tmp_path / "current-claude"
+    executable.write_text("#!/bin/sh\n")
+    executable.chmod(0o755)
+    (state / "current").symlink_to(executable)
+    config = state / "config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "activeProfile": "default",
+                "profiles": {"default": {"enabledPatches": []}},
+                "activePatchSet": str(patchset),
+            }
+        )
+    )
+    target = state / "bin" / "claude"
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    assert main(["status", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["shimInstalled"] is True
+    assert payload["currentClaudePath"] == str(executable)
+    assert payload["latestBuildReportPath"] is None
+    assert payload["activePatchSet"] == str(patchset)
+    assert payload["activePatchIds"] == []
+    assert payload["status"] == "rebuild_required"
+    assert payload["rebuildRequired"] is True
 
 
 def test_status_requires_current_to_resolve_to_executable(monkeypatch, tmp_path, capsys):

@@ -202,6 +202,7 @@ def parse_menu_state(
     status = normalize_status(
         str(status_raw.get("status", "unknown")), rebuild_required, last_error
     )
+    rebuild_required = rebuild_required or status == "rebuild_required"
     patch_items = tuple(
         PatchMenuItem(
             patch_id=str(item["id"]),

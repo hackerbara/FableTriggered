@@ -39,6 +39,36 @@ def test_parse_menu_state_applies_status_precedence():
     assert state.changed_modules == ({"path": "/$bunfs/root/src/entrypoints/cli.js"},)
 
 
+def test_parse_menu_state_keeps_rebuild_boolean_consistent_with_status():
+    state = parse_menu_state(
+        {
+            "schemaVersion": 1,
+            "status": "rebuild_required",
+            "sourceClaudeVersion": None,
+            "sourceClaudePath": None,
+            "installMode": "shim",
+            "shimInstalled": True,
+            "activeProfile": "default",
+            "activePrompt": None,
+            "desiredPatchIds": [],
+            "activePatchIds": [],
+            "rebuildRequired": False,
+            "latestBuildReportPath": None,
+            "activePatchSet": "/tmp/state/patchsets/default",
+            "currentClaudePath": "/tmp/state/current",
+            "shimTargetPath": "/tmp/state/bin/claude",
+            "installRecordPath": "/tmp/state/install-record.json",
+            "stateDir": "/tmp/state",
+            "logsDir": "/tmp/state/logs",
+            "lastError": None,
+        },
+        {"schemaVersion": 1, "patches": []},
+        {"schemaVersion": 1, "prompts": []},
+    )
+    assert state.status == "rebuild_required"
+    assert state.rebuild_required is True
+
+
 def test_parse_command_envelope_requires_error_message_on_failure():
     envelope = parse_command_envelope(
         {

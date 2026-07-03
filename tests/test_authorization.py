@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 
 from claude_monkey.install import install_shim_transaction, restore_install_transaction
@@ -57,7 +58,38 @@ def test_protected_restore_uses_narrow_authorized_file_operation(monkeypatch, tm
 
     assert restore_install_transaction(target, record, force=False) is True
     assert calls
-    assert target.read_text() == "official"
+    assert not target.exists()
+
+
+def test_protected_restore_does_not_trust_tampered_record_payload(monkeypatch, tmp_path):
+    target = tmp_path / "protected" / "claude"
+    target.parent.mkdir()
+    target.write_text("official")
+    state = tmp_path / "state"
+    record = install_shim_transaction(target, state, dry_run=False)
+    raw = json.loads(record.read_text())
+    raw["previousContentBase64"] = base64.b64encode(b"attacker payload").decode("ascii")
+    raw["previousMode"] = 0o777
+    record.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n")
+
+    monkeypatch.setattr(
+        "claude_monkey.install.authorization.target_needs_authorization", lambda path: True
+    )
+
+    calls = []
+
+    def fake_privileged(argv, *, reason):
+        calls.append((argv, reason))
+        if argv[0].endswith("rm"):
+            target.unlink(missing_ok=True)
+        elif argv[0].endswith("mv"):
+            raise AssertionError("protected restore must not mv record-controlled payload")
+
+    monkeypatch.setattr("claude_monkey.install.authorization.run_privileged_argv", fake_privileged)
+
+    assert restore_install_transaction(target, record, force=False) is True
+    assert calls
+    assert not target.exists()
 
 
 def test_osascript_uses_valid_double_quoted_shell_script(monkeypatch):

@@ -220,7 +220,6 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
     desired = list(profile.enabledPatches)
     report_path, report = _latest_build_report(config.activePatchSet)
     active = _active_patch_ids_from_report(report)
-    rebuild_required = desired != active
     install_record = _install_record_path(paths)
     current_executable = _current_executable_path(paths.current_path)
     shim_installed = _shim_is_installed(install_record)
@@ -229,6 +228,8 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
     else:
         installed = current_executable is not None or shim_installed
     runnable = current_executable is not None
+    active_report_missing = config.activePatchSet is not None and report is None
+    rebuild_required = desired != active or active_report_missing or (installed and not runnable)
     if not installed:
         status = "not_installed"
     elif rebuild_required or not runnable:

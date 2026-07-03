@@ -127,20 +127,24 @@ def restore_install_transaction(target_path: Path, record_path: Path, force: boo
         return False
     previous_type = record.get("previousType")
     needs_authorization = authorization.target_needs_authorization(target_path)
+    if needs_authorization:
+        if previous_type not in {"missing", "symlink", "file"}:
+            return False
+        # The install record lives in the user-writable state directory. For a
+        # protected target, do not let that mutable record drive elevated writes
+        # of file bytes or symlink destinations. The narrow privileged operation
+        # for protected uninstall is remove-only; richer restore can be added
+        # later with integrity protected prior-payload storage.
+        _privileged_remove(target_path)
+        return True
     if previous_type == "missing":
-        if needs_authorization:
-            _privileged_remove(target_path)
-        else:
-            target_path.unlink(missing_ok=True)
+        target_path.unlink(missing_ok=True)
     elif previous_type == "symlink":
         tmp = record_path.parent / (target_path.name + ".restore.symlink.tmp")
         tmp.unlink(missing_ok=True)
         tmp.symlink_to(record["previousTarget"])
         try:
-            if needs_authorization:
-                _privileged_replace(tmp, target_path)
-            else:
-                tmp.replace(target_path)
+            tmp.replace(target_path)
         except Exception:
             tmp.unlink(missing_ok=True)
             raise
@@ -154,10 +158,7 @@ def restore_install_transaction(target_path: Path, record_path: Path, force: boo
         tmp.write_bytes(content)
         tmp.chmod(int(record.get("previousMode", 0o755)))
         try:
-            if needs_authorization:
-                _privileged_replace(tmp, target_path)
-            else:
-                tmp.replace(target_path)
+            tmp.replace(target_path)
         except Exception:
             tmp.unlink(missing_ok=True)
             raise

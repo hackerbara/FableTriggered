@@ -215,6 +215,20 @@ def test_hidden_context_drawer_footer_flashes_blue_until_selection_clears():
     assert "flashUntil=0" in keyboard_payload
 
 
+def test_hidden_context_drawer_escape_consumes_before_prompt_escape_handler():
+    package_dir = ROOT / "packages" / "hidden-context-drawer"
+    globals_payload = (
+        package_dir / "payloads" / "14-selected-only-bottom-overlay-hidden-context-globals.js"
+    ).read_text()
+
+    assert 'onKeyDown:(Bt)=>{if(hC&&Bt.name==="escape")' in globals_payload
+    assert "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1" in globals_payload
+    assert "hCp(!1)" in globals_payload
+    assert "Pc(null)" in globals_payload
+    assert "Bt.consume?.()" in globals_payload
+    assert "return}az(Bt)" in globals_payload
+
+
 def test_hidden_context_drawer_payload_avoids_utf8_separator_mojibake_and_uses_warning_header():
     package_dir = ROOT / "packages" / "hidden-context-drawer"
     helper_payload = (

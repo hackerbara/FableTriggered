@@ -3,7 +3,7 @@
   "id": "hidden-context-drawer",
   "name": "Hidden Context Drawer",
   "description": "Projects model-visible hidden attachment context into an integrated footer Hidden Context drawer.",
-  "packageVersion": "0.1.5",
+  "packageVersion": "0.1.6",
   "targets": [
     {
       "sourceIdentity": {
@@ -207,7 +207,7 @@
             },
             {
               "opId": "selected-only-bottom-overlay-hidden-context-globals",
-              "label": "selected-only bottom overlay Hidden Context globals v18 clear unread flash",
+              "label": "selected-only bottom overlay Hidden Context globals v19 consume escape",
               "type": "replace_exact",
               "exact": "return Nd.jsxs(B,{flexDirection:\"column\",marginTop:jt||hae?0:1,children:[Ym&&!se&&Nd.jsx(B,{tabIndex:0,autoFocus:!0,onKeyDown:az}),!js()&&Nd.jsx(ogr,{}),J&&",
               "requireWithinRange": [],
@@ -215,7 +215,7 @@
               "oldRangeLength": 156,
               "replacement": {
                 "path": "payloads/14-selected-only-bottom-overlay-hidden-context-globals.js",
-                "sha256": "250766e5666b819c82658391180e03507f14b865aebe160cd1923e0ad3a9b2e5"
+                "sha256": "863d80fbccb36bbee3cde6ccb6be94930ef89c870b5e25aa13ef7b8fb68e0b7b"
               }
             },
             {
@@ -336,6 +336,26 @@
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
           "value": "flashUntil=0"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "onKeyDown:(Bt)=>{if(hC&&Bt.name===\"escape\")"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "Bt.consume?.()"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "stopImmediatePropagation?.()"
         }
       ],
       "manualSmoke": {

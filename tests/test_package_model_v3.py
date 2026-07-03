@@ -139,3 +139,93 @@ def test_manifest_digest_is_stable(tmp_path):
     write_json(package_dir / "demo.json", patch_manifest("demo-patch"))
     loaded = load_package_manifest(package_dir, PackageKind.PATCH)
     assert manifest_digest(loaded) == manifest_digest(loaded)
+
+
+def test_option_env_literal_and_value_from_env_entries_parse(tmp_path):
+    package_dir = tmp_path / "options" / "env-option"
+    payload = option_manifest("env-option")
+    payload["option"]["env"] = {
+        "STATIC_VALUE": "literal",
+        "FROM_PROCESS": {
+            "valueFromEnv": "ANTHROPIC_API_KEY",
+            "secret": True,
+            "allowOverrideProcessEnv": True,
+        },
+    }
+    write_json(package_dir / "env-option.json", payload)
+
+    loaded = load_package_manifest(package_dir, PackageKind.OPTION)
+
+    assert loaded.option is not None
+    literal = loaded.option.env["STATIC_VALUE"]
+    assert literal.value == "literal"
+    assert literal.value_from_env is None
+    assert literal.secret is False
+    assert literal.allow_override_process_env is False
+    forwarded = loaded.option.env["FROM_PROCESS"]
+    assert forwarded.value is None
+    assert forwarded.value_from_env == "ANTHROPIC_API_KEY"
+    assert forwarded.secret is True
+    assert forwarded.allow_override_process_env is True
+
+
+def test_option_env_value_and_value_from_env_are_mutually_exclusive(tmp_path):
+    package_dir = tmp_path / "options" / "bad-env"
+    payload = option_manifest("bad-env")
+    payload["option"]["env"] = {"BAD_ENV": {"value": "literal", "valueFromEnv": "SOURCE"}}
+    write_json(package_dir / "bad-env.json", payload)
+
+    with pytest.raises(PackageValidationError, match="env_value_source_exclusive"):
+        load_package_manifest(package_dir, PackageKind.OPTION)
+
+
+def test_option_env_value_from_env_must_be_env_name(tmp_path):
+    package_dir = tmp_path / "options" / "bad-env"
+    payload = option_manifest("bad-env")
+    payload["option"]["env"] = {"BAD_ENV": {"valueFromEnv": "not-valid-env-name"}}
+    write_json(package_dir / "bad-env.json", payload)
+
+    with pytest.raises(PackageValidationError, match="env.valueFromEnv_invalid_env_name"):
+        load_package_manifest(package_dir, PackageKind.OPTION)
+
+
+def test_patch_rejects_unsupported_engine(tmp_path):
+    package_dir = tmp_path / "patches" / "demo-patch"
+    payload = patch_manifest("demo-patch")
+    payload["patch"]["engine"] = "shell_script"
+    write_json(package_dir / "demo.json", payload)
+
+    with pytest.raises(PackageValidationError, match="patch_engine_unsupported"):
+        load_package_manifest(package_dir, PackageKind.PATCH)
+
+
+def test_compatibility_arches_and_risk_confirmation_warning_are_preserved(tmp_path):
+    package_dir = tmp_path / "options" / "guarded-option"
+    payload = option_manifest(
+        "guarded-option",
+        compatibility={"claudeVersions": ["2.1.199"], "platforms": ["darwin"], "arches": ["arm64"]},
+        risk={
+            "level": "high",
+            "requiresConfirmation": True,
+            "statusWarning": "Requires copied-binary patching.",
+        },
+    )
+    write_json(package_dir / "guarded-option.json", payload)
+
+    loaded = load_package_manifest(package_dir, PackageKind.OPTION)
+
+    assert loaded.compatibility is not None
+    assert loaded.compatibility.arches == ("arm64",)
+    assert loaded.risk is not None
+    assert loaded.risk.requires_confirmation is True
+    assert loaded.risk.status_warning == "Requires copied-binary patching."
+
+
+def test_option_rejects_prompt_channel_flags_equals_form(tmp_path):
+    package_dir = tmp_path / "options" / "bad-option"
+    payload = option_manifest("bad-option")
+    payload["option"]["argv"] = ["--system-prompt-file=prompt.md"]
+    write_json(package_dir / "bad-option-equals.json", payload)
+
+    with pytest.raises(PackageValidationError, match="forbidden_prompt_flag"):
+        load_package_manifest(package_dir, PackageKind.OPTION)

@@ -33,6 +33,7 @@ TOP_LEVEL_FIELDS = {
 RISK_LEVELS = {"low", "medium", "high"}
 PROMPT_MODES = {"append", "replace"}
 ENV_CONFLICT_POLICIES = {"override", "error"}
+SUPPORTED_PATCH_ENGINES = {"bun_graph_repack"}
 
 
 class PackageKind(StrEnum):
@@ -49,12 +50,15 @@ class PackageValidationError(ValueError):
 class Risk:
     level: str
     notes: str | None = None
+    requires_confirmation: bool = False
+    status_warning: str | None = None
 
 
 @dataclass(frozen=True)
 class Compatibility:
     claude_versions: tuple[str, ...] = ()
     platforms: tuple[str, ...] = ()
+    arches: tuple[str, ...] = ()
     notes: str | None = None
 
 
@@ -72,8 +76,10 @@ class PromptPackage:
 
 @dataclass(frozen=True)
 class EnvValue:
-    value: str
+    value: str | None = None
+    value_from_env: str | None = None
     secret: bool = False
+    allow_override_process_env: bool = False
 
 
 @dataclass(frozen=True)
@@ -165,6 +171,13 @@ def _require_string_list(obj: dict[str, Any], field: str) -> tuple[str, ...]:
     return tuple(value)
 
 
+def _optional_bool(obj: dict[str, Any], field: str) -> bool:
+    value = obj.get(field, False)
+    if not isinstance(value, bool):
+        _fail(f"{field}_must_be_boolean")
+    return value
+
+
 def _validate_slug(value: str, field: str) -> None:
     if not SLUG_RE.fullmatch(value):
         _fail(f"{field}_invalid_slug")
@@ -210,7 +223,12 @@ def _parse_risk(value: Any) -> Risk | None:
     level = _require_string(risk, "level")
     if level not in RISK_LEVELS:
         _fail("risk_level_invalid")
-    return Risk(level=level, notes=_optional_string(risk, "notes"))
+    return Risk(
+        level=level,
+        notes=_optional_string(risk, "notes"),
+        requires_confirmation=_optional_bool(risk, "requiresConfirmation"),
+        status_warning=_optional_string(risk, "statusWarning"),
+    )
 
 
 def _parse_compatibility(value: Any) -> Compatibility | None:
@@ -220,6 +238,7 @@ def _parse_compatibility(value: Any) -> Compatibility | None:
     return Compatibility(
         claude_versions=_require_string_list(compatibility, "claudeVersions"),
         platforms=_require_string_list(compatibility, "platforms"),
+        arches=_require_string_list(compatibility, "arches"),
         notes=_optional_string(compatibility, "notes"),
     )
 
@@ -249,11 +268,23 @@ def _parse_env_value(name: str, value: Any) -> EnvValue:
     if isinstance(value, str):
         return EnvValue(value=value)
     item = _require_mapping(value, f"env.{name}")
-    env_value = _require_string(item, "value")
-    secret = item.get("secret", False)
-    if not isinstance(secret, bool):
-        _fail("env.secret_must_be_boolean")
-    return EnvValue(value=env_value, secret=secret)
+    has_value = "value" in item
+    has_value_from_env = "valueFromEnv" in item
+    if has_value == has_value_from_env:
+        _fail("env_value_source_exclusive")
+    env_value = None
+    value_from_env = None
+    if has_value:
+        env_value = _require_string(item, "value")
+    if has_value_from_env:
+        value_from_env = _require_string(item, "valueFromEnv")
+        _validate_env_name(value_from_env, "env.valueFromEnv")
+    return EnvValue(
+        value=env_value,
+        value_from_env=value_from_env,
+        secret=_optional_bool(item, "secret"),
+        allow_override_process_env=_optional_bool(item, "allowOverrideProcessEnv"),
+    )
 
 
 def _parse_env_conflict(value: Any) -> EnvConflict:
@@ -296,6 +327,8 @@ def _parse_option(value: Any) -> OptionPackage:
 def _parse_patch(value: Any) -> PatchPackage:
     patch = _require_mapping(value, "patch")
     engine = _require_string(patch, "engine")
+    if engine not in SUPPORTED_PATCH_ENGINES:
+        _fail("patch_engine_unsupported")
     targets = patch.get("targets")
     if not isinstance(targets, list) or not all(isinstance(item, dict) for item in targets):
         _fail("patch.targets_must_be_object_list")

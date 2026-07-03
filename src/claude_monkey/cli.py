@@ -815,11 +815,19 @@ def main(argv: list[str] | None = None) -> int:
         return handle_restore(args, paths)
     if args.command == "use-official":
         if not args.official:
-            print("use-official requires --official", file=sys.stderr)
+            message = "use-official requires --official"
+            if args.json:
+                print_json(envelope_error(message, code="missing_official"))
+            else:
+                print(message, file=sys.stderr)
             return 2
         official = Path(args.official).expanduser()
         if not official.exists():
-            print(f"official path does not exist: {official}", file=sys.stderr)
+            message = f"official path does not exist: {official}"
+            if args.json:
+                print_json(envelope_error(message, code="missing_official"))
+            else:
+                print(message, file=sys.stderr)
             return 2
         use_official(paths.current_path, official)
         config.activePatchSet = None

@@ -502,3 +502,17 @@ def test_use_official_json_envelope(monkeypatch, tmp_path, capsys):
     payload = parse_json_output(capsys)
     assert payload["ok"] is True
     assert payload["summary"] == "using official Claude binary"
+
+
+def test_use_official_json_missing_inputs_return_envelopes(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert main(["use-official", "--json"]) == 2
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "missing_official"
+
+    missing = tmp_path / "missing-official"
+    assert main(["use-official", "--official", str(missing), "--json"]) == 2
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "missing_official"

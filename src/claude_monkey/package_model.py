@@ -290,11 +290,11 @@ def _parse_env_value(name: str, value: Any) -> EnvValue:
 def _parse_env_conflict(value: Any) -> EnvConflict:
     if isinstance(value, str):
         _validate_env_name(value, "conflictsWithEnv")
-        return EnvConflict(name=value, policy="error")
+        return EnvConflict(name=value, policy="override")
     conflict = _require_mapping(value, "conflictsWithEnv")
     name = _require_string(conflict, "name")
     _validate_env_name(name, "conflictsWithEnv.name")
-    policy = conflict.get("policy", "error")
+    policy = conflict.get("policy", "override")
     if not isinstance(policy, str):
         _fail("conflictsWithEnv.policy_must_be_string")
     if policy not in ENV_CONFLICT_POLICIES:
@@ -329,6 +329,12 @@ def _validate_patch_replacement_paths(value: Any, package_dir: Path) -> None:
         replacement = value.get("replacement")
         if isinstance(replacement, dict) and "path" in replacement:
             _package_local_path(package_dir, replacement.get("path"), "replacement.path")
+            if "sha256" not in replacement:
+                _fail("replacement.sha256_required")
+            sha256 = replacement.get("sha256")
+            if not isinstance(sha256, str):
+                _fail("replacement.sha256_must_be_string")
+            _validate_sha(sha256, "replacement.sha256")
         for item in value.values():
             _validate_patch_replacement_paths(item, package_dir)
     elif isinstance(value, list):

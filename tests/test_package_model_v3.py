@@ -275,3 +275,61 @@ def test_patch_inline_replacement_and_module_path_remain_valid(tmp_path):
     loaded = load_package_manifest(package_dir, PackageKind.PATCH)
 
     assert loaded.patch is not None
+
+
+def test_patch_replacement_path_requires_sha256(tmp_path):
+    package_dir = tmp_path / "patches" / "missing-sha"
+    payload = patch_manifest("missing-sha")
+    payload["patch"]["targets"] = [
+        {
+            "modules": [
+                {
+                    "operations": [
+                        {"replacement": {"path": "payloads/foo.js"}}
+                    ]
+                }
+            ]
+        }
+    ]
+    write_json(package_dir / "missing-sha.json", payload)
+
+    with pytest.raises(PackageValidationError, match="replacement.sha256_required"):
+        load_package_manifest(package_dir, PackageKind.PATCH)
+
+
+def test_patch_replacement_path_rejects_invalid_sha256(tmp_path):
+    package_dir = tmp_path / "patches" / "bad-sha"
+    payload = patch_manifest("bad-sha")
+    payload["patch"]["targets"] = [
+        {
+            "modules": [
+                {
+                    "operations": [
+                        {"replacement": {"path": "payloads/foo.js", "sha256": "not-a-sha"}}
+                    ]
+                }
+            ]
+        }
+    ]
+    write_json(package_dir / "bad-sha.json", payload)
+
+    with pytest.raises(PackageValidationError, match="replacement.sha256_invalid_sha256"):
+        load_package_manifest(package_dir, PackageKind.PATCH)
+
+
+def test_conflicts_with_env_defaults_to_override_and_preserves_error(tmp_path):
+    package_dir = tmp_path / "options" / "env-conflicts"
+    payload = option_manifest("env-conflicts")
+    payload["option"]["conflictsWithEnv"] = [
+        {"name": "ANTHROPIC_API_KEY"},
+        {"name": "CLAUDE_CONFIG_DIR", "policy": "error"},
+        "CLAUDE_CODE_ENTRYPOINT",
+    ]
+    write_json(package_dir / "env-conflicts.json", payload)
+
+    loaded = load_package_manifest(package_dir, PackageKind.OPTION)
+
+    assert loaded.option is not None
+    assert loaded.option.conflicts_with_env[0].policy == "override"
+    assert loaded.option.conflicts_with_env[1].policy == "error"
+    assert loaded.option.conflicts_with_env[2].policy == "override"

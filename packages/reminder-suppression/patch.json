@@ -1,135 +1,11 @@
 {
-  "description": "Suppresses selected recurring model-visible reminder attachments.",
+  "schemaVersion": 2,
   "id": "reminder-suppression",
   "name": "Reminder suppression",
+  "description": "Suppresses selected recurring model-visible reminder attachments.",
   "packageVersion": "0.1.0",
-  "schemaVersion": 1,
   "targets": [
     {
-      "operations": [
-        {
-          "endMarker": "case\"task_reminder\":",
-          "expectedEndMarkerCount": 1,
-          "expectedStartMarkerCount": 1,
-          "label": "Suppress todo reminder attachment",
-          "opId": "todo-reminder",
-          "padding": "spaces",
-          "replacement": {
-            "path": "payloads/todo-reminder.js",
-            "sha256": "8f18aa67837d4c65123350865ced8a72a2032b447db1efd70a18bec005fc6621"
-          },
-          "requireWithinRange": [],
-          "startMarker": "case\"todo_reminder\":",
-          "type": "replace_between"
-        },
-        {
-          "endMarker": "case\"tool_search_usage_reminder\":",
-          "expectedEndMarkerCount": 1,
-          "expectedStartMarkerCount": 1,
-          "label": "Suppress task reminder attachment",
-          "opId": "task-reminder",
-          "padding": "spaces",
-          "replacement": {
-            "path": "payloads/task-reminder.js",
-            "sha256": "0122dfa21cf18d346a296814725ac41bf1c5fd2e7090017176698c7a938179d6"
-          },
-          "requireWithinRange": [],
-          "startMarker": "case\"task_reminder\":",
-          "type": "replace_between"
-        },
-        {
-          "endMarker": "case\"relevant_memories\":",
-          "expectedEndMarkerCount": 1,
-          "expectedStartMarkerCount": 1,
-          "label": "Suppress tool-search usage reminder attachment",
-          "opId": "tool-search-usage-reminder",
-          "padding": "spaces",
-          "replacement": {
-            "path": "payloads/tool-search-usage-reminder.js",
-            "sha256": "d0c0695ac5487c2a83bfcbed9d9bc7ed9631aff26c23a157473667cbd18f898b"
-          },
-          "requireWithinRange": [],
-          "startMarker": "case\"tool_search_usage_reminder\":",
-          "type": "replace_between"
-        },
-        {
-          "endMarker": ",total_tokens_reminder:",
-          "expectedEndMarkerCount": 1,
-          "expectedStartMarkerCount": 1,
-          "label": "Suppress token usage renderer",
-          "opId": "token-usage",
-          "padding": "spaces",
-          "replacement": {
-            "path": "payloads/token-usage.js",
-            "sha256": "23cb4eb9df0f2e48526dcb30aa31c142e97dc458739333f18c8b406216309241"
-          },
-          "requireWithinRange": [],
-          "startMarker": "token_usage:(e)=>[In({content:_v(`Token usage:",
-          "type": "replace_between"
-        },
-        {
-          "endMarker": ",budget_usd:",
-          "expectedEndMarkerCount": 1,
-          "expectedStartMarkerCount": 1,
-          "label": "Suppress total tokens reminder renderer",
-          "opId": "total-tokens-reminder",
-          "padding": "spaces",
-          "replacement": {
-            "path": "payloads/total-tokens-reminder.js",
-            "sha256": "94e6b12128122951667167fe6373ec88dbbfc01b6415c3931f3e1f02ac4b26e0"
-          },
-          "requireWithinRange": [],
-          "startMarker": "total_tokens_reminder:(e)=>[In({content:_v(e.text),isMeta:!0})]",
-          "type": "replace_between"
-        },
-        {
-          "endMarker": ",output_token_usage:",
-          "expectedEndMarkerCount": 1,
-          "expectedStartMarkerCount": 1,
-          "label": "Suppress USD budget renderer",
-          "opId": "budget-usd",
-          "padding": "spaces",
-          "replacement": {
-            "path": "payloads/budget-usd.js",
-            "sha256": "ee0626e4610530cb1d484eb8e624cc407aad6a286b4bac29b6b3c4e13da987e3"
-          },
-          "requireWithinRange": [],
-          "startMarker": "budget_usd:(e)=>[In({content:_v(`USD budget:",
-          "type": "replace_between"
-        },
-        {
-          "endMarker": ",hook_blocking_error:",
-          "expectedEndMarkerCount": 1,
-          "expectedStartMarkerCount": 1,
-          "label": "Suppress output token usage renderer",
-          "opId": "output-token-usage",
-          "padding": "spaces",
-          "replacement": {
-            "path": "payloads/output-token-usage.js",
-            "sha256": "b9652d77c4828b8dd0c5f29831a6c67a2afc08e84b80993ffad9608a6ea78983"
-          },
-          "requireWithinRange": [],
-          "startMarker": "output_token_usage:(e)=>{let t=e.budget!==null?",
-          "type": "replace_between"
-        }
-      ],
-      "postconditions": [
-        {
-          "scope": "whole_binary",
-          "type": "must_contain",
-          "value": "case\"todo_reminder\":return[];"
-        },
-        {
-          "scope": "whole_binary",
-          "type": "must_contain",
-          "value": "token_usage:(e)=>[]"
-        },
-        {
-          "scope": "whole_binary",
-          "type": "must_contain",
-          "value": "output_token_usage:(e)=>[]"
-        }
-      ],
       "sourceIdentity": {
         "arch": "arm64",
         "claudeVersion": "2.1.198",
@@ -137,6 +13,149 @@
         "sha256": "ab6f7ee109816ede414f7c285446633f805b623aa609f425609a64266451d61e",
         "sizeBytes": 229328464,
         "versionOutput": "2.1.198 (Claude Code)"
+      },
+      "requiredEngine": "bun_graph_repack",
+      "requiredBinaryFormat": "bun_standalone_macho64",
+      "modules": [
+        {
+          "path": "/$bunfs/root/src/entrypoints/cli.js",
+          "contentSha256": "d8f9b3c079edf689031a16c35e5abd3c61cca8b70fc5b0e1f7da3398d52206f1",
+          "contentLength": 18439743,
+          "operations": [
+            {
+              "opId": "todo-reminder",
+              "label": "Suppress todo reminder attachment",
+              "type": "replace_between",
+              "startMarker": "case\"todo_reminder\":",
+              "endMarker": "case\"task_reminder\":",
+              "expectedStartMarkerCount": 1,
+              "expectedEndMarkerCount": 1,
+              "requireWithinRange": [],
+              "oldRangeSha256": "11e56c14aba2b8014529a4d62d0a4202600ad01035d41fef1b8166d6826cab9a",
+              "oldRangeLength": 604,
+              "replacement": {
+                "path": "payloads/todo-reminder.js",
+                "sha256": "8f18aa67837d4c65123350865ced8a72a2032b447db1efd70a18bec005fc6621"
+              }
+            },
+            {
+              "opId": "task-reminder",
+              "label": "Suppress task reminder attachment",
+              "type": "replace_between",
+              "startMarker": "case\"task_reminder\":",
+              "endMarker": "case\"tool_search_usage_reminder\":",
+              "expectedStartMarkerCount": 1,
+              "expectedEndMarkerCount": 1,
+              "requireWithinRange": [],
+              "oldRangeSha256": "b25fc1ec9746e4870c7e9f3049bc2b794ac66079b047951ec2b56c8190c4c2fe",
+              "oldRangeLength": 625,
+              "replacement": {
+                "path": "payloads/task-reminder.js",
+                "sha256": "0122dfa21cf18d346a296814725ac41bf1c5fd2e7090017176698c7a938179d6"
+              }
+            },
+            {
+              "opId": "tool-search-usage-reminder",
+              "label": "Suppress tool-search usage reminder attachment",
+              "type": "replace_between",
+              "startMarker": "case\"tool_search_usage_reminder\":",
+              "endMarker": "case\"relevant_memories\":",
+              "expectedStartMarkerCount": 1,
+              "expectedEndMarkerCount": 1,
+              "requireWithinRange": [],
+              "oldRangeSha256": "21b19d133b616fb7e1bdded64470dc8135c45cfe76f7adbca8fb3a25c74b30ba",
+              "oldRangeLength": 607,
+              "replacement": {
+                "path": "payloads/tool-search-usage-reminder.js",
+                "sha256": "d0c0695ac5487c2a83bfcbed9d9bc7ed9631aff26c23a157473667cbd18f898b"
+              }
+            },
+            {
+              "opId": "token-usage",
+              "label": "Suppress token usage renderer",
+              "type": "replace_between",
+              "startMarker": "token_usage:(e)=>[In({content:_v(`Token usage:",
+              "endMarker": ",total_tokens_reminder:",
+              "expectedStartMarkerCount": 1,
+              "expectedEndMarkerCount": 1,
+              "requireWithinRange": [],
+              "oldRangeSha256": "a5ad4931f2ce0ef3f30b8eaf511026c903ebc8d81af16303bdfaf16f181ada0b",
+              "oldRangeLength": 108,
+              "replacement": {
+                "path": "payloads/token-usage.js",
+                "sha256": "23cb4eb9df0f2e48526dcb30aa31c142e97dc458739333f18c8b406216309241"
+              }
+            },
+            {
+              "opId": "total-tokens-reminder",
+              "label": "Suppress total tokens reminder renderer",
+              "type": "replace_between",
+              "startMarker": "total_tokens_reminder:(e)=>[In({content:_v(e.text),isMeta:!0})]",
+              "endMarker": ",budget_usd:",
+              "expectedStartMarkerCount": 1,
+              "expectedEndMarkerCount": 1,
+              "requireWithinRange": [],
+              "oldRangeSha256": "5821ef9d5706ef7f2566c2b83a125e4e13c47a2b01000a84f671d915f69d8805",
+              "oldRangeLength": 63,
+              "replacement": {
+                "path": "payloads/total-tokens-reminder.js",
+                "sha256": "94e6b12128122951667167fe6373ec88dbbfc01b6415c3931f3e1f02ac4b26e0"
+              }
+            },
+            {
+              "opId": "budget-usd",
+              "label": "Suppress USD budget renderer",
+              "type": "replace_between",
+              "startMarker": "budget_usd:(e)=>[In({content:_v(`USD budget:",
+              "endMarker": ",output_token_usage:",
+              "expectedStartMarkerCount": 1,
+              "expectedEndMarkerCount": 1,
+              "requireWithinRange": [],
+              "oldRangeSha256": "c5b75ce93055c341e679c5a6128fd64a77b35627c01ea041fb3fca1ea0ab690b",
+              "oldRangeLength": 109,
+              "replacement": {
+                "path": "payloads/budget-usd.js",
+                "sha256": "ee0626e4610530cb1d484eb8e624cc407aad6a286b4bac29b6b3c4e13da987e3"
+              }
+            },
+            {
+              "opId": "output-token-usage",
+              "label": "Suppress output token usage renderer",
+              "type": "replace_between",
+              "startMarker": "output_token_usage:(e)=>{let t=e.budget!==null?",
+              "endMarker": ",hook_blocking_error:",
+              "expectedStartMarkerCount": 1,
+              "expectedEndMarkerCount": 1,
+              "requireWithinRange": [],
+              "oldRangeSha256": "8dbfdc967917880348ff4de86d982cf13dffb62a7a5ceddcfde0df3b660252bd",
+              "oldRangeLength": 193,
+              "replacement": {
+                "path": "payloads/output-token-usage.js",
+                "sha256": "b9652d77c4828b8dd0c5f29831a6c67a2afc08e84b80993ffad9608a6ea78983"
+              }
+            }
+          ]
+        }
+      ],
+      "postconditions": [
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "case\"todo_reminder\":return[];"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "token_usage:(e)=>[]"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "output_token_usage:(e)=>[]"
+        }
+      ],
+      "manualSmoke": {
+        "required": false
       }
     }
   ]

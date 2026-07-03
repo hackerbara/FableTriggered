@@ -1,79 +1,11 @@
 {
-  "description": "Shows Fable fallback events in resumed history and /resume.",
+  "schemaVersion": 2,
   "id": "fable-fallback",
   "name": "Fable fallback visibility",
+  "description": "Shows Fable fallback events in resumed history and /resume.",
   "packageVersion": "0.1.0",
-  "schemaVersion": 1,
   "targets": [
     {
-      "operations": [
-        {
-          "endMarker": "case\"user\":{if(n.isCompactSummary){let M=h?\"transcript\":\"prompt\",H;",
-          "expectedEndMarkerCount": 1,
-          "expectedStartMarkerCount": 1,
-          "label": "Render assistant fallback as system warning banner",
-          "opId": "gcm-assistant-fallback-banner",
-          "padding": "spaces",
-          "replacement": {
-            "path": "payloads/gcm-assistant-case.js",
-            "sha256": "5a94dc78b58fba59c803f1f24d64c15634423cee85c3c4319c611e8b56ab48bc"
-          },
-          "requireWithinRange": [
-            "D=(O,M)=>Ab.jsx(SCm,{param:O",
-            "x=n.message.content.map(D)"
-          ],
-          "startMarker": "case\"assistant\":{let R;if(t[20]!==r.firstTextBlockUuidByMessageID",
-          "type": "replace_between"
-        },
-        {
-          "endMarker": "function gte",
-          "expectedEndMarkerCount": 1,
-          "expectedStartMarkerCount": 1,
-          "knownBehaviorChange": "This compact formatter omits rare bg metadata and PR repository prefix to fit the original byte budget.",
-          "label": "Append Fable classifier marker to resume metadata",
-          "opId": "net-resume-marker",
-          "padding": "spaces",
-          "replacement": {
-            "path": "payloads/net-metadata-formatter.js",
-            "sha256": "b0c41c4097997d2fdf879795a448f83dee1326138f09c536886219874eff8f4d"
-          },
-          "requireWithinRange": [
-            "return n.join(\" \\xB7 \")"
-          ],
-          "startMarker": "function net(e){let t=e.fileSize!==void 0?$a(e.fileSize):`${e.messageCount} messages`",
-          "type": "replace_between"
-        },
-        {
-          "endMarker": "async function kJe",
-          "expectedEndMarkerCount": 1,
-          "expectedStartMarkerCount": 1,
-          "label": "Detect Fable fallback during resume lite-log enrichment",
-          "opId": "wpf-lite-log-detector",
-          "padding": "spaces",
-          "replacement": {
-            "path": "payloads/wpf-lite-log-enrichment.js",
-            "sha256": "51f0d24473dbcead77d7ea9cffa7270746423c7e84d9336252f87cb93d5fba9b"
-          },
-          "requireWithinRange": [
-            "let n=await Nmc(e.fullPath,e.fileSize??0,t)",
-            "projectPath:s"
-          ],
-          "startMarker": "async function wpf(e,t){if(!e.isLite||!e.fullPath)return e;",
-          "type": "replace_between"
-        }
-      ],
-      "postconditions": [
-        {
-          "scope": "whole_binary",
-          "type": "must_contain",
-          "value": "Fable classifier triggered"
-        },
-        {
-          "scope": "whole_binary",
-          "type": "must_contain",
-          "value": "fableClassifierTriggered"
-        }
-      ],
       "sourceIdentity": {
         "arch": "arm64",
         "claudeVersion": "2.1.198",
@@ -81,6 +13,89 @@
         "sha256": "ab6f7ee109816ede414f7c285446633f805b623aa609f425609a64266451d61e",
         "sizeBytes": 229328464,
         "versionOutput": "2.1.198 (Claude Code)"
+      },
+      "requiredEngine": "bun_graph_repack",
+      "requiredBinaryFormat": "bun_standalone_macho64",
+      "modules": [
+        {
+          "path": "/$bunfs/root/src/entrypoints/cli.js",
+          "contentSha256": "d8f9b3c079edf689031a16c35e5abd3c61cca8b70fc5b0e1f7da3398d52206f1",
+          "contentLength": 18439743,
+          "operations": [
+            {
+              "opId": "gcm-assistant-fallback-banner",
+              "label": "Render assistant fallback as system warning banner",
+              "type": "replace_between",
+              "startMarker": "case\"assistant\":{let R;if(t[20]!==r.firstTextBlockUuidByMessageID",
+              "endMarker": "case\"user\":{if(n.isCompactSummary){let M=h?\"transcript\":\"prompt\",H;",
+              "expectedStartMarkerCount": 1,
+              "expectedEndMarkerCount": 1,
+              "requireWithinRange": [
+                "D=(O,M)=>Ab.jsx(SCm,{param:O",
+                "x=n.message.content.map(D)"
+              ],
+              "oldRangeSha256": "76d863881e730dd017d2fc8f1366f6ed257933e9dca4f4d2c77e02c4fca534ce",
+              "oldRangeLength": 1638,
+              "replacement": {
+                "path": "payloads/gcm-assistant-case.js",
+                "sha256": "5a94dc78b58fba59c803f1f24d64c15634423cee85c3c4319c611e8b56ab48bc"
+              }
+            },
+            {
+              "opId": "net-resume-marker",
+              "label": "Append Fable classifier marker to resume metadata",
+              "type": "replace_between",
+              "startMarker": "function net(e){let t=e.fileSize!==void 0?$a(e.fileSize):`${e.messageCount} messages`",
+              "endMarker": "function gte",
+              "expectedStartMarkerCount": 1,
+              "expectedEndMarkerCount": 1,
+              "requireWithinRange": [
+                "return n.join(\" \\xB7 \")"
+              ],
+              "oldRangeSha256": "4556994cf67c5e0793a8b56ba47fe6c55b428fc1930810a22437366760b22a18",
+              "oldRangeLength": 377,
+              "replacement": {
+                "path": "payloads/net-metadata-formatter.js",
+                "sha256": "b0c41c4097997d2fdf879795a448f83dee1326138f09c536886219874eff8f4d"
+              },
+              "knownBehaviorChange": "This compact formatter omits rare bg metadata and PR repository prefix to fit the original byte budget."
+            },
+            {
+              "opId": "wpf-lite-log-detector",
+              "label": "Detect Fable fallback during resume lite-log enrichment",
+              "type": "replace_between",
+              "startMarker": "async function wpf(e,t){if(!e.isLite||!e.fullPath)return e;",
+              "endMarker": "async function kJe",
+              "expectedStartMarkerCount": 1,
+              "expectedEndMarkerCount": 1,
+              "requireWithinRange": [
+                "let n=await Nmc(e.fullPath,e.fileSize??0,t)",
+                "projectPath:s"
+              ],
+              "oldRangeSha256": "cc3210c65a8d702885706000d4f49390f229f3e6e98d5d6ed2aaac17632cd9ea",
+              "oldRangeLength": 1270,
+              "replacement": {
+                "path": "payloads/wpf-lite-log-enrichment.js",
+                "sha256": "51f0d24473dbcead77d7ea9cffa7270746423c7e84d9336252f87cb93d5fba9b"
+              }
+            }
+          ]
+        }
+      ],
+      "postconditions": [
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "Fable classifier triggered"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "fableClassifierTriggered"
+        }
+      ],
+      "manualSmoke": {
+        "required": false
       }
     }
   ]

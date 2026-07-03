@@ -111,19 +111,28 @@ def _planned_actions(raw: dict[str, Any]) -> tuple[str, ...]:
     value = raw.get("plannedActions", [])
     if not isinstance(value, list):
         raise ValueError("plannedActions must be a list")
-    return tuple(str(item) for item in value)
+    if not all(isinstance(item, str) for item in value):
+        raise ValueError("plannedActions items must be strings")
+    return tuple(value)
 
 
 def parse_command_envelope(raw: dict[str, Any]) -> CommandEnvelope:
+    if raw.get("schemaVersion") != 1:
+        raise ValueError("schemaVersion must be 1")
     error = parse_error(raw.get("error"))
     ok = _required_bool(raw, "ok")
     if ok and error is not None:
         raise ValueError("ok envelope must have error=null")
     if not ok and error is None:
         raise ValueError("failed envelope must include error.message")
+    status = str(raw.get("status", "unknown"))
+    if ok and status == "error":
+        raise ValueError("ok envelope cannot have error status")
+    if not ok and status == "ok":
+        raise ValueError("failed envelope cannot have ok status")
     return CommandEnvelope(
         ok=ok,
-        status=str(raw.get("status", "unknown")),
+        status=status,
         summary=str(raw.get("summary", "")),
         report_path=_optional_path(raw.get("reportPath")),
         target_path=_optional_path(raw.get("targetPath")),

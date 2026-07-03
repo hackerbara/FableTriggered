@@ -146,3 +146,51 @@ def test_command_envelope_rejects_string_planned_actions():
         assert "plannedActions must be a list" in str(exc)
     else:
         raise AssertionError("expected plannedActions validation")
+
+
+def test_command_envelope_rejects_schema_drift_and_contradictory_status():
+    base = {
+        "schemaVersion": 2,
+        "ok": True,
+        "status": "ok",
+        "summary": "ok",
+        "reportPath": None,
+        "dryRun": False,
+        "plannedActions": [],
+        "error": None,
+    }
+    try:
+        parse_command_envelope(base)
+    except ValueError as exc:
+        assert "schemaVersion must be 1" in str(exc)
+    else:
+        raise AssertionError("expected schema validation")
+
+    base["schemaVersion"] = 1
+    base["status"] = "error"
+    try:
+        parse_command_envelope(base)
+    except ValueError as exc:
+        assert "ok envelope cannot have error status" in str(exc)
+    else:
+        raise AssertionError("expected status validation")
+
+
+def test_command_envelope_rejects_non_string_planned_actions():
+    try:
+        parse_command_envelope(
+            {
+                "schemaVersion": 1,
+                "ok": True,
+                "status": "ok",
+                "summary": "ok",
+                "reportPath": None,
+                "dryRun": True,
+                "plannedActions": [{"bad": "object"}],
+                "error": None,
+            }
+        )
+    except ValueError as exc:
+        assert "plannedActions items must be strings" in str(exc)
+    else:
+        raise AssertionError("expected plannedActions item validation")

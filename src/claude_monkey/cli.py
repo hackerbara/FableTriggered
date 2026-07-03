@@ -197,7 +197,10 @@ def _shim_is_installed(record_path: Path) -> bool:
     if not record:
         return False
     target = record.get("targetPath")
-    return isinstance(target, str) and current_target_is_installed_shim(Path(target), record)
+    try:
+        return isinstance(target, str) and current_target_is_installed_shim(Path(target), record)
+    except OSError:
+        return False
 
 
 def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
@@ -209,7 +212,7 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
     install_record = _install_record_path(paths)
     current_known = paths.current_path.exists() or paths.current_path.is_symlink()
     shim_installed = _shim_is_installed(install_record)
-    installed = current_known or shim_installed or report is not None
+    installed = current_known or shim_installed
     if not installed:
         status = "not_installed"
     elif rebuild_required:
@@ -341,8 +344,13 @@ def _build_dry_run_payload() -> Any:
 def _build_report_json_payload(report: Any, report_path: Path | None = None) -> dict[str, Any]:
     report_payload = dict(to_jsonable(report))
     ok = report_payload.get("status") in {"verified", "manual_smoke_pending"}
-    if report_payload.get("status") == "verified" and report_payload.get("activationEligible"):
+    if (
+        report_payload.get("status") == "verified"
+        and report_payload.get("activationStatus") == "activated"
+    ):
         summary = "Build activated"
+    elif report_payload.get("status") == "verified":
+        summary = "Build verified; activation not performed"
     elif report_payload.get("status") == "manual_smoke_pending":
         summary = "Build requires manual smoke before activation"
     else:

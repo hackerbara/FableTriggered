@@ -62,13 +62,6 @@ def _privileged_remove(target_path: Path) -> None:
     )
 
 
-def _privileged_symlink(target_path: Path, previous_target: str) -> None:
-    authorization.run_privileged_argv(
-        ["/bin/ln", "-s", previous_target, str(target_path)],
-        reason=f"ClaudeMonkey needs permission to restore {target_path}",
-    )
-
-
 def _write_shim_to_target(target_path: Path, state_dir: Path) -> None:
     if authorization.target_needs_authorization(target_path):
         tmp = state_dir / (target_path.name + ".claude-monkey.tmp")
@@ -140,10 +133,14 @@ def restore_install_transaction(target_path: Path, record_path: Path, force: boo
         tmp = record_path.parent / (target_path.name + ".restore.symlink.tmp")
         tmp.unlink(missing_ok=True)
         tmp.symlink_to(record["previousTarget"])
-        if needs_authorization:
-            _privileged_replace(tmp, target_path)
-        else:
-            tmp.replace(target_path)
+        try:
+            if needs_authorization:
+                _privileged_replace(tmp, target_path)
+            else:
+                tmp.replace(target_path)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
     elif previous_type == "file":
         content = base64.b64decode(record["previousContentBase64"].encode("ascii"), validate=True)
         tmp = (
@@ -153,10 +150,14 @@ def restore_install_transaction(target_path: Path, record_path: Path, force: boo
         )
         tmp.write_bytes(content)
         tmp.chmod(int(record.get("previousMode", 0o755)))
-        if needs_authorization:
-            _privileged_replace(tmp, target_path)
-        else:
-            tmp.replace(target_path)
+        try:
+            if needs_authorization:
+                _privileged_replace(tmp, target_path)
+            else:
+                tmp.replace(target_path)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
     else:
         return False
     return True

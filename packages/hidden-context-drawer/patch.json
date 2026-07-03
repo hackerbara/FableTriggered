@@ -3,7 +3,7 @@
   "id": "hidden-context-drawer",
   "name": "Hidden Context Drawer",
   "description": "Projects model-visible hidden attachment context into an integrated footer Hidden Context drawer.",
-  "packageVersion": "0.1.6",
+  "packageVersion": "0.1.7",
   "targets": [
     {
       "sourceIdentity": {
@@ -38,7 +38,7 @@
             },
             {
               "opId": "uxl-refresh-bottom-overlay",
-              "label": "UXl refresh bottom overlay Hidden Context drawer v16 header-only color",
+              "label": "UXl refresh bottom overlay Hidden Context drawer v20 ctrl-escape header",
               "type": "replace_exact",
               "exact": "function UXl(){let e=$Ye.c(2),t=yXl();if(!t)return null;let n;if(e[0]!==t)n=Xd.jsx(B,{position:\"absolute\",bottom:\"100%\",left:0,right:0,opaque:!0,children:t}),e[0]=t,e[1]=n;else n=e[1];return n}",
               "requireWithinRange": [],
@@ -46,7 +46,7 @@
               "oldRangeLength": 193,
               "replacement": {
                 "path": "payloads/15-uxl-refresh-bottom-overlay.js",
-                "sha256": "42788ba5115a6f7261ea80bf5acf9b9449cd2bb3b50d61acb2b219cad11410ec"
+                "sha256": "5597bae61c8decc70609ae04ed1a3b3b385d0363beff590b6b6f40538e706404"
               }
             },
             {
@@ -207,7 +207,7 @@
             },
             {
               "opId": "selected-only-bottom-overlay-hidden-context-globals",
-              "label": "selected-only bottom overlay Hidden Context globals v19 consume escape",
+              "label": "selected-only bottom overlay Hidden Context globals v20 ctrl-escape only",
               "type": "replace_exact",
               "exact": "return Nd.jsxs(B,{flexDirection:\"column\",marginTop:jt||hae?0:1,children:[Ym&&!se&&Nd.jsx(B,{tabIndex:0,autoFocus:!0,onKeyDown:az}),!js()&&Nd.jsx(ogr,{}),J&&",
               "requireWithinRange": [],
@@ -215,7 +215,7 @@
               "oldRangeLength": 156,
               "replacement": {
                 "path": "payloads/14-selected-only-bottom-overlay-hidden-context-globals.js",
-                "sha256": "863d80fbccb36bbee3cde6ccb6be94930ef89c870b5e25aa13ef7b8fb68e0b7b"
+                "sha256": "5d644ef0b2452017756a4eda652862044aaa5f6456f90a00055dc1f676dd34e9"
               }
             },
             {
@@ -229,6 +229,19 @@
               "replacement": {
                 "path": "payloads/04-axf-pass-hiddencontextframe-to-cxc.js",
                 "sha256": "ae106126016aa9b1b5be871c336ad86e7381f125c5e6aa7ff2ee875ce425cb08"
+              }
+            },
+            {
+              "opId": "main-keydown-ctrl-escape-hiddencontext",
+              "label": "main prompt keydown Hidden Context ctrl-escape guard v20",
+              "type": "replace_exact",
+              "exact": "if(EP(Bt),Bt.name===\"escape\"){if(Wee())return;if(g1()&&ae!==\"NORMAL\")return;if(!E3()){if(Xe.some(jj)){yL();return}}if(p&&!ee&&!a)WS()}if(Bt.name===\"return\"&&ce)le(!1)}function EP(Bt){",
+              "requireWithinRange": [],
+              "oldRangeSha256": "55a9d63d2e274509ed6fd0a62461f414bb3d9572e8ebc368eeea9e79c3585221",
+              "oldRangeLength": 183,
+              "replacement": {
+                "path": "payloads/17-main-keydown-ctrl-escape-hiddencontext.js",
+                "sha256": "7445d102c6e78e81c3018af8690ae8b6e6df7c1e43f6287a299daa2f5f2ba8fb"
               }
             }
           ]
@@ -340,11 +353,6 @@
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "onKeyDown:(Bt)=>{if(hC&&Bt.name===\"escape\")"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
           "value": "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1"
         },
         {
@@ -356,6 +364,21 @@
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
           "value": "stopImmediatePropagation?.()"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "onKeyDown:(Bt)=>{if(hC&&Bt.ctrl&&Bt.name===\"escape\")"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "if(hC&&Bt.ctrl&&Bt.name===\"escape\"){globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "ctrl+esc closes"
         }
       ],
       "manualSmoke": {

@@ -38,6 +38,7 @@ def test_install_caches_previous_resolved_source_binary(tmp_path):
     record = install_shim_transaction(target, state, dry_run=False)
 
     raw = json.loads(record.read_text())
+    assert raw["sourcePath"] == str(official.resolve())
     cache_path = Path(raw["previousSourceCachePath"])
     assert cache_path.is_file()
     assert cache_path.read_bytes() == b"official binary"

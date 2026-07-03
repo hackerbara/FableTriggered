@@ -81,6 +81,7 @@ def _cache_previous_source(target_path: Path, state_dir: Path) -> dict:
         cache_path.write_bytes(data)
         cache_path.chmod(stat.S_IMODE(source_path.stat().st_mode) | 0o755)
     return {
+        "sourcePath": str(source_path),
         "previousResolvedPath": str(source_path),
         "previousSourceCachePath": str(cache_path),
         "previousSourceSha256": digest,

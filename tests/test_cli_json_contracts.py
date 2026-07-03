@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 
 from claude_monkey.cli import main
 
@@ -336,9 +335,7 @@ def test_build_json_source_identity_failure_uses_specific_error_code(
     assert "package targets Claude 2.1.198" in payload["error"]["message"]
 
 
-def test_default_source_discovery_resolves_managed_shim_to_cached_clean_source(
-    monkeypatch, tmp_path
-):
+def test_default_source_discovery_ignores_managed_shim_on_path(monkeypatch, tmp_path):
     from claude_monkey.cli import _discover_source
     from claude_monkey.install import install_shim_transaction
 
@@ -351,16 +348,15 @@ def test_default_source_discovery_resolves_managed_shim_to_cached_clean_source(
     official.chmod(0o755)
     bin_dir.mkdir()
     target.symlink_to(official)
-    install_shim_transaction(target, tmp_path / "home" / ".claude-monkey", dry_run=False)
+    record = install_shim_transaction(target, tmp_path / "home" / ".claude-monkey", dry_run=False)
     official.unlink()
     monkeypatch.setenv("PATH", str(bin_dir))
 
     discovered = _discover_source(None)
 
-    assert discovered is not None
-    assert discovered.read_bytes() == b"official binary"
-    assert discovered != target
-    assert os.access(discovered, os.X_OK)
+    assert discovered is None
+    raw = json.loads(record.read_text())
+    assert raw["sourcePath"].endswith("versions/2.1.199")
 
 
 def test_status_ignores_stale_install_record(monkeypatch, tmp_path, capsys):
@@ -809,6 +805,14 @@ def test_use_official_json_envelope(monkeypatch, tmp_path, capsys):
     payload = parse_json_output(capsys)
     assert payload["ok"] is True
     assert payload["summary"] == "using official Claude binary"
+    config = json.loads((tmp_path / ".claude-monkey" / "config.json").read_text())
+    assert config["officialClaudePath"] == str(official.resolve())
+
+    assert main(["status", "--json"]) == 0
+    status = parse_json_output(capsys)
+    assert status["officialClaudePath"] == str(official.resolve())
+    assert status["discoveredOfficialClaudePath"] == str(official.resolve())
+    assert status["sourceClaudePath"] == str(official.resolve())
 
 
 def test_use_official_json_missing_inputs_return_envelopes(monkeypatch, tmp_path, capsys):

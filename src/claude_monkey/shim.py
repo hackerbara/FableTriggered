@@ -10,6 +10,8 @@ def render_shim_script(state_dir: str) -> str:
     return f'''#!/usr/bin/env python3
 from __future__ import annotations
 
+# ClaudeMonkey managed shim
+
 import sys
 
 PACKAGE_ROOT = {package_root_literal}

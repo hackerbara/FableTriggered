@@ -357,6 +357,89 @@ def test_parse_menu_state_rejects_malformed_patch_and_prompt_lists():
         raise AssertionError("expected patches validation")
 
 
+def _base_status(**overrides):
+    status = {
+        "schemaVersion": 1,
+        "status": "ok",
+        "sourceClaudeVersion": None,
+        "sourceClaudePath": None,
+        "installMode": "shim",
+        "shimInstalled": False,
+        "activeProfile": "default",
+        "activePrompt": None,
+        "desiredPatchIds": [],
+        "activePatchIds": [],
+        "rebuildRequired": False,
+        "latestBuildReportPath": None,
+        "activePatchSet": None,
+        "currentClaudePath": None,
+        "shimTargetPath": None,
+        "installRecordPath": None,
+        "stateDir": "/tmp/state",
+        "logsDir": "/tmp/state/logs",
+        "lastError": None,
+    }
+    status.update(overrides)
+    return status
+
+
+def test_parse_options_and_risk():
+    options = {
+        "schemaVersion": 1,
+        "options": [
+            {
+                "id": "dangerous-permissions",
+                "label": "Dangerous permissions",
+                "kind": "option",
+                "enabled": True,
+                "valid": True,
+                "compatibilityStatus": "compatible",
+                "riskLevel": "high",
+                "requiresConfirmation": True,
+                "errors": [],
+            }
+        ],
+    }
+    state = parse_menu_state(
+        _base_status(),
+        {"schemaVersion": 1, "patches": []},
+        {"schemaVersion": 1, "prompts": []},
+        options,
+    )
+    item = state.option_items[0]
+    assert item.option_id == "dangerous-permissions"
+    assert item.risk_level == "high" and item.requires_confirmation is True
+
+
+def test_high_risk_warnings_from_status():
+    status = _base_status(
+        highRiskOptions=[
+            {
+                "id": "dangerous-permissions",
+                "label": "Dangerous permissions",
+                "warning": "Dangerous permissions enabled",
+            }
+        ]
+    )
+    state = parse_menu_state(
+        status,
+        {"schemaVersion": 1, "patches": []},
+        {"schemaVersion": 1, "prompts": []},
+        None,
+    )
+    assert "Dangerous permissions enabled" in state.high_risk_warnings
+
+
+def test_options_none_tolerated():
+    state = parse_menu_state(
+        _base_status(),
+        {"schemaVersion": 1, "patches": []},
+        {"schemaVersion": 1, "prompts": []},
+        None,
+    )
+    assert state.option_items == ()
+
+
 def test_parse_menu_state_rejects_malformed_changed_modules():
     status = {
         "schemaVersion": 1,

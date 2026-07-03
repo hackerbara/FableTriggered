@@ -118,6 +118,7 @@ class MenuState:
     live_validation_status: str = "unknown"
     compatibility_warnings: tuple[str, ...] = ()
     option_items: tuple[OptionMenuItem, ...] = ()
+    high_risk_warnings: tuple[str, ...] = ()
 
 
 def _optional_path(value: Any) -> Path | None:
@@ -249,6 +250,10 @@ def _high_risk_options(raw: dict[str, Any]) -> tuple[HighRiskOptionSummary, ...]
         )
         for item in _dict_list(raw, "highRiskOptions")
     )
+
+
+def _high_risk_warnings(raw: dict[str, Any]) -> tuple[str, ...]:
+    return tuple(str(item["warning"]) for item in _dict_list(raw, "highRiskOptions"))
 
 
 def _prompt_source_path(item: dict[str, Any]) -> Path | None:
@@ -397,4 +402,5 @@ def parse_menu_state(
         live_validation_status=str(status_raw.get("liveValidationStatus", "unknown")),
         compatibility_warnings=_string_list(status_raw, "compatibilityWarnings"),
         option_items=_option_items(options_raw),
+        high_risk_warnings=_high_risk_warnings(status_raw),
     )

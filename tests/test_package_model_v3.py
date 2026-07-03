@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+
+import pytest
+
+from claude_monkey.package_model import (
+    PackageKind,
+    PackageValidationError,
+    discover_packages,
+    load_package_manifest,
+    manifest_digest,
+)
+
+
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
+def option_manifest(package_id: str, **overrides):
+    payload = {
+        "schemaVersion": 1,
+        "kind": "option",
+        "id": package_id,
+        "label": package_id.replace("-", " ").title(),
+        "description": "Option package",
+        "option": {
+            "argv": [],
+            "env": {},
+            "conflictsWithArgv": [],
+            "conflictsWithOptions": [],
+            "conflictsWithEnv": [],
+        },
+    }
+    payload.update(overrides)
+    return payload
+
+
+def prompt_manifest(package_id: str, source_path: str = "prompt.md", sha256: str | None = None):
+    source = {"path": source_path}
+    if sha256 is not None:
+        source["sha256"] = sha256
+    return {
+        "schemaVersion": 1,
+        "kind": "prompt",
+        "id": package_id,
+        "label": package_id.title(),
+        "description": "Prompt package",
+        "prompt": {"mode": "append", "source": source},
+    }
+
+
+def patch_manifest(package_id: str):
+    return {
+        "schemaVersion": 1,
+        "kind": "patch",
+        "id": package_id,
+        "label": package_id.title(),
+        "description": "Patch package",
+        "patch": {"engine": "bun_graph_repack", "targets": []},
+    }
+
+
+def test_discovers_valid_and_invalid_packages(tmp_path):
+    root = tmp_path / ".claude-monkey"
+    write_json(root / "options" / "good-option" / "good.json", option_manifest("good-option"))
+    write_json(
+        root / "options" / "bad-option" / "bad.json",
+        {"schemaVersion": 1, "kind": "option", "id": "wrong"},
+    )
+
+    result = discover_packages(root / "options", PackageKind.OPTION)
+
+    assert [item.id for item in result.valid] == ["good-option"]
+    assert len(result.invalid) == 1
+    assert result.invalid[0].package_dir.name == "bad-option"
+    assert result.invalid[0].errors
+
+
+def test_id_must_match_folder_slug(tmp_path):
+    package_dir = tmp_path / "options" / "actual"
+    write_json(package_dir / "manifest.json", option_manifest("different"))
+    with pytest.raises(PackageValidationError, match="id_must_match_folder"):
+        load_package_manifest(package_dir, PackageKind.OPTION)
+
+
+def test_kind_must_match_bucket(tmp_path):
+    package_dir = tmp_path / "options" / "research"
+    (package_dir / "prompt.md").parent.mkdir(parents=True)
+    (package_dir / "prompt.md").write_text("prompt")
+    write_json(package_dir / "research.json", prompt_manifest("research"))
+    with pytest.raises(PackageValidationError, match="kind_must_match_bucket"):
+        load_package_manifest(package_dir, PackageKind.OPTION)
+
+
+def test_option_rejects_prompt_channel_flags(tmp_path):
+    package_dir = tmp_path / "options" / "bad-option"
+    payload = option_manifest("bad-option")
+    payload["option"]["argv"] = ["--append-system-prompt-file", "prompt.md"]
+    write_json(package_dir / "bad-option.json", payload)
+    with pytest.raises(PackageValidationError, match="forbidden_prompt_flag"):
+        load_package_manifest(package_dir, PackageKind.OPTION)
+
+
+def test_prompt_sha_and_package_local_path_are_verified(tmp_path):
+    package_dir = tmp_path / "prompts" / "research"
+    prompt = package_dir / "prompt.md"
+    prompt.parent.mkdir(parents=True)
+    prompt.write_text("extra prompt")
+    digest = hashlib.sha256(prompt.read_bytes()).hexdigest()
+    write_json(package_dir / "research.json", prompt_manifest("research", sha256=digest))
+    loaded = load_package_manifest(package_dir, PackageKind.PROMPT)
+    assert loaded.prompt is not None
+    assert loaded.prompt.source.path == prompt
+
+
+def test_prompt_path_cannot_escape_package(tmp_path):
+    package_dir = tmp_path / "prompts" / "research"
+    write_json(
+        package_dir / "research.json", prompt_manifest("research", source_path="../escape.md")
+    )
+    with pytest.raises(PackageValidationError, match="package_path_escape"):
+        load_package_manifest(package_dir, PackageKind.PROMPT)
+
+
+def test_multiple_valid_json_manifests_are_invalid(tmp_path):
+    package_dir = tmp_path / "options" / "dupe"
+    write_json(package_dir / "one.json", option_manifest("dupe"))
+    write_json(package_dir / "two.json", option_manifest("dupe"))
+    with pytest.raises(PackageValidationError, match="multiple_valid_manifests"):
+        load_package_manifest(package_dir, PackageKind.OPTION)
+
+
+def test_manifest_digest_is_stable(tmp_path):
+    package_dir = tmp_path / "patches" / "demo-patch"
+    write_json(package_dir / "demo.json", patch_manifest("demo-patch"))
+    loaded = load_package_manifest(package_dir, PackageKind.PATCH)
+    assert manifest_digest(loaded) == manifest_digest(loaded)

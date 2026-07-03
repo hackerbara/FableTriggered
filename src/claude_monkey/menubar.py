@@ -10,6 +10,10 @@ from claude_monkey.menubar_state import MenuState, parse_menu_state
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ICON = ROOT / "assets" / "claude-monkey-menubar-template.png"
+COMMON_INSTALL_TARGETS = (
+    Path("/usr/local/bin/claude"),
+    Path("/opt/homebrew/bin/claude"),
+)
 REBUILD_CONFIRMATION_BODY = (
     "This will build a copied Claude Code binary from the selected patches, verify it, "
     "sign it, smoke-test it, and activate it only if the build succeeds. The official "
@@ -106,6 +110,26 @@ def install_target_menu_label(target: Path, *, state_dir: Path) -> str:
     plan = install_plan_for_target(target, state_dir=state_dir)
     status = "protected" if plan.authorization_required else "user-writable"
     return f"Install target… {plan.target} ({status})"
+
+
+def install_target_choices(state: MenuState | None) -> tuple[tuple[str, Path], ...]:
+    state_dir = state.state_dir if state else Path.home() / ".claude-monkey"
+    choices: list[tuple[str, Path]] = [
+        ("Use managed user target", managed_user_target(state_dir)),
+    ]
+    if state and state.shim_target_path:
+        choices.append(("Use recorded target", state.shim_target_path))
+    for target in COMMON_INSTALL_TARGETS:
+        choices.append((f"Use {target}", target))
+
+    deduped: list[tuple[str, Path]] = []
+    seen: set[str] = set()
+    for label, target in choices:
+        key = str(target.expanduser())
+        if key not in seen:
+            deduped.append((label, target.expanduser()))
+            seen.add(key)
+    return tuple(deduped)
 
 
 def alert_for_result(
@@ -277,13 +301,7 @@ class ClaudeMonkeyMenuBar:
             )
         )
         state_dir = self.state.state_dir if self.state else Path.home() / ".claude-monkey"
-        self.app.menu.add(
-            self._menu_item(
-                install_target_menu_label(self.install_target, state_dir=state_dir),
-                callback=self.choose_install_target,
-                enabled=mutating_enabled,
-            )
-        )
+        self.app.menu.add(self._install_target_menu(state_dir, mutating_enabled))
         self.app.menu.add(
             self._menu_item("Install shim…", callback=self.install_shim, enabled=mutating_enabled)
         )
@@ -326,19 +344,51 @@ class ClaudeMonkeyMenuBar:
         if response == 1:
             self._start_mutating_command("build", command_for_rebuild_apply())
 
-    def choose_install_target(self, _sender: Any = None) -> None:
-        response = self.rumps.Window(
-            message=(
-                "Choose claude shim target. Protected paths are allowed but may require "
-                "authorization."
-            ),
-            title="ClaudeMonkey install target",
-            default_text=str(self.install_target),
-        ).run()
-        if response.clicked:
-            self.install_target = Path(response.text).expanduser()
-            self.user_selected_install_target = True
-            self.render_menu()
+    def _install_target_menu(self, state_dir: Path, mutating_enabled: bool) -> Any:
+        menu = self._menu_item(
+            install_target_menu_label(self.install_target, state_dir=state_dir),
+            enabled=mutating_enabled,
+        )
+        for label, target in install_target_choices(self.state):
+            item = self._menu_item(
+                f"{label}: {target}",
+                callback=lambda _sender, t=target: self.set_install_target(t),
+                enabled=mutating_enabled,
+            )
+            item.state = 1 if target == self.install_target else 0
+            menu.add(item)
+        menu.add(
+            self._menu_item(
+                "Use path from clipboard…",
+                callback=lambda _sender: self.choose_install_target_from_clipboard(),
+                enabled=mutating_enabled,
+            )
+        )
+        return menu
+
+    def set_install_target(self, target: Path) -> None:
+        self.install_target = target.expanduser()
+        self.user_selected_install_target = True
+        self.render_menu()
+
+    def clipboard_text(self) -> str:
+        try:
+            from AppKit import NSPasteboard, NSPasteboardTypeString
+        except ImportError:
+            return ""
+        pasteboard = NSPasteboard.generalPasteboard()
+        value = pasteboard.stringForType_(NSPasteboardTypeString)
+        return str(value or "").strip()
+
+    def choose_install_target_from_clipboard(self) -> None:
+        text = self.clipboard_text()
+        if not text:
+            self.rumps.alert(
+                "No install target on clipboard",
+                "Copy a target path first, then choose Use path from clipboard.",
+            )
+            return
+        self.set_install_target(Path(text).expanduser())
 
     def install_shim(self, _sender: Any = None) -> None:
         state_dir = self.state.state_dir if self.state else Path.home() / ".claude-monkey"

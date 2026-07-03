@@ -133,6 +133,39 @@ def test_install_target_label_identifies_writable_and_protected(tmp_path):
     )
 
 
+def test_install_target_menu_uses_non_blocking_submenu(tmp_path):
+    class WindowWouldHang:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("install target menu must not open a blocking window")
+
+    bar, rumps = make_bar(tmp_path, FakeRunner())
+    rumps.Window = WindowWouldHang
+
+    bar.render_menu()
+
+    install_item = next(
+        item for item in flat_items(bar.app.menu.items) if item.title.startswith("Install target…")
+    )
+    child_titles = [item.title for item in install_item.children]
+    assert any("Use managed user target" in title for title in child_titles)
+    managed = next(
+        item for item in install_item.children if "Use managed user target" in item.title
+    )
+    managed.callback(None)
+    assert bar.install_target == tmp_path / "bin" / "claude"
+
+
+def test_install_target_can_use_clipboard_path_without_modal(tmp_path):
+    custom = tmp_path / "custom" / "claude"
+    bar, _rumps = make_bar(tmp_path, FakeRunner())
+    bar.clipboard_text = lambda: str(custom)
+
+    bar.choose_install_target_from_clipboard()
+
+    assert bar.install_target == custom
+    assert bar.user_selected_install_target is True
+
+
 def test_rebuild_confirmation_copy_matches_spec_minimum():
     assert "copied Claude Code binary" in REBUILD_CONFIRMATION_BODY
     assert "verify it" in REBUILD_CONFIRMATION_BODY

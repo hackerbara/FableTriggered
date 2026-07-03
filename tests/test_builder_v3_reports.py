@@ -5,10 +5,10 @@ import json
 from pathlib import Path
 
 from tests.fixtures_bun import MODULE_0, build_aligned_macho_fixture
-from claude_monkey.smoke import CommandResult
 
 from claude_monkey.builder_v15 import BuildRequestV15, build_patchset_v15
 from claude_monkey.package_model import PackageKind, load_package_manifest, manifest_digest
+from claude_monkey.smoke import CommandResult
 
 
 def successful_fixture_runner(argv):
@@ -74,7 +74,9 @@ def v3_patch_manifest(package_id: str, source: Path, *, target_sha: str | None =
                                     "requireWithinRange": ["OLD_RENDER"],
                                     "oldRangeSha256": hashlib.sha256(old).hexdigest(),
                                     "oldRangeLength": len(old),
-                                    "replacement": {"inline": "function render(){NEW_RENDER_LONGER}\n"},
+                                    "replacement": {
+                                        "inline": "function render(){NEW_RENDER_LONGER}\n"
+                                    },
                                 }
                             ],
                         }
@@ -93,7 +95,9 @@ def v3_patch_manifest(package_id: str, source: Path, *, target_sha: str | None =
     }
 
 
-def write_v3_patch_package(package_dir: Path, source: Path, *, target_sha: str | None = None) -> str:
+def write_v3_patch_package(
+    package_dir: Path, source: Path, *, target_sha: str | None = None
+) -> str:
     manifest = v3_patch_manifest(package_dir.name, source, target_sha=target_sha)
     write_json(package_dir / f"{package_dir.name}.json", manifest)
     return manifest_digest(load_package_manifest(package_dir, PackageKind.PATCH))

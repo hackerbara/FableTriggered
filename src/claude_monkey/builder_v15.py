@@ -13,7 +13,6 @@ from claude_monkey.binary_inspect import inspect_binary_bytes
 from claude_monkey.bun_graph import BunGraphError, parse_bun_section
 from claude_monkey.install import use_official
 from claude_monkey.macho import MachOError, find_macho_layout
-from claude_monkey.package_model import PackageKind, load_package_manifest
 from claude_monkey.manifest_v2 import (
     AssertionV2,
     ManifestV2,
@@ -28,6 +27,7 @@ from claude_monkey.module_patch import (
     plan_module_operations,
     render_changed_module,
 )
+from claude_monkey.package_model import PackageKind, load_package_manifest
 from claude_monkey.repack import repack_changed_modules
 from claude_monkey.reports_v2 import BuildReportV2
 from claude_monkey.smoke import (

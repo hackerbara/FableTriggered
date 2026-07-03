@@ -21,7 +21,9 @@ class BuildReportV2:
     packageManifestDigests: dict[str, str] = field(default_factory=dict)
     sourceIdentity: dict[str, Any] = field(default_factory=dict)
     buildInputSnapshot: dict[str, Any] = field(default_factory=dict)
-    compatibility: dict[str, Any] = field(default_factory=lambda: {"status": "unknown", "warnings": []})
+    compatibility: dict[str, Any] = field(
+        default_factory=lambda: {"status": "unknown", "warnings": []}
+    )
     changedModules: list[dict[str, Any]] = field(default_factory=list)
     operationsApplied: list[dict[str, Any]] = field(default_factory=list)
     bunGraphUpdates: dict[str, Any] = field(default_factory=dict)

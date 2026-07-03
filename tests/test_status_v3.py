@@ -49,7 +49,11 @@ def option_manifest(
         "description": "Option",
         "risk": risk or {"level": "low"},
         "option": {
-            "argv": ["--dangerously-skip-permissions"] if package_id == "dangerous-permissions" else [],
+            "argv": (
+                ["--dangerously-skip-permissions"]
+                if package_id == "dangerous-permissions"
+                else []
+            ),
             "env": {},
             "conflictsWithArgv": [],
             "conflictsWithOptions": [],
@@ -262,8 +266,14 @@ def test_status_payload_keeps_invalid_active_prompt_and_option_visible(monkeypat
 
     assert payload["activePrompt"] == "broken-prompt"
     assert payload["activeOptionIds"] == ["broken-option"]
-    assert any("prompt broken-prompt skipped: invalid" in item for item in payload["compatibilityWarnings"])
-    assert any("option broken-option skipped: invalid" in item for item in payload["compatibilityWarnings"])
+    assert any(
+        "prompt broken-prompt skipped: invalid" in item
+        for item in payload["compatibilityWarnings"]
+    )
+    assert any(
+        "option broken-option skipped: invalid" in item
+        for item in payload["compatibilityWarnings"]
+    )
     assert payload["status"] == "warning"
 
 
@@ -289,5 +299,8 @@ def test_status_payload_keeps_invalid_desired_patch_visible(monkeypatch, tmp_pat
     assert payload["desiredPatchIds"] == ["bad-patch"]
     assert payload["builtPatchIds"] == []
     assert payload["manifestCompatibilityStatus"] == "invalid"
-    assert any("patch bad-patch skipped: invalid" in item for item in payload["compatibilityWarnings"])
+    assert any(
+        "patch bad-patch skipped: invalid" in item
+        for item in payload["compatibilityWarnings"]
+    )
     assert payload["rebuildRequired"] is True

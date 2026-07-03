@@ -151,7 +151,9 @@ def _source_identity_from_discovery(
     return {key: value for key, value in identity.items() if value is not None}
 
 
-def _source_identity(paths: StatePaths, config: ClaudeMonkeyConfig, report: dict[str, Any] | None) -> dict[str, Any]:
+def _source_identity(
+    paths: StatePaths, config: ClaudeMonkeyConfig, report: dict[str, Any] | None
+) -> dict[str, Any]:
     from_report = _source_identity_from_report(report)
     from_discovery = _source_identity_from_discovery(paths, config)
     return {**from_discovery, **from_report}
@@ -340,7 +342,11 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
     current_executable = _current_executable_path(paths.current_path)
     install_record = _install_record_path(paths)
     shim_installed = _shim_is_installed(install_record)
-    installed = (patched_active or shim_installed) if config.installMode == "shim" else (current_executable is not None or shim_installed)
+    installed = (
+        (patched_active or shim_installed)
+        if config.installMode == "shim"
+        else (current_executable is not None or shim_installed)
+    )
     runnable = current_executable is not None
     rebuild_required = (
         desired_patch_ids != built_patch_ids
@@ -362,7 +368,9 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
     elif source_status not in {"compatible", "unknown"}:
         compatibility_status = source_status
     else:
-        compatibility_status = last_build_status if last_build_status != "unknown" else manifest_status
+        compatibility_status = (
+            last_build_status if last_build_status != "unknown" else manifest_status
+        )
     if compatibility_warnings and not desired_patch_ids and not installed:
         status = "warning"
     elif not installed:
@@ -414,8 +422,16 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
         "detectedClaudeCommandPath": str(_detected_claude_command_path())
         if _detected_claude_command_path()
         else None,
-        "buildStrategy": (report or {}).get("buildStrategy") or (report or {}).get("engine") or "unknown",
-        "lastBuildStrategy": (report or {}).get("buildStrategy") or (report or {}).get("engine") or "unknown",
+        "buildStrategy": (
+            (report or {}).get("buildStrategy")
+            or (report or {}).get("engine")
+            or "unknown"
+        ),
+        "lastBuildStrategy": (
+            (report or {}).get("buildStrategy")
+            or (report or {}).get("engine")
+            or "unknown"
+        ),
         "changedModules": (report or {}).get("changedModules", []),
         "repackSummary": (report or {}).get("repackSummary"),
         "stateDir": str(paths.state_dir),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform as platform_module
 import shutil
 import sys
@@ -176,6 +177,16 @@ def _safe_resolve(path: Path) -> str:
         return str(path)
 
 
+def _current_executable_path(current_path: Path) -> str | None:
+    try:
+        if not (current_path.exists() or current_path.is_symlink()):
+            return None
+        resolved = current_path.resolve(strict=True)
+    except OSError:
+        return None
+    return str(resolved) if resolved.is_file() and os.access(resolved, os.X_OK) else None
+
+
 def _install_record_path(paths: StatePaths) -> Path:
     return paths.state_dir / "install-record.json"
 
@@ -210,12 +221,13 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
     active = _active_patch_ids_from_report(report)
     rebuild_required = desired != active
     install_record = _install_record_path(paths)
-    current_known = paths.current_path.exists() or paths.current_path.is_symlink()
+    current_executable = _current_executable_path(paths.current_path)
     shim_installed = _shim_is_installed(install_record)
-    installed = current_known or shim_installed
+    installed = current_executable is not None or shim_installed
+    runnable = current_executable is not None
     if not installed:
         status = "not_installed"
-    elif rebuild_required:
+    elif rebuild_required or not runnable:
         status = "rebuild_required"
     else:
         status = "ok"
@@ -236,7 +248,7 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
         "rebuildRequired": rebuild_required,
         "latestBuildReportPath": str(report_path) if report_path is not None else None,
         "activePatchSet": _display_patch_set(config.activePatchSet),
-        "currentClaudePath": _safe_resolve(paths.current_path) if current_known else None,
+        "currentClaudePath": current_executable,
         "shimTargetPath": _shim_target_from_record(install_record),
         "installRecordPath": str(install_record) if shim_installed else None,
         "buildStrategy": build_strategy,
@@ -501,7 +513,7 @@ def handle_build(args: argparse.Namespace, paths: StatePaths, config) -> int:
             current_path=paths.current_path,
         )
     )
-    if report.status == "verified" and report.activationEligible:
+    if report.status == "verified" and report.activationStatus == "activated":
         config.activePatchSet = str(output_dir)
         save_config(paths.config_path, config)
     if args.json:

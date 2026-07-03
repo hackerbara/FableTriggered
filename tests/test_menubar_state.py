@@ -194,3 +194,66 @@ def test_command_envelope_rejects_non_string_planned_actions():
         assert "plannedActions items must be strings" in str(exc)
     else:
         raise AssertionError("expected plannedActions item validation")
+
+
+def test_parse_menu_state_rejects_schema_drift():
+    status = {
+        "schemaVersion": 2,
+        "status": "ok",
+        "sourceClaudeVersion": None,
+        "sourceClaudePath": None,
+        "installMode": "shim",
+        "shimInstalled": False,
+        "activeProfile": "default",
+        "activePrompt": None,
+        "desiredPatchIds": [],
+        "activePatchIds": [],
+        "rebuildRequired": False,
+        "latestBuildReportPath": None,
+        "activePatchSet": None,
+        "currentClaudePath": None,
+        "shimTargetPath": None,
+        "installRecordPath": None,
+        "stateDir": "/tmp/state",
+        "logsDir": "/tmp/state/logs",
+        "lastError": None,
+    }
+    try:
+        parse_menu_state(
+            status,
+            {"schemaVersion": 1, "patches": []},
+            {"schemaVersion": 1, "prompts": []},
+        )
+    except ValueError as exc:
+        assert "schemaVersion must be 1" in str(exc)
+    else:
+        raise AssertionError("expected status schema validation")
+
+
+def test_command_envelope_rejects_invalid_status_and_authorization_method():
+    raw = {
+        "schemaVersion": 1,
+        "ok": True,
+        "status": "surprising",
+        "summary": "ok",
+        "reportPath": None,
+        "authorizationMethod": None,
+        "dryRun": False,
+        "plannedActions": [],
+        "error": None,
+    }
+    try:
+        parse_command_envelope(raw)
+    except ValueError as exc:
+        assert "unsupported status" in str(exc)
+    else:
+        raise AssertionError("expected status enum validation")
+
+    raw["status"] = "ok"
+    raw["authorizationMethod"] = {"bad": "object"}
+    try:
+        parse_command_envelope(raw)
+    except ValueError as exc:
+        assert "authorizationMethod" in str(exc)
+    else:
+        raise AssertionError("expected authorizationMethod validation")

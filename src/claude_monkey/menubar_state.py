@@ -11,6 +11,8 @@ STATUS_LABELS = {
     "not_installed": "Not Installed",
     "unknown": "Unknown",
 }
+COMMAND_STATUSES = {"ok", "rebuild_required", "error", "not_installed", "unknown"}
+AUTHORIZATION_METHODS = {None, "macos_gui", "sudo", "not_available"}
 
 
 @dataclass(frozen=True)
@@ -116,9 +118,22 @@ def _planned_actions(raw: dict[str, Any]) -> tuple[str, ...]:
     return tuple(value)
 
 
-def parse_command_envelope(raw: dict[str, Any]) -> CommandEnvelope:
+def _require_schema(raw: dict[str, Any]) -> None:
     if raw.get("schemaVersion") != 1:
         raise ValueError("schemaVersion must be 1")
+
+
+def _authorization_method(raw: dict[str, Any]) -> str | None:
+    value = raw.get("authorizationMethod")
+    if value is not None and not isinstance(value, str):
+        raise ValueError("authorizationMethod must be null, macos_gui, sudo, or not_available")
+    if value not in AUTHORIZATION_METHODS:
+        raise ValueError("authorizationMethod must be null, macos_gui, sudo, or not_available")
+    return value
+
+
+def parse_command_envelope(raw: dict[str, Any]) -> CommandEnvelope:
+    _require_schema(raw)
     error = parse_error(raw.get("error"))
     ok = _required_bool(raw, "ok")
     if ok and error is not None:
@@ -126,6 +141,8 @@ def parse_command_envelope(raw: dict[str, Any]) -> CommandEnvelope:
     if not ok and error is None:
         raise ValueError("failed envelope must include error.message")
     status = str(raw.get("status", "unknown"))
+    if status not in COMMAND_STATUSES:
+        raise ValueError(f"unsupported status: {status}")
     if ok and status == "error":
         raise ValueError("ok envelope cannot have error status")
     if not ok and status == "ok":
@@ -137,7 +154,7 @@ def parse_command_envelope(raw: dict[str, Any]) -> CommandEnvelope:
         report_path=_optional_path(raw.get("reportPath")),
         target_path=_optional_path(raw.get("targetPath")),
         authorization_required=_optional_bool(raw, "authorizationRequired", False),
-        authorization_method=raw.get("authorizationMethod"),
+        authorization_method=_authorization_method(raw),
         dry_run=_optional_bool(raw, "dryRun", False),
         planned_actions=_planned_actions(raw),
         error=error,
@@ -159,6 +176,9 @@ def normalize_status(raw_status: str, rebuild_required: bool, last_error: ErrorI
 def parse_menu_state(
     status_raw: dict[str, Any], patches_raw: dict[str, Any], prompts_raw: dict[str, Any]
 ) -> MenuState:
+    _require_schema(status_raw)
+    _require_schema(patches_raw)
+    _require_schema(prompts_raw)
     last_error = parse_error(status_raw.get("lastError"))
     rebuild_required = _required_bool(status_raw, "rebuildRequired")
     status = normalize_status(

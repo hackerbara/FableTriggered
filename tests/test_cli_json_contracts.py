@@ -342,3 +342,84 @@ def test_verified_build_without_activation_does_not_claim_activation(monkeypatch
     ) == 0
     payload = parse_json_output(capsys)
     assert payload["summary"] == "Build verified; activation not performed"
+
+
+def test_installed_shim_without_current_is_rebuild_required_not_ok(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / ".claude-monkey" / "bin" / "claude"
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    assert main(["status", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["shimInstalled"] is True
+    assert payload["currentClaudePath"] is None
+    assert payload["status"] == "rebuild_required"
+
+
+def test_status_requires_current_to_resolve_to_executable(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    state = tmp_path / ".claude-monkey"
+    state.mkdir()
+    (state / "current").symlink_to(tmp_path / "missing")
+    assert main(["status", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["currentClaudePath"] is None
+    assert payload["status"] == "not_installed"
+
+    (state / "current").unlink()
+    non_executable = tmp_path / "claude"
+    non_executable.write_text("not executable")
+    (state / "current").symlink_to(non_executable)
+    assert main(["status", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["currentClaudePath"] is None
+    assert payload["status"] == "not_installed"
+
+
+def test_verified_build_without_activation_does_not_persist_active_patchset(
+    monkeypatch, tmp_path, capsys
+):
+    from claude_monkey.reports_v2 import BuildReportV2
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    source = tmp_path / "claude"
+    source.write_text("source")
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "patch.json").write_text("{}")
+
+    def fake_build(request):
+        request.output_dir.mkdir(parents=True, exist_ok=True)
+        return BuildReportV2(
+            status="verified",
+            automatedStatus="passed",
+            sourceClaudePath=str(source),
+            sourceVersion="fixture",
+            sourceVersionOutput="fixture (Claude Code)",
+            activationEligible=True,
+            activationStatus="skipped",
+            enabledPatches=[],
+        )
+
+    monkeypatch.setattr("claude_monkey.cli.build_patchset_v15", fake_build)
+    assert main(
+        [
+            "build",
+            "--source",
+            str(source),
+            "--package",
+            str(package),
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--source-version",
+            "fixture",
+            "--source-version-output",
+            "fixture (Claude Code)",
+            "--json",
+        ]
+    ) == 0
+    parse_json_output(capsys)
+    config_path = tmp_path / "home" / ".claude-monkey" / "config.json"
+    if config_path.exists():
+        assert json.loads(config_path.read_text()).get("activePatchSet") is None

@@ -1,0 +1,1 @@
+y=Tt((Ue)=>Ue.footerSelection==="tasks"&&Ue.coordinatorTaskIndex>=0||Ue.footerSelection==="workflows"),T=Tt((Ue)=>Ue.footerSelection!==null),hCsel=Tt((Ue)=>Ue.footerSelection==="hiddenContext"),S=Tt

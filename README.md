@@ -21,6 +21,13 @@ You point your preferred local coding agent at the instruction file. The actual 
 - [`claude-fable-fallback-patch.md`](claude-fable-fallback-patch.md) - shows Fable fallback events in resumed history and `/resume`.
 - [`claude-reminder-suppression-patch.md`](claude-reminder-suppression-patch.md) - suppresses selected recurring reminder attachments in a copied Claude Code binary.
 
+## ClaudeMonkey packages
+
+- [`packages/fable-fallback`](packages/fable-fallback) - graph-repack package for Fable fallback visibility and `/resume` marking.
+- [`packages/hidden-context-drawer`](packages/hidden-context-drawer) - graph-repack package that adds the footer Hidden Context drawer for model-visible hidden attachment context.
+- [`packages/normal-channel-hidden-context`](packages/normal-channel-hidden-context) - graph-repack package that projects selected hidden model-visible attachment context into the normal transcript as warning rows.
+- [`packages/reminder-suppression`](packages/reminder-suppression) - graph-repack package for suppressing selected recurring reminder renderers.
+
 ## Is this a good idea?
 
 Maybe not? Hard to say. Maybe Anthropic will chime in.

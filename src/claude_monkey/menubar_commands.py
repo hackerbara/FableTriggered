@@ -5,6 +5,7 @@ import queue
 import subprocess
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -17,13 +18,75 @@ class MutatingCommandBusy(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class CapturedProcess:
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+class _BoundedTextCapture:
+    def __init__(self, max_chars: int) -> None:
+        self.max_chars = max_chars
+        self._chunks: list[str] = []
+        self._length = 0
+
+    def append(self, text: str) -> None:
+        if self._length >= self.max_chars:
+            return
+        remaining = self.max_chars - self._length
+        kept = text[:remaining]
+        self._chunks.append(kept)
+        self._length += len(kept)
+
+    def value(self) -> str:
+        return "".join(self._chunks)
+
+
+def _drain_stream(stream, capture: _BoundedTextCapture) -> None:
+    try:
+        while True:
+            chunk = stream.read(8192)
+            if not chunk:
+                break
+            capture.append(chunk)
+    finally:
+        stream.close()
+
+
+def _run_bounded_subprocess(argv: list[str]) -> CapturedProcess:
+    process = subprocess.Popen(  # noqa: S603 - argv is explicit and shell=False.
+        argv,
+        shell=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if process.stdout is None or process.stderr is None:
+        raise RuntimeError("subprocess pipes were not created")
+    stdout_capture = _BoundedTextCapture(MAX_CAPTURE_CHARS)
+    stderr_capture = _BoundedTextCapture(MAX_CAPTURE_CHARS)
+    stdout_thread = threading.Thread(
+        target=_drain_stream, args=(process.stdout, stdout_capture), daemon=True
+    )
+    stderr_thread = threading.Thread(
+        target=_drain_stream, args=(process.stderr, stderr_capture), daemon=True
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+    returncode = process.wait()
+    stdout_thread.join()
+    stderr_thread.join()
+    return CapturedProcess(returncode, stdout_capture.value(), stderr_capture.value())
+
+
 class CommandRunner:
     def __init__(
         self,
         *,
         cli_argv: list[str] | None = None,
         logs_dir: Path,
-        run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+        run: Callable[..., subprocess.CompletedProcess[str]] | None = None,
     ) -> None:
         self.cli_argv = list(cli_argv or ["claude-monkey"])
         self.logs_dir = logs_dir
@@ -82,15 +145,9 @@ class CommandRunner:
 
         try:
             argv = [*self.cli_argv, *args]
-            result = self.run(
-                argv,
-                shell=False,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            stdout = (result.stdout or "")[:MAX_CAPTURE_CHARS]
-            stderr = (result.stderr or "")[:MAX_CAPTURE_CHARS]
+            result = self._run_command(argv)
+            stdout = result.stdout or ""
+            stderr = result.stderr or ""
             self._log(argv, int(result.returncode), stderr)
             if stdout.strip():
                 try:
@@ -121,14 +178,19 @@ class CommandRunner:
 
     def open_path(self, path: Path) -> None:
         expanded = path.expanduser()
-        result = self.run(
-            ["open", str(expanded)],
-            shell=False,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        result = self._run_command(["open", str(expanded)])
         self._log(["open", str(expanded)], int(result.returncode), result.stderr or "")
+
+    def _run_command(self, argv: list[str]) -> CapturedProcess | subprocess.CompletedProcess[str]:
+        if self.run is not None:
+            return self.run(
+                argv,
+                shell=False,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        return _run_bounded_subprocess(argv)
 
     def run_background(self, name: str, args: list[str], *, mutating: bool) -> None:
         def worker() -> None:

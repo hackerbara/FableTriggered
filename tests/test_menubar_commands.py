@@ -114,3 +114,19 @@ def test_nonzero_json_error_envelope_is_preserved(tmp_path):
     assert payload["error"]["code"] == "authorization_denied"
     assert payload["authorizationRequired"] is True
     assert payload["targetPath"] == "/usr/local/bin/claude"
+
+
+def test_default_runner_bounds_subprocess_output_before_error_envelope(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr("claude_monkey.menubar_commands.MAX_CAPTURE_CHARS", 32)
+    runner = CommandRunner(cli_argv=[sys.executable, "-c"], logs_dir=tmp_path)
+
+    payload = runner.run_json(
+        ["import sys; sys.stderr.write('x' * 10_000); sys.exit(1)"], mutating=False
+    )
+
+    assert payload["error"]["code"] == "command_failed"
+    assert payload["error"]["message"] == "x" * 32
+    logged = json.loads(runner.log_path.read_text().splitlines()[-1])
+    assert logged["stderr"] == "x" * 32

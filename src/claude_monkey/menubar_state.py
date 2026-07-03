@@ -6,6 +6,7 @@ from typing import Any
 
 STATUS_LABELS = {
     "ok": "OK",
+    "warning": "Warning",
     "rebuild_required": "Rebuild Required",
     "error": "Error",
     "not_installed": "Not Installed",
@@ -52,7 +53,30 @@ class PromptMenuItem:
     label: str
     checked: bool
     mode: str
-    source_path: Path
+    source_path: Path | None
+
+
+@dataclass(frozen=True)
+class OptionMenuItem:
+    option_id: str
+    label: str
+    enabled: bool
+    valid: bool
+    compatibility_status: str
+    risk_level: str
+    requires_confirmation: bool = False
+    errors: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class HighRiskOptionSummary:
+    option_id: str
+    label: str
+    warning: str
+
+    @property
+    def id(self) -> str:
+        return self.option_id
 
 
 @dataclass(frozen=True)
@@ -82,6 +106,18 @@ class MenuState:
     last_error: ErrorInfo | None
     patch_items: tuple[PatchMenuItem, ...]
     prompt_items: tuple[PromptMenuItem, ...]
+    built_patch_ids: tuple[str, ...] = ()
+    patched_build_active: bool = False
+    target_claude_kind: str = "unknown"
+    active_option_ids: tuple[str, ...] = ()
+    high_risk_options: tuple[HighRiskOptionSummary, ...] = ()
+    compatibility_status: str = "unknown"
+    manifest_compatibility_status: str = "unknown"
+    source_identity_status: str = "unknown"
+    last_build_compatibility_status: str = "unknown"
+    live_validation_status: str = "unknown"
+    compatibility_warnings: tuple[str, ...] = ()
+    option_items: tuple[OptionMenuItem, ...] = ()
 
 
 def _optional_path(value: Any) -> Path | None:
@@ -106,6 +142,15 @@ def _required_bool(raw: dict[str, Any], key: str) -> bool:
 
 def _optional_bool(raw: dict[str, Any], key: str, default: bool = False) -> bool:
     value = raw.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"{key} must be boolean")
+    return value
+
+
+def _bool_if_present(raw: dict[str, Any], key: str) -> bool | None:
+    if key not in raw:
+        return None
+    value = raw[key]
     if not isinstance(value, bool):
         raise ValueError(f"{key} must be boolean")
     return value
@@ -188,13 +233,89 @@ def normalize_status(raw_status: str, rebuild_required: bool, last_error: ErrorI
         return "not_installed"
     if rebuild_required or raw_status == "rebuild_required":
         return "rebuild_required"
+    if raw_status == "warning":
+        return "warning"
     if raw_status == "ok":
         return "ok"
     return "unknown"
 
 
+def _high_risk_options(raw: dict[str, Any]) -> tuple[HighRiskOptionSummary, ...]:
+    return tuple(
+        HighRiskOptionSummary(
+            option_id=str(item["id"]),
+            label=str(item.get("label", item["id"])),
+            warning=str(item["warning"]),
+        )
+        for item in _dict_list(raw, "highRiskOptions")
+    )
+
+
+def _prompt_source_path(item: dict[str, Any]) -> Path | None:
+    if "sourcePath" not in item or item.get("sourcePath") in {None, ""}:
+        return None
+    return Path(str(item["sourcePath"])).expanduser()
+
+
+def _option_items(options_raw: dict[str, Any] | None) -> tuple[OptionMenuItem, ...]:
+    if options_raw is None:
+        return ()
+    _require_schema(options_raw)
+    return tuple(
+        OptionMenuItem(
+            option_id=str(item["id"]),
+            label=str(item.get("label", item["id"])),
+            enabled=_required_bool(item, "enabled"),
+            valid=_required_bool(item, "valid"),
+            compatibility_status=str(item.get("compatibilityStatus", "unknown")),
+            risk_level=str(item.get("riskLevel", "unknown")),
+            requires_confirmation=_optional_bool(item, "requiresConfirmation", False),
+            errors=_string_list(item, "errors"),
+        )
+        for item in _dict_list(options_raw, "options")
+    )
+
+
+def _patch_checked(raw: dict[str, Any], desired_patch_ids: tuple[str, ...]) -> bool:
+    desired = _bool_if_present(raw, "desiredEnabled")
+    if desired is not None:
+        return desired
+    enabled = _bool_if_present(raw, "enabled")
+    if enabled is not None:
+        return enabled
+    return str(raw["id"]) in desired_patch_ids
+
+
+def _patch_active_enabled(raw: dict[str, Any], active_patch_ids: tuple[str, ...]) -> bool:
+    active = _bool_if_present(raw, "activeEnabled")
+    if active is not None:
+        return active
+    return str(raw["id"]) in active_patch_ids
+
+
+def _patch_available(raw: dict[str, Any]) -> bool:
+    available = _bool_if_present(raw, "available")
+    if available is None:
+        available = True
+    valid = _bool_if_present(raw, "valid")
+    if valid is False:
+        return False
+    return available
+
+
+def _prompt_checked(raw: dict[str, Any], active_prompt: Any) -> bool:
+    active = _bool_if_present(raw, "active")
+    if active is None:
+        active = _bool_if_present(raw, "enabled")
+    checked = bool(active) if active is not None else False
+    return checked or str(raw["id"]) == active_prompt
+
+
 def parse_menu_state(
-    status_raw: dict[str, Any], patches_raw: dict[str, Any], prompts_raw: dict[str, Any]
+    status_raw: dict[str, Any],
+    patches_raw: dict[str, Any],
+    prompts_raw: dict[str, Any],
+    options_raw: dict[str, Any] | None = None,
 ) -> MenuState:
     _require_schema(status_raw)
     _require_schema(patches_raw)
@@ -205,13 +326,16 @@ def parse_menu_state(
         str(status_raw.get("status", "unknown")), rebuild_required, last_error
     )
     rebuild_required = rebuild_required or status == "rebuild_required"
+    desired_patch_ids = _string_list(status_raw, "desiredPatchIds")
+    active_patch_ids = _string_list(status_raw, "activePatchIds")
+    active_prompt = status_raw.get("activePrompt")
     patch_items = tuple(
         PatchMenuItem(
             patch_id=str(item["id"]),
             label=str(item.get("label", item["id"])),
-            checked=_required_bool(item, "desiredEnabled"),
-            active_enabled=_required_bool(item, "activeEnabled"),
-            available=_optional_bool(item, "available", True),
+            checked=_patch_checked(item, desired_patch_ids),
+            active_enabled=_patch_active_enabled(item, active_patch_ids),
+            available=_patch_available(item),
             compatibility_status=str(item.get("compatibilityStatus", "unknown")),
             compatibility_message=str(item["compatibilityMessage"])
             if item.get("compatibilityMessage")
@@ -223,9 +347,9 @@ def parse_menu_state(
         PromptMenuItem(
             prompt_id=str(item["id"]),
             label=str(item.get("label", item["id"])),
-            checked=_required_bool(item, "active"),
+            checked=_prompt_checked(item, active_prompt),
             mode=str(item.get("mode", "append")),
-            source_path=Path(str(item.get("sourcePath", ""))).expanduser(),
+            source_path=_prompt_source_path(item),
         )
         for item in _dict_list(prompts_raw, "prompts")
     )
@@ -238,9 +362,9 @@ def parse_menu_state(
         install_mode=str(status_raw.get("installMode", "shim")),
         shim_installed=_optional_bool(status_raw, "shimInstalled", False),
         active_profile=status_raw.get("activeProfile"),
-        active_prompt=status_raw.get("activePrompt"),
-        desired_patch_ids=_string_list(status_raw, "desiredPatchIds"),
-        active_patch_ids=_string_list(status_raw, "activePatchIds"),
+        active_prompt=active_prompt,
+        desired_patch_ids=desired_patch_ids,
+        active_patch_ids=active_patch_ids,
         rebuild_required=rebuild_required,
         latest_build_report_path=_optional_path(status_raw.get("latestBuildReportPath")),
         active_patch_set=status_raw.get("activePatchSet"),
@@ -257,4 +381,20 @@ def parse_menu_state(
         last_error=last_error,
         patch_items=patch_items,
         prompt_items=prompt_items,
+        built_patch_ids=_string_list(status_raw, "builtPatchIds"),
+        patched_build_active=_optional_bool(status_raw, "patchedBuildActive", False),
+        target_claude_kind=str(status_raw.get("targetClaudeKind", "unknown")),
+        active_option_ids=_string_list(status_raw, "activeOptionIds"),
+        high_risk_options=_high_risk_options(status_raw),
+        compatibility_status=str(status_raw.get("compatibilityStatus", "unknown")),
+        manifest_compatibility_status=str(
+            status_raw.get("manifestCompatibilityStatus", "unknown")
+        ),
+        source_identity_status=str(status_raw.get("sourceIdentityStatus", "unknown")),
+        last_build_compatibility_status=str(
+            status_raw.get("lastBuildCompatibilityStatus", "unknown")
+        ),
+        live_validation_status=str(status_raw.get("liveValidationStatus", "unknown")),
+        compatibility_warnings=_string_list(status_raw, "compatibilityWarnings"),
+        option_items=_option_items(options_raw),
     )

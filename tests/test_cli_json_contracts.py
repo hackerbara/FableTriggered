@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 
 from claude_monkey.cli import main
 
@@ -336,9 +335,54 @@ def test_build_json_source_identity_failure_uses_specific_error_code(
     assert "package targets Claude 2.1.198" in payload["error"]["message"]
 
 
-def test_default_source_discovery_resolves_managed_shim_to_cached_clean_source(
-    monkeypatch, tmp_path
+def test_build_json_invalid_v3_package_uses_machine_readable_error_code(
+    monkeypatch, tmp_path, capsys
 ):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    source = tmp_path / "claude"
+    source.write_text("source")
+    package = tmp_path / "demo-patch"
+    package.mkdir()
+    (package / "demo-patch.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "patch",
+                "id": "different-id",
+                "label": "Demo Patch",
+                "description": "Invalid V3 patch envelope",
+                "patch": {"engine": "bun_graph_repack", "targets": []},
+            }
+        )
+    )
+
+    assert (
+        main(
+            [
+                "build",
+                "--source",
+                str(source),
+                "--package",
+                str(package),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--source-version",
+                "fixture",
+                "--source-version-output",
+                "fixture (Claude Code)",
+                "--json",
+            ]
+        )
+        == 1
+    )
+
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["buildReportStatus"] == "failed"
+    assert payload["error"]["code"] == "package_manifest_invalid"
+
+
+def test_default_source_discovery_ignores_managed_shim_on_path(monkeypatch, tmp_path):
     from claude_monkey.cli import _discover_source
     from claude_monkey.install import install_shim_transaction
 
@@ -351,16 +395,15 @@ def test_default_source_discovery_resolves_managed_shim_to_cached_clean_source(
     official.chmod(0o755)
     bin_dir.mkdir()
     target.symlink_to(official)
-    install_shim_transaction(target, tmp_path / "home" / ".claude-monkey", dry_run=False)
+    record = install_shim_transaction(target, tmp_path / "home" / ".claude-monkey", dry_run=False)
     official.unlink()
     monkeypatch.setenv("PATH", str(bin_dir))
 
     discovered = _discover_source(None)
 
-    assert discovered is not None
-    assert discovered.read_bytes() == b"official binary"
-    assert discovered != target
-    assert os.access(discovered, os.X_OK)
+    assert discovered is None
+    raw = json.loads(record.read_text())
+    assert raw["sourcePath"].endswith("versions/2.1.199")
 
 
 def test_status_ignores_stale_install_record(monkeypatch, tmp_path, capsys):
@@ -528,7 +571,7 @@ def test_manual_smoke_pending_json_summary_does_not_claim_activation(monkeypatch
 
 def test_status_with_report_but_no_current_is_not_ok(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("HOME", str(tmp_path))
-    report_dir = tmp_path / ".claude-monkey" / "patchsets" / "fixture" / "default"
+    report_dir = tmp_path / ".claude-monkey" / "versions" / "fixture" / "patchsets" / "default"
     report_dir.mkdir(parents=True)
     (report_dir / "build-report.json").write_text(
         json.dumps({"schemaVersion": 2, "status": "verified", "enabledPatches": []})
@@ -538,7 +581,7 @@ def test_status_with_report_but_no_current_is_not_ok(monkeypatch, tmp_path, caps
         json.dumps(
             {
                 "activeProfile": "default",
-                "profiles": {"default": {"enabledPatches": []}},
+                "profiles": {"default": {"prompt": None, "patches": [], "options": []}},
                 "activePatchSet": str(report_dir),
             }
         )
@@ -633,7 +676,7 @@ def test_status_with_installed_shim_and_missing_active_report_is_rebuild_require
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
     state = tmp_path / ".claude-monkey"
-    patchset = state / "patchsets" / "fixture" / "default"
+    patchset = state / "versions" / "fixture" / "patchsets" / "default"
     patchset.mkdir(parents=True)
     executable = tmp_path / "current-claude"
     executable.write_text("#!/bin/sh\n")
@@ -644,7 +687,7 @@ def test_status_with_installed_shim_and_missing_active_report_is_rebuild_require
         json.dumps(
             {
                 "activeProfile": "default",
-                "profiles": {"default": {"enabledPatches": []}},
+                "profiles": {"default": {"prompt": None, "patches": [], "options": []}},
                 "activePatchSet": str(patchset),
             }
         )
@@ -802,6 +845,7 @@ def test_stale_install_record_does_not_expose_shim_target(monkeypatch, tmp_path,
 
 def test_use_official_json_envelope(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", "")
     official = tmp_path / "official"
     official.write_text("#!/bin/sh\nexit 0\n")
     official.chmod(0o755)
@@ -809,6 +853,14 @@ def test_use_official_json_envelope(monkeypatch, tmp_path, capsys):
     payload = parse_json_output(capsys)
     assert payload["ok"] is True
     assert payload["summary"] == "using official Claude binary"
+    config = json.loads((tmp_path / ".claude-monkey" / "config.json").read_text())
+    assert config["officialClaudePath"] == str(official.resolve())
+
+    assert main(["status", "--json"]) == 0
+    status = parse_json_output(capsys)
+    assert status["officialClaudePath"] == str(official.resolve())
+    assert status["discoveredOfficialClaudePath"] == str(official.resolve())
+    assert status["sourceClaudePath"] == str(official.resolve())
 
 
 def test_use_official_json_missing_inputs_return_envelopes(monkeypatch, tmp_path, capsys):

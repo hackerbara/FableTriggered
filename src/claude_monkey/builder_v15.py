@@ -27,6 +27,7 @@ from claude_monkey.module_patch import (
     plan_module_operations,
     render_changed_module,
 )
+from claude_monkey.package_model import PackageKind, PackageValidationError, load_package_manifest
 from claude_monkey.repack import repack_changed_modules
 from claude_monkey.reports_v2 import BuildReportV2
 from claude_monkey.smoke import (
@@ -64,18 +65,46 @@ class BuildRequestV15:
     activate: bool = False
     current_path: Path | None = None
     command_runner: CommandRunner = run_command
+    manifest_digests: dict[str, str] | None = None
+    build_input_snapshot: dict[str, Any] | None = None
+
+
+def _v3_manifest_as_v2_dict(package_dir: Path) -> dict[str, Any]:
+    manifest = load_package_manifest(package_dir, PackageKind.PATCH)
+    if manifest.patch is None:
+        raise ManifestV2Error("patch_required")
+    return {
+        "schemaVersion": 2,
+        "id": manifest.id,
+        "name": manifest.label,
+        "description": manifest.description,
+        "packageVersion": "0.0.0",
+        "targets": list(manifest.patch.targets),
+    }
 
 
 def load_manifest_v2(package_dir: Path) -> ManifestV2:
-    return load_manifest_v2_dict(json.loads((package_dir / "patch.json").read_text()))
+    patch_json = package_dir / "patch.json"
+    if patch_json.exists():
+        try:
+            data = json.loads(patch_json.read_text())
+        except json.JSONDecodeError as exc:
+            raise ManifestV2Error(f"patch.json malformed_json: {exc.msg}") from exc
+        except OSError as exc:
+            raise ManifestV2Error(f"patch.json read_error: {type(exc).__name__}: {exc}") from exc
+        if not isinstance(data, dict):
+            raise ManifestV2Error("patch.json must be an object")
+        if data.get("schemaVersion") == 2 or (
+            data.get("schemaVersion") == 1 and "kind" not in data
+        ):
+            return load_manifest_v2_dict(data)
+    return load_manifest_v2_dict(_v3_manifest_as_v2_dict(package_dir))
 
 
 def load_payload(ref: PayloadRefV2, package_dir: Path) -> bytes:
     if ref.inline is not None:
         data = (
-            ref.inline.encode("utf-8")
-            if ref.encoding == "utf-8"
-            else base64.b64decode(ref.inline)
+            ref.inline.encode("utf-8") if ref.encoding == "utf-8" else base64.b64decode(ref.inline)
         )
     else:
         assert ref.path is not None
@@ -190,6 +219,8 @@ def validate_package(request: ValidationRequestV15) -> dict[str, Any]:
         return _validation_failure(None, str(exc), str(exc))
     except ModulePatchError as exc:
         return _validation_failure(None, "operation_resolution_failed", str(exc))
+    except PackageValidationError as exc:
+        return _validation_failure(None, "package_manifest_invalid", str(exc))
     except OSError as exc:
         return _validation_failure(None, "filesystem_error", f"{type(exc).__name__}: {exc}")
     except ValueError as exc:
@@ -221,12 +252,26 @@ def _safe_runner(runner: CommandRunner) -> CommandRunner:
 
 def _base_report(request: BuildRequestV15, source: bytes | None = None) -> BuildReportV2:
     source_bytes = source if source is not None else b""
+    source_sha = hashlib.sha256(source_bytes).hexdigest() if source is not None else ""
+    source_size = len(source_bytes) if source is not None else 0
+    source_identity = {
+        "claudeVersion": request.source_version,
+        "versionOutput": request.source_version_output,
+        "sha256": source_sha,
+        "sizeBytes": source_size,
+        "platform": request.platform,
+        "arch": request.arch,
+    }
     return BuildReportV2(
         sourceClaudePath=str(request.source_path),
         sourceVersion=request.source_version,
         sourceVersionOutput=request.source_version_output,
-        sourceSha256=hashlib.sha256(source_bytes).hexdigest() if source is not None else "",
-        sourceSizeBytes=len(source_bytes) if source is not None else 0,
+        sourceSha256=source_sha,
+        sourceSizeBytes=source_size,
+        packageManifestDigests=dict(request.manifest_digests or {}),
+        sourceIdentity=source_identity,
+        buildInputSnapshot=dict(request.build_input_snapshot or {}),
+        compatibility={"status": "compatible", "warnings": []},
     )
 
 
@@ -237,16 +282,38 @@ def _write_failed(
     *,
     source: bytes | None = None,
     enabled: list[str] | None = None,
+    compatibility_status: str | None = None,
 ) -> BuildReportV2:
     report = _base_report(request, source)
     report.status = "failed"
     report.automatedStatus = "failed"
     report.enabledPatches = enabled or []
     report.failureReason = reason
+    if reason.startswith("source_identity_mismatch:"):
+        report.compatibility = {
+            "status": compatibility_status or "source_sha_mismatch",
+            "warnings": [],
+        }
+    elif reason.startswith("package_manifest_invalid:"):
+        report.compatibility = {"status": "package_manifest_invalid", "warnings": []}
     report.activationEligible = False
     report.activationStatus = "blocked" if request.activate else "skipped"
-    report.write(report_path)
+    _write_report(report, report_path)
     return report
+
+
+def _write_report(report: BuildReportV2, report_path: Path) -> None:
+    try:
+        report.write(report_path)
+    except OSError as exc:
+        write_error = f"report_write_failed:{type(exc).__name__}: {exc}"
+        report.status = "failed"
+        report.automatedStatus = "failed"
+        report.activationEligible = False
+        if report.failureReason:
+            report.failureReason = f"{report.failureReason}; {write_error}"
+        else:
+            report.failureReason = write_error
 
 
 def _assert_condition_v2(
@@ -316,6 +383,49 @@ def _source_identity_mismatch_reason(
     return f"source_identity_mismatch:{manifest.id}: {current}; package targets {target_summary}"
 
 
+BUILD_IDENTITY_MISMATCH_PRIORITY = {
+    "source_sha_mismatch": 0,
+    "source_size_mismatch": 1,
+    "platform_mismatch": 2,
+    "arch_mismatch": 3,
+    "version_mismatch": 4,
+    "unknown": 5,
+}
+
+
+def _build_identity_mismatch_status(
+    manifest: ManifestV2, request: BuildRequestV15, source: bytes
+) -> str:
+    statuses = [
+        _target_identity_mismatch_status(target, request, source) for target in manifest.targets
+    ]
+    if not statuses:
+        return "unknown"
+    return min(
+        statuses,
+        key=lambda status: BUILD_IDENTITY_MISMATCH_PRIORITY.get(status, 99),
+    )
+
+
+def _target_identity_mismatch_status(
+    target: TargetV2, request: BuildRequestV15, source: bytes
+) -> str:
+    identity = target.source_identity
+    if identity.claude_version != request.source_version:
+        return "version_mismatch"
+    if identity.version_output != request.source_version_output:
+        return "version_mismatch"
+    if identity.platform != request.platform:
+        return "platform_mismatch"
+    if identity.arch != request.arch:
+        return "arch_mismatch"
+    if identity.sha256 != hashlib.sha256(source).hexdigest():
+        return "source_sha_mismatch"
+    if identity.size_bytes != len(source):
+        return "source_size_mismatch"
+    return "unknown"
+
+
 def _apply_signing_v15(report: BuildReportV2, output: Path, runner: CommandRunner) -> bool:
     safe_runner = _safe_runner(runner)
     sign = codesign_sign(output, safe_runner)
@@ -341,6 +451,14 @@ def _select_packages(
     for package_dir in request.package_dirs:
         try:
             manifest = load_manifest_v2(package_dir)
+        except PackageValidationError as exc:
+            return selected, _write_failed(
+                request,
+                report_path,
+                f"package_manifest_invalid:{package_dir.name}: {exc}",
+                source=source,
+                enabled=[*enabled, package_dir.name],
+            )
         except ManifestV2Error as exc:
             reason = str(exc)
             if reason != "schema_v1_migration_required":
@@ -359,6 +477,7 @@ def _select_packages(
                 _source_identity_mismatch_reason(manifest, request, source),
                 source=source,
                 enabled=enabled,
+                compatibility_status=_build_identity_mismatch_status(manifest, request, source),
             )
         selected.append((package_dir, manifest, matching[0]))
     return selected, None
@@ -468,7 +587,7 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
         blockers: list[str] = []
         if request.run_signing:
             if not _apply_signing_v15(report, output, request.command_runner):
-                report.write(report_path)
+                _write_report(report, report_path)
                 return report
         else:
             report.signingResult = {"status": "skipped"}
@@ -486,7 +605,7 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
             report.status = "failed"
             report.automatedStatus = "failed"
             report.failureReason = "post_sign_inspection_failed"
-            report.write(report_path)
+            _write_report(report, report_path)
             return report
         if request.run_smoke:
             smoke_result = smoke_claude_code_version_and_help(
@@ -497,7 +616,7 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
                 report.status = "failed"
                 report.automatedStatus = "failed"
                 report.failureReason = "smoke_failed"
-                report.write(report_path)
+                _write_report(report, report_path)
                 return report
         else:
             report.skippedGates.append("smoke")
@@ -531,12 +650,12 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
                 report.activationStatus = "blocked"
         else:
             report.activationStatus = "skipped"
-        report.write(report_path)
+        _write_report(report, report_path)
         return report
     except Exception as exc:
         report.status = "failed"
         report.automatedStatus = "failed"
         report.failureReason = str(exc)
         report.activationEligible = False
-        report.write(report_path)
+        _write_report(report, report_path)
         return report

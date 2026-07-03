@@ -4,7 +4,9 @@ import json
 
 from tests.fixtures_bun import build_aligned_macho_fixture, build_macho_fixture
 
+from claude_monkey.builder_v15 import BuildRequestV15
 from claude_monkey.cli import main
+from claude_monkey.reports_v2 import BuildReportV2
 
 
 def read_json(capsys):
@@ -151,8 +153,6 @@ def test_build_json_uses_v15_repack_engine_with_skip_gates(tmp_path, capsys):
 
 
 def test_build_manual_smoke_pending_does_not_set_active_patchset(monkeypatch, tmp_path, capsys):
-    from claude_monkey.reports_v2 import BuildReportV2
-
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     source = tmp_path / "claude"
     source.write_bytes(build_macho_fixture()[0])
@@ -199,6 +199,69 @@ def test_build_manual_smoke_pending_does_not_set_active_patchset(monkeypatch, tm
         assert json.loads(config_path.read_text())["activePatchSet"] is None
 
 
+def test_build_explicit_v3_package_snapshot_uses_actual_package_ids(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    source = tmp_path / "claude"
+    source.write_bytes(b"source")
+    package = tmp_path / "demo-patch"
+    package.mkdir()
+    (package / "demo-patch.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "patch",
+                "id": "demo-patch",
+                "label": "Demo Patch",
+                "description": "Demo package",
+                "patch": {"engine": "bun_graph_repack", "targets": []},
+            }
+        )
+    )
+    captured: dict[str, BuildRequestV15] = {}
+
+    def fake_build(request: BuildRequestV15) -> BuildReportV2:
+        captured["request"] = request
+        request.output_dir.mkdir(parents=True, exist_ok=True)
+        return BuildReportV2(
+            status="verified",
+            automatedStatus="passed",
+            sourceClaudePath=str(source),
+            sourceVersion="fixture",
+            sourceVersionOutput="fixture (Claude Code)",
+            activationEligible=True,
+            activationStatus="skipped",
+            enabledPatches=["demo-patch"],
+        )
+
+    monkeypatch.setattr("claude_monkey.cli.build_patchset_v15", fake_build)
+
+    assert (
+        main(
+            [
+                "build",
+                "--source",
+                str(source),
+                "--package",
+                str(package),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--source-version",
+                "fixture",
+                "--source-version-output",
+                "fixture (Claude Code)",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+    request = captured["request"]
+    assert request.build_input_snapshot["patches"] == ["demo-patch"]
+    assert list(request.manifest_digests) == ["demo-patch"]
+
+
 def test_validate_package_json_reports_schema_v1_without_traceback(tmp_path, capsys):
     binary = tmp_path / "claude"
     binary.write_bytes(b"notmacho")
@@ -227,6 +290,49 @@ def test_validate_package_json_reports_schema_v1_without_traceback(tmp_path, cap
     payload = json.loads(captured.out)
     assert payload["ok"] is False
     assert payload["errorCode"] == "schema_v1_migration_required"
+
+
+def test_validate_package_json_reports_invalid_v3_envelope_with_machine_code(
+    tmp_path, capsys
+):
+    binary = tmp_path / "claude"
+    binary.write_bytes(b"notmacho")
+    package = tmp_path / "demo-patch"
+    package.mkdir()
+    (package / "demo-patch.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "patch",
+                "id": "different-id",
+                "label": "Demo Patch",
+                "description": "Invalid V3 patch envelope",
+                "patch": {"engine": "bun_graph_repack", "targets": []},
+            }
+        )
+    )
+
+    rc = main(
+        [
+            "validate-package",
+            "--source",
+            str(binary),
+            "--package",
+            str(package),
+            "--source-version",
+            "fixture",
+            "--source-version-output",
+            "fixture",
+            "--json",
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["ok"] is False
+    assert payload["errorCode"] == "package_manifest_invalid"
 
 
 def test_validate_package_json_reports_non_macho_without_traceback(tmp_path, capsys):

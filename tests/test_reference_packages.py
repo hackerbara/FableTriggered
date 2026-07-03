@@ -116,8 +116,8 @@ def test_normal_channel_hidden_context_projects_hidden_attachments_before_filter
 def test_normal_channel_hidden_context_projection_payload_handles_known_records():
     package_dir = ROOT / "packages" / "normal-channel-hidden-context"
     helper_payload = (package_dir / "payloads" / "projection-helpers-before-jlr.js").read_text()
-    helper_block = helper_payload.removesuffix("function Jur(e){\n").removesuffix(
-        "function Jur(e){"
+    helper_block = helper_payload.removesuffix("function Jlr(e){\n").removesuffix(
+        "function Jlr(e){"
     )
     script = f"""
 {helper_block}

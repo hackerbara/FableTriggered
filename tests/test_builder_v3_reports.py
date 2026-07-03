@@ -8,6 +8,7 @@ from tests.fixtures_bun import MODULE_0, build_aligned_macho_fixture
 
 from claude_monkey.builder_v15 import BuildRequestV15, build_patchset_v15
 from claude_monkey.package_model import PackageKind, load_package_manifest, manifest_digest
+from claude_monkey.reports_v2 import BuildReportV2
 from claude_monkey.smoke import CommandResult
 
 
@@ -224,3 +225,62 @@ def test_invalid_v3_patch_package_writes_failure_report_with_summary_fields(tmp_
     }
     assert raw["compatibility"] == {"status": "package_manifest_invalid", "warnings": []}
     assert "package_manifest_invalid:demo-patch" in raw["failureReason"]
+
+
+def test_malformed_patch_json_writes_failure_report_with_summary_fields(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    package = tmp_path / "demo-patch"
+    package.mkdir()
+    (package / "patch.json").write_text("{not json")
+
+    report = build_patchset_v15(request_for(source, tmp_path / "out", package, "0" * 64))
+
+    raw = json.loads((tmp_path / "out" / "build-report.json").read_text())
+    assert report.status == "failed"
+    assert raw["schemaVersion"] == 3
+    assert raw["packageManifestDigests"] == {"demo-patch": "0" * 64}
+    assert raw["sourceIdentity"] == {
+        "claudeVersion": "fixture",
+        "versionOutput": "fixture",
+        "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+        "sizeBytes": source.stat().st_size,
+        "platform": "darwin",
+        "arch": "arm64",
+    }
+    assert raw["buildInputSnapshot"] == {
+        "patches": ["demo-patch"],
+        "promptAtBuildTime": "research",
+        "optionsAtBuildTime": ["local-session-defaults"],
+    }
+    assert "manifest_v2_invalid:" in raw["failureReason"]
+
+
+def test_failure_report_write_error_keeps_original_failure_reason_visible(
+    tmp_path, monkeypatch
+):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    package = tmp_path / "demo-patch"
+    write_json(
+        package / "demo-patch.json",
+        {
+            "schemaVersion": 1,
+            "kind": "patch",
+            "id": "different-id",
+            "label": "Demo Patch",
+            "description": "Invalid V3 patch envelope",
+            "patch": {"engine": "bun_graph_repack", "targets": []},
+        },
+    )
+
+    def fail_write(self, path):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(BuildReportV2, "write", fail_write)
+
+    report = build_patchset_v15(request_for(source, tmp_path / "out", package, "0" * 64))
+
+    assert report.status == "failed"
+    assert "package_manifest_invalid:demo-patch" in report.failureReason
+    assert "report_write_failed:OSError: disk full" in report.failureReason

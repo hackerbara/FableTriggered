@@ -783,6 +783,7 @@ BUILD_ERROR_CODES = {
     "operation_resolution_failed": "operation_resolution_failed",
     "precondition_failed": "precondition_failed",
     "postcondition_failed": "postcondition_failed",
+    "package_manifest_invalid": "package_manifest_invalid",
     "patch_conflict": "patch_conflict",
     "signing_failed": "signing_failed",
     "post_sign_inspection_failed": "post_sign_inspection_failed",

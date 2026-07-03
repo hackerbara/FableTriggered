@@ -148,7 +148,10 @@ def test_report_status_acceptance_with_patched_current_and_official_fallback(
     home = tmp_path / "home"
     state = home / ".claude-monkey"
     monkeypatch.setenv("HOME", str(home))
-    official = make_executable(tmp_path / "official" / "claude")
+    official = make_executable(
+        tmp_path / "official" / "claude",
+        "#!/bin/sh\necho '2.1.199 (Claude Code)'\n",
+    )
     patch_id = "fable-fallback"
     digest = seed_patch_package(state, patch_id)
     patchset = state / "versions" / "2.1.199" / "patchsets" / "default"

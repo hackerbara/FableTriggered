@@ -251,7 +251,7 @@ def _source_matches_report(source: dict[str, Any], report: dict[str, Any] | None
     report_identity = _source_identity_from_report(report)
     if not source or not report_identity:
         return True
-    for key in ("path", "sha256", "sizeBytes"):
+    for key in ("sha256", "sizeBytes", "claudeVersion", "versionOutput", "platform", "arch"):
         expected = report_identity.get(key)
         if expected is None:
             continue

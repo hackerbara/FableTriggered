@@ -86,7 +86,14 @@ def _v3_manifest_as_v2_dict(package_dir: Path) -> dict[str, Any]:
 def load_manifest_v2(package_dir: Path) -> ManifestV2:
     patch_json = package_dir / "patch.json"
     if patch_json.exists():
-        data = json.loads(patch_json.read_text())
+        try:
+            data = json.loads(patch_json.read_text())
+        except json.JSONDecodeError as exc:
+            raise ManifestV2Error(f"patch.json malformed_json: {exc.msg}") from exc
+        except OSError as exc:
+            raise ManifestV2Error(f"patch.json read_error: {type(exc).__name__}: {exc}") from exc
+        if not isinstance(data, dict):
+            raise ManifestV2Error("patch.json must be an object")
         if data.get("schemaVersion") == 2 or (
             data.get("schemaVersion") == 1 and "kind" not in data
         ):
@@ -214,6 +221,8 @@ def validate_package(request: ValidationRequestV15) -> dict[str, Any]:
         return _validation_failure(None, str(exc), str(exc))
     except ModulePatchError as exc:
         return _validation_failure(None, "operation_resolution_failed", str(exc))
+    except PackageValidationError as exc:
+        return _validation_failure(None, "package_manifest_invalid", str(exc))
     except OSError as exc:
         return _validation_failure(None, "filesystem_error", f"{type(exc).__name__}: {exc}")
     except ValueError as exc:
@@ -287,8 +296,22 @@ def _write_failed(
         report.compatibility = {"status": "package_manifest_invalid", "warnings": []}
     report.activationEligible = False
     report.activationStatus = "blocked" if request.activate else "skipped"
-    report.write(report_path)
+    _write_report(report, report_path)
     return report
+
+
+def _write_report(report: BuildReportV2, report_path: Path) -> None:
+    try:
+        report.write(report_path)
+    except OSError as exc:
+        write_error = f"report_write_failed:{type(exc).__name__}: {exc}"
+        report.status = "failed"
+        report.automatedStatus = "failed"
+        report.activationEligible = False
+        if report.failureReason:
+            report.failureReason = f"{report.failureReason}; {write_error}"
+        else:
+            report.failureReason = write_error
 
 
 def _assert_condition_v2(
@@ -518,7 +541,7 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
         blockers: list[str] = []
         if request.run_signing:
             if not _apply_signing_v15(report, output, request.command_runner):
-                report.write(report_path)
+                _write_report(report, report_path)
                 return report
         else:
             report.signingResult = {"status": "skipped"}
@@ -536,7 +559,7 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
             report.status = "failed"
             report.automatedStatus = "failed"
             report.failureReason = "post_sign_inspection_failed"
-            report.write(report_path)
+            _write_report(report, report_path)
             return report
         if request.run_smoke:
             smoke_result = smoke_claude_code_version_and_help(
@@ -547,7 +570,7 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
                 report.status = "failed"
                 report.automatedStatus = "failed"
                 report.failureReason = "smoke_failed"
-                report.write(report_path)
+                _write_report(report, report_path)
                 return report
         else:
             report.skippedGates.append("smoke")
@@ -581,12 +604,12 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
                 report.activationStatus = "blocked"
         else:
             report.activationStatus = "skipped"
-        report.write(report_path)
+        _write_report(report, report_path)
         return report
     except Exception as exc:
         report.status = "failed"
         report.automatedStatus = "failed"
         report.failureReason = str(exc)
         report.activationEligible = False
-        report.write(report_path)
+        _write_report(report, report_path)
         return report

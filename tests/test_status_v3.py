@@ -243,6 +243,27 @@ def test_status_payload_uses_live_source_identity_when_report_source_is_stale(
     assert payload["rebuildRequired"] is True
 
 
+def test_status_source_path_drift_does_not_require_rebuild_for_same_identity(
+    monkeypatch, tmp_path
+):
+    state, source, source_sha = seed_matching_state(tmp_path, monkeypatch)
+    source_copy = tmp_path / "different-path" / "claude"
+    source_copy.parent.mkdir(parents=True)
+    source_copy.write_bytes(source.read_bytes())
+    source_copy.chmod(source.stat().st_mode)
+    config = json.loads((state / "config.json").read_text())
+    config["officialClaudePath"] = str(source_copy)
+    write_json(state / "config.json", config)
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["sourceClaudePath"] == str(source_copy)
+    assert payload["sourceSha256"] == source_sha
+    assert payload["sourceIdentityStatus"] == "compatible"
+    assert payload["compatibilityStatus"] == "compatible"
+    assert payload["rebuildRequired"] is False
+
+
 def test_status_payload_does_not_claim_report_patch_ids_for_other_current_patchset(
     monkeypatch, tmp_path
 ):

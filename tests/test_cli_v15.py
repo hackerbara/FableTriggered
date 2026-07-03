@@ -292,6 +292,49 @@ def test_validate_package_json_reports_schema_v1_without_traceback(tmp_path, cap
     assert payload["errorCode"] == "schema_v1_migration_required"
 
 
+def test_validate_package_json_reports_invalid_v3_envelope_with_machine_code(
+    tmp_path, capsys
+):
+    binary = tmp_path / "claude"
+    binary.write_bytes(b"notmacho")
+    package = tmp_path / "demo-patch"
+    package.mkdir()
+    (package / "demo-patch.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "patch",
+                "id": "different-id",
+                "label": "Demo Patch",
+                "description": "Invalid V3 patch envelope",
+                "patch": {"engine": "bun_graph_repack", "targets": []},
+            }
+        )
+    )
+
+    rc = main(
+        [
+            "validate-package",
+            "--source",
+            str(binary),
+            "--package",
+            str(package),
+            "--source-version",
+            "fixture",
+            "--source-version-output",
+            "fixture",
+            "--json",
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["ok"] is False
+    assert payload["errorCode"] == "package_manifest_invalid"
+
+
 def test_validate_package_json_reports_non_macho_without_traceback(tmp_path, capsys):
     package = tmp_path / "pkg"
     package.mkdir()

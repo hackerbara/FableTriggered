@@ -335,6 +335,53 @@ def test_build_json_source_identity_failure_uses_specific_error_code(
     assert "package targets Claude 2.1.198" in payload["error"]["message"]
 
 
+def test_build_json_invalid_v3_package_uses_machine_readable_error_code(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    source = tmp_path / "claude"
+    source.write_text("source")
+    package = tmp_path / "demo-patch"
+    package.mkdir()
+    (package / "demo-patch.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "patch",
+                "id": "different-id",
+                "label": "Demo Patch",
+                "description": "Invalid V3 patch envelope",
+                "patch": {"engine": "bun_graph_repack", "targets": []},
+            }
+        )
+    )
+
+    assert (
+        main(
+            [
+                "build",
+                "--source",
+                str(source),
+                "--package",
+                str(package),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--source-version",
+                "fixture",
+                "--source-version-output",
+                "fixture (Claude Code)",
+                "--json",
+            ]
+        )
+        == 1
+    )
+
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["buildReportStatus"] == "failed"
+    assert payload["error"]["code"] == "package_manifest_invalid"
+
+
 def test_default_source_discovery_ignores_managed_shim_on_path(monkeypatch, tmp_path):
     from claude_monkey.cli import _discover_source
     from claude_monkey.install import install_shim_transaction

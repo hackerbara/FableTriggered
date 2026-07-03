@@ -5,13 +5,21 @@ import hashlib
 import json
 import os
 import stat
+from collections.abc import Callable
 from pathlib import Path
 from time import time
 
 from claude_monkey import authorization
+from claude_monkey.progress import StageTracker
 from claude_monkey.shim import write_shim
 
 OWNER_MARKER = "ClaudeMonkey managed shim"
+
+SHIM_STAGES: tuple[tuple[str, str], ...] = (
+    ("preflight", "Preflight checks"),
+    ("record", "Write install record"),
+    ("swap", "Swap shim"),
+)
 
 
 class ProtectedTargetRestoreUnavailable(RuntimeError):
@@ -172,26 +180,43 @@ def protected_install_requires_refusal(target_path: Path, record_path: Path) -> 
     return True
 
 
-def install_shim_transaction(target_path: Path, state_dir: Path, dry_run: bool) -> Path:
+def install_shim_transaction(
+    target_path: Path,
+    state_dir: Path,
+    dry_run: bool,
+    *,
+    on_event: Callable[[dict], None] | None = None,
+) -> Path:
+    tracker = StageTracker(on_event)
+    tracker.plan(SHIM_STAGES)
     record_path = state_dir / "install-record.json"
-    if protected_install_requires_refusal(target_path, record_path):
-        raise ProtectedTargetRestoreUnavailable(
-            f"refusing to overwrite protected existing target without safe restore: {target_path}"
+    tracker.start("preflight")
+    try:
+        if protected_install_requires_refusal(target_path, record_path):
+            raise ProtectedTargetRestoreUnavailable(
+                "refusing to overwrite protected existing target without safe restore: "
+                f"{target_path}"
+            )
+        existing_record = _existing_managed_record(record_path, target_path)
+        previous = (
+            {
+                key: value
+                for key, value in existing_record.items()
+                if key.startswith("previous") or key == "sourcePath"
+            }
+            if existing_record is not None
+            else describe_existing(target_path)
         )
-    existing_record = _existing_managed_record(record_path, target_path)
-    previous = (
-        {
-            key: value
-            for key, value in existing_record.items()
-            if key.startswith("previous") or key == "sourcePath"
-        }
-        if existing_record is not None
-        else describe_existing(target_path)
-    )
-    if not dry_run:
-        state_dir.mkdir(parents=True, exist_ok=True)
-        if existing_record is None:
-            previous.update(_cache_previous_source(target_path, state_dir))
+    except ProtectedTargetRestoreUnavailable as exc:
+        tracker.fail(str(exc))
+        raise
+    tracker.done()
+    if dry_run:
+        return record_path
+    tracker.start("record")
+    state_dir.mkdir(parents=True, exist_ok=True)
+    if existing_record is None:
+        previous.update(_cache_previous_source(target_path, state_dir))
     record = {
         "owner": OWNER_MARKER,
         "targetPath": str(target_path),
@@ -200,16 +225,18 @@ def install_shim_transaction(target_path: Path, state_dir: Path, dry_run: bool) 
         "installedShimSha256": shim_digest(state_dir),
         **previous,
     }
-    if dry_run:
-        return record_path
     record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    tracker.done()
+    tracker.start("swap")
     try:
         _write_shim_to_target(target_path, state_dir)
-    except Exception:
+    except Exception as exc:
+        tracker.fail(str(exc))
         record_path.unlink(missing_ok=True)
         for tmp in _install_tmp_candidates(target_path, state_dir):
             tmp.unlink(missing_ok=True)
         raise
+    tracker.done()
     return record_path
 
 
@@ -223,27 +250,48 @@ def current_target_is_installed_shim(target_path: Path, record: dict) -> bool:
     return isinstance(expected, str) and sha256_bytes(target_path.read_bytes()) == expected
 
 
-def restore_install_transaction(target_path: Path, record_path: Path, force: bool) -> bool:
+def restore_install_transaction(
+    target_path: Path,
+    record_path: Path,
+    force: bool,
+    *,
+    on_event: Callable[[dict], None] | None = None,
+) -> bool:
+    tracker = StageTracker(on_event)
+    tracker.plan(SHIM_STAGES)
+    tracker.start("preflight")
     if not record_path.exists():
+        tracker.fail("no install record")
         return False
     record = json.loads(record_path.read_text())
     if record.get("owner") != OWNER_MARKER and not force:
+        tracker.fail("record owned by another tool")
         return False
     if record.get("targetPath") != str(target_path) and not force:
+        tracker.fail("target is not the managed shim")
         return False
     if not force and not current_target_is_installed_shim(target_path, record):
+        tracker.fail("target is not the managed shim")
         return False
+    tracker.done()
+
+    tracker.start("record")
     previous_type = record.get("previousType")
     needs_authorization = authorization.target_needs_authorization(target_path)
+    if previous_type not in {"missing", "symlink", "file"}:
+        tracker.fail("unsupported previous type")
+        return False
+    tracker.done()
+
+    tracker.start("swap")
     if needs_authorization:
-        if previous_type not in {"missing", "symlink", "file"}:
-            return False
         # The install record lives in the user-writable state directory. For a
         # protected target, do not let that mutable record drive elevated writes
         # of file bytes or symlink destinations. The narrow privileged operation
         # for protected uninstall is remove-only; richer restore can be added
         # later with integrity protected prior-payload storage.
         _privileged_remove(target_path)
+        tracker.done()
         return True
     if previous_type == "missing":
         target_path.unlink(missing_ok=True)
@@ -253,7 +301,8 @@ def restore_install_transaction(target_path: Path, record_path: Path, force: boo
         tmp.symlink_to(record["previousTarget"])
         try:
             tmp.replace(target_path)
-        except Exception:
+        except Exception as exc:
+            tracker.fail(str(exc))
             tmp.unlink(missing_ok=True)
             raise
     elif previous_type == "file":
@@ -267,11 +316,11 @@ def restore_install_transaction(target_path: Path, record_path: Path, force: boo
         tmp.chmod(int(record.get("previousMode", 0o755)))
         try:
             tmp.replace(target_path)
-        except Exception:
+        except Exception as exc:
+            tracker.fail(str(exc))
             tmp.unlink(missing_ok=True)
             raise
-    else:
-        return False
+    tracker.done()
     return True
 
 

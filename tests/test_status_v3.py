@@ -262,6 +262,25 @@ def test_status_payload_does_not_claim_report_patch_ids_for_other_current_patchs
     assert payload["rebuildRequired"] is True
 
 
+def test_status_payload_requires_rebuild_when_active_report_lacks_manifest_digests(
+    monkeypatch, tmp_path
+):
+    state, _source, _source_sha = seed_matching_state(tmp_path, monkeypatch)
+    report_path = (
+        state / "versions" / "2.1.199" / "patchsets" / "default" / "build-report.json"
+    )
+    report = json.loads(report_path.read_text())
+    report.pop("packageManifestDigests")
+    write_json(report_path, report)
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["rebuildRequired"] is True
+    assert "enabled patch package manifest digest missing from last build" in payload[
+        "compatibilityWarnings"
+    ]
+
+
 
 def test_status_cli_reports_official_fallback_with_desired_patches(monkeypatch, tmp_path, capsys):
     state, _source, _sha = seed_matching_state(tmp_path, monkeypatch)

@@ -185,3 +185,42 @@ def test_v3_patch_package_failure_report_preserves_summary_envelope_fields(tmp_p
     }
     assert raw["compatibility"] == {"status": "source_sha_mismatch", "warnings": []}
     assert "source_identity_mismatch:demo-patch" in raw["failureReason"]
+
+
+def test_invalid_v3_patch_package_writes_failure_report_with_summary_fields(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    package = tmp_path / "demo-patch"
+    write_json(
+        package / "demo-patch.json",
+        {
+            "schemaVersion": 1,
+            "kind": "patch",
+            "id": "different-id",
+            "label": "Demo Patch",
+            "description": "Invalid V3 patch envelope",
+            "patch": {"engine": "bun_graph_repack", "targets": []},
+        },
+    )
+
+    report = build_patchset_v15(request_for(source, tmp_path / "out", package, "0" * 64))
+
+    raw = json.loads((tmp_path / "out" / "build-report.json").read_text())
+    assert report.status == "failed"
+    assert raw["schemaVersion"] == 3
+    assert raw["packageManifestDigests"] == {"demo-patch": "0" * 64}
+    assert raw["sourceIdentity"] == {
+        "claudeVersion": "fixture",
+        "versionOutput": "fixture",
+        "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+        "sizeBytes": source.stat().st_size,
+        "platform": "darwin",
+        "arch": "arm64",
+    }
+    assert raw["buildInputSnapshot"] == {
+        "patches": ["demo-patch"],
+        "promptAtBuildTime": "research",
+        "optionsAtBuildTime": ["local-session-defaults"],
+    }
+    assert raw["compatibility"] == {"status": "package_manifest_invalid", "warnings": []}
+    assert "package_manifest_invalid:demo-patch" in raw["failureReason"]

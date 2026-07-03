@@ -27,7 +27,7 @@ from claude_monkey.module_patch import (
     plan_module_operations,
     render_changed_module,
 )
-from claude_monkey.package_model import PackageKind, load_package_manifest
+from claude_monkey.package_model import PackageKind, PackageValidationError, load_package_manifest
 from claude_monkey.repack import repack_changed_modules
 from claude_monkey.reports_v2 import BuildReportV2
 from claude_monkey.smoke import (
@@ -283,6 +283,8 @@ def _write_failed(
     report.failureReason = reason
     if reason.startswith("source_identity_mismatch:"):
         report.compatibility = {"status": "source_sha_mismatch", "warnings": []}
+    elif reason.startswith("package_manifest_invalid:"):
+        report.compatibility = {"status": "package_manifest_invalid", "warnings": []}
     report.activationEligible = False
     report.activationStatus = "blocked" if request.activate else "skipped"
     report.write(report_path)
@@ -381,6 +383,14 @@ def _select_packages(
     for package_dir in request.package_dirs:
         try:
             manifest = load_manifest_v2(package_dir)
+        except PackageValidationError as exc:
+            return selected, _write_failed(
+                request,
+                report_path,
+                f"package_manifest_invalid:{package_dir.name}: {exc}",
+                source=source,
+                enabled=[*enabled, package_dir.name],
+            )
         except ManifestV2Error as exc:
             reason = str(exc)
             if reason != "schema_v1_migration_required":

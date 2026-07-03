@@ -372,6 +372,12 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
     last_build_status, build_warnings = _last_build_compatibility(report)
     current_digests = _manifest_digests(patch_manifests)
     reported_digests = _reported_manifest_digests(report)
+    digest_missing = bool(
+        desired_patch_ids
+        and current_digests
+        and report is not None
+        and any(pid not in reported_digests for pid in desired_patch_ids)
+    )
     digest_mismatch = bool(
         desired_patch_ids
         and reported_digests
@@ -396,6 +402,7 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
         desired_patch_ids != built_patch_ids
         or desired_patch_ids != active_patch_ids
         or active_report_missing
+        or digest_missing
         or digest_mismatch
         or source_status not in {"compatible", "unknown"}
         or source_report_mismatch
@@ -407,6 +414,10 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
         *patch_warnings,
         *build_warnings,
     ]
+    if digest_missing:
+        compatibility_warnings.append(
+            "enabled patch package manifest digest missing from last build"
+        )
     if digest_mismatch:
         compatibility_warnings.append("enabled patch package manifest changed since last build")
     if source_report_mismatch:

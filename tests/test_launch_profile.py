@@ -4,12 +4,16 @@ from pathlib import Path
 
 import pytest
 
+from claude_monkey.config import ClaudeMonkeyConfig, LaunchProfile
 from claude_monkey.launch_profile import (
     MANAGEMENT_TOKENS,
     LaunchMergeInput,
     LaunchTarget,
+    LoadedLaunchPackages,
     is_management_invocation,
+    load_active_launch_packages,
     merge_launch_profile,
+    select_launch_target,
 )
 from claude_monkey.package_model import (
     EnvConflict,
@@ -20,6 +24,7 @@ from claude_monkey.package_model import (
     PromptPackage,
     PromptSource,
 )
+from claude_monkey.paths import StatePaths
 
 
 def manifest(
@@ -261,3 +266,90 @@ def test_secret_env_redacted_when_process_env_wins(tmp_path):
     assert result.env["API_KEY"] == "process-secret"
     assert result.env_preview["API_KEY"] == "<redacted>"
     assert {"kind": "option_env", "id": "secrets", "reason": "process_env_wins"} in result.skipped
+
+
+def test_load_active_launch_packages_skips_missing_packages_with_warnings(tmp_path):
+    paths = StatePaths(state_dir=tmp_path / ".claude-monkey")
+    config = ClaudeMonkeyConfig(
+        activeProfile="default",
+        profiles={
+            "default": LaunchProfile(prompt="missing-prompt", options=["missing-option"])
+        },
+    )
+
+    loaded = load_active_launch_packages(paths, config)
+
+    assert isinstance(loaded, LoadedLaunchPackages)
+    assert loaded.prompt is None
+    assert loaded.options == []
+    assert {"kind": "prompt", "id": "missing-prompt", "reason": "missing"} in loaded.skipped
+    assert {"kind": "option", "id": "missing-option", "reason": "missing"} in loaded.skipped
+    assert any("missing-prompt" in warning for warning in loaded.warnings)
+    assert any("missing-option" in warning for warning in loaded.warnings)
+
+
+def test_load_active_launch_packages_skips_invalid_option_with_warning(tmp_path):
+    paths = StatePaths(state_dir=tmp_path / ".claude-monkey")
+    option_dir = paths.options_dir / "bad-option"
+    option_dir.mkdir(parents=True)
+    (option_dir / "bad-option.json").write_text(
+        """
+        {
+          "schemaVersion": 1,
+          "kind": "prompt",
+          "id": "bad-option",
+          "label": "Bad option",
+          "description": "Wrong bucket",
+          "prompt": {"mode": "append", "source": {"path": "prompt.md"}}
+        }
+        """
+    )
+    config = ClaudeMonkeyConfig(
+        activeProfile="default",
+        profiles={"default": LaunchProfile(options=["bad-option"])},
+    )
+
+    loaded = load_active_launch_packages(paths, config)
+
+    assert loaded.prompt is None
+    assert loaded.options == []
+    assert {"kind": "option", "id": "bad-option", "reason": "invalid"} in loaded.skipped
+    assert any("bad-option" in warning and "invalid" in warning for warning in loaded.warnings)
+
+
+def test_select_launch_target_uses_executable_managed_patched_current(tmp_path):
+    paths = StatePaths(state_dir=tmp_path / ".claude-monkey")
+    patched = paths.patchset_dir("2.1.199", "default") / "claude"
+    patched.parent.mkdir(parents=True)
+    patched.write_text("#!/bin/sh\necho patched\n")
+    patched.chmod(0o755)
+    paths.current_path.parent.mkdir(parents=True, exist_ok=True)
+    paths.current_path.symlink_to(patched)
+    config = ClaudeMonkeyConfig(
+        activeProfile="default", profiles={"default": LaunchProfile()}
+    )
+
+    target = select_launch_target(paths, config, {"PATH": ""})
+
+    assert target is not None
+    assert target.kind == "patched"
+    assert target.path == patched.resolve()
+
+
+def test_select_launch_target_uses_official_fallback_when_current_unusable(tmp_path):
+    paths = StatePaths(state_dir=tmp_path / ".claude-monkey")
+    official = tmp_path / "official" / "claude"
+    official.parent.mkdir(parents=True)
+    official.write_text("#!/bin/sh\necho official\n")
+    official.chmod(0o755)
+    config = ClaudeMonkeyConfig(
+        activeProfile="default",
+        profiles={"default": LaunchProfile()},
+        officialClaudePath=str(official),
+    )
+
+    target = select_launch_target(paths, config, {"PATH": ""})
+
+    assert target is not None
+    assert target.kind == "official_fallback"
+    assert target.path == official.resolve()

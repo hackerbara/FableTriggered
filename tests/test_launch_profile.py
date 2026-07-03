@@ -353,3 +353,31 @@ def test_select_launch_target_uses_official_fallback_when_current_unusable(tmp_p
     assert target is not None
     assert target.kind == "official_fallback"
     assert target.path == official.resolve()
+
+
+def test_user_argv_conflict_matches_equals_form(tmp_path):
+    option = option_manifest(
+        tmp_path,
+        "opus",
+        argv=("--model", "opus"),
+        conflicts_with_argv=("--model",),
+    )
+
+    result = merge(user_argv=["--model=sonnet"], options=[option])
+
+    assert result.argv == ["--model=sonnet"]
+    assert result.skipped == [
+        {"kind": "option_argv", "id": "opus", "reason": "user_argv_conflict"}
+    ]
+
+
+def test_duplicate_option_argv_skips_whole_option_contribution(tmp_path):
+    first = option_manifest(tmp_path, "opus", argv=("--model", "opus"))
+    second = option_manifest(tmp_path, "sonnet", argv=("--model", "sonnet"))
+
+    result = merge(options=[first, second])
+
+    assert result.argv == ["--model", "opus"]
+    assert result.skipped == [
+        {"kind": "option_argv", "id": "sonnet", "reason": "duplicate_argv"}
+    ]

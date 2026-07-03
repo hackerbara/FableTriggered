@@ -72,12 +72,25 @@ def test_direct_managed_patchset_path_is_rejected(tmp_path):
     assert found is None
 
 
-def test_resolved_current_symlink_target_is_rejected(tmp_path):
+def test_managed_current_symlink_target_is_rejected(tmp_path):
     paths = StatePaths(state_dir=tmp_path / ".claude-monkey")
-    external = executable(tmp_path / "external" / "claude")
+    managed = executable(
+        paths.state_dir / "versions" / "2.1.199" / "patchsets" / "default" / "claude"
+    )
     paths.current_path.parent.mkdir(parents=True, exist_ok=True)
-    paths.current_path.symlink_to(external)
+    paths.current_path.symlink_to(managed)
 
-    found = discover_official_claude(config(str(external.resolve())), paths, {}, lambda _: None)
+    found = discover_official_claude(config(str(managed.resolve())), paths, {}, lambda _: None)
 
     assert found is None
+
+
+def test_external_official_current_target_remains_discoverable(tmp_path):
+    paths = StatePaths(state_dir=tmp_path / ".claude-monkey")
+    official = executable(tmp_path / "official" / "claude")
+    paths.current_path.parent.mkdir(parents=True, exist_ok=True)
+    paths.current_path.symlink_to(official)
+
+    found = discover_official_claude(config(str(official)), paths, {}, lambda _: None)
+
+    assert found == official.resolve()

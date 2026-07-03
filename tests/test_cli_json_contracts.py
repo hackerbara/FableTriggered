@@ -812,8 +812,8 @@ def test_use_official_json_envelope(monkeypatch, tmp_path, capsys):
     assert main(["status", "--json"]) == 0
     status = parse_json_output(capsys)
     assert status["officialClaudePath"] == str(official.resolve())
-    assert status["discoveredOfficialClaudePath"] is None
-    assert status["sourceClaudePath"] is None
+    assert status["discoveredOfficialClaudePath"] == str(official.resolve())
+    assert status["sourceClaudePath"] == str(official.resolve())
 
 
 def test_use_official_json_missing_inputs_return_envelopes(monkeypatch, tmp_path, capsys):

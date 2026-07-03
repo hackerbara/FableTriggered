@@ -209,9 +209,16 @@ def _merge_prompt(
     argv.extend([flag, str(prompt.prompt.source.path)])
 
 
+def _token_matches_conflict(token: str, conflict: str) -> bool:
+    return token == conflict or token.startswith(f"{conflict}=")
+
+
 def _user_has_conflict(user_argv: list[str], conflicts: tuple[str, ...]) -> bool:
-    user_tokens = set(user_argv)
-    return any(item in user_tokens for item in conflicts)
+    return any(
+        _token_matches_conflict(token, conflict)
+        for token in user_argv
+        for conflict in conflicts
+    )
 
 
 def _merge_option_argv(
@@ -227,12 +234,11 @@ def _merge_option_argv(
         skipped.append(_skip("option_argv", option.id, "user_argv_conflict"))
         warnings.append(_warning("option_argv", option.id, "user_argv_conflict"))
         return
-    for item in option.option.argv:
-        if item in argv or item in user_argv:
-            skipped.append(_skip("option_argv", option.id, "duplicate_argv"))
-            warnings.append(_warning("option_argv", option.id, "duplicate_argv"))
-            continue
-        argv.append(item)
+    if any(item in argv for item in option.option.argv):
+        skipped.append(_skip("option_argv", option.id, "duplicate_argv"))
+        warnings.append(_warning("option_argv", option.id, "duplicate_argv"))
+        return
+    argv.extend(option.option.argv)
 
 
 def _option_conflict_errors(options: list[PackageManifest]) -> list[str]:

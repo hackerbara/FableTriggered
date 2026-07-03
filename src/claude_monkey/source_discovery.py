@@ -57,13 +57,6 @@ def _current_literal_path(paths: StatePaths) -> Path:
     return current
 
 
-def _resolved_current_target(paths: StatePaths) -> Path | None:
-    try:
-        return paths.current_path.expanduser().resolve(strict=True)
-    except (OSError, RuntimeError):
-        return None
-
-
 def _is_current_launcher_path(path: str | Path | None, paths: StatePaths) -> bool:
     if path is None:
         return False
@@ -98,9 +91,6 @@ def source_identity(path: str | Path | None, paths: StatePaths, kind: str) -> So
         return None
     resolved = _resolve_existing_executable(path)
     if resolved is None or is_managed_launcher_path(resolved, paths):
-        return None
-    current_target = _resolved_current_target(paths)
-    if current_target is not None and resolved == current_target:
         return None
     recorded_target = _recorded_managed_target(paths)
     if recorded_target is not None and resolved == recorded_target:

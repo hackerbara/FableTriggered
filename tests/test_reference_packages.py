@@ -58,3 +58,13 @@ def test_reference_packages_validate_against_real_2_1_198_source():
         assert result["ok"] is True, result
         assert result["packageId"] == package_dir.name
         assert result["operationsResolved"]
+
+
+def test_fable_resume_metadata_payload_uses_ascii_escapes_for_terminal_rendering():
+    payload_path = (
+        ROOT / "packages" / "fable-fallback" / "payloads" / "net-metadata-formatter.js"
+    )
+    payload = payload_path.read_bytes()
+    assert b"\xc2\xb7" not in payload
+    assert b"\\xB7" in payload
+    assert b"\\x1b[33mFable classifier triggered\\x1b[39m" in payload

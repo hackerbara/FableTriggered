@@ -56,7 +56,7 @@
               "oldRangeLength": 377,
               "replacement": {
                 "path": "payloads/net-metadata-formatter.js",
-                "sha256": "b0c41c4097997d2fdf879795a448f83dee1326138f09c536886219874eff8f4d"
+                "sha256": "cca4f5fb3256d68646c7501f74c5abda3b5cd6ae633083488cd7f11ea398ad7a"
               },
               "knownBehaviorChange": "This compact formatter omits rare bg metadata and PR repository prefix to fit the original byte budget."
             },

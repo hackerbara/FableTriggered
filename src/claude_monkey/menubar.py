@@ -35,6 +35,10 @@ def command_for_patch_toggle(patch_id: str, *, enabled: bool) -> list[str]:
     return ["disable" if enabled else "enable", patch_id, "--json"]
 
 
+def command_for_rebuild_apply() -> list[str]:
+    return ["build", "--json", "--activate"]
+
+
 def command_for_prompt(prompt_id: str | None, source_path: Path | None = None) -> list[str]:
     if prompt_id is None:
         return ["clear-prompt", "--json"]
@@ -185,10 +189,8 @@ class ClaudeMonkeyMenuBar:
             state = self.load_state()
         except Exception as exc:
             self.last_error_message = str(exc)
-            if self.state is None:
-                self.render_error_menu()
-            else:
-                self.render_menu()
+            self._log_ui_event("refresh_failed", message=self.last_error_message)
+            self.render_error_menu()
             self.rumps.alert("ClaudeMonkey refresh failed", self.last_error_message)
             return
         self.state = state
@@ -216,8 +218,14 @@ class ClaudeMonkeyMenuBar:
             self.app.menu.add(self._menu_item(self.last_error_message, enabled=False))
         self.app.menu.add(None)
         self.app.menu.add(self._menu_item("Open logs folder", callback=self.open_logs))
+        self.app.menu.add(self._menu_item("Open state folder", callback=self.open_state))
         self.app.menu.add(self._menu_item("Refresh", callback=self.refresh))
         self.app.menu.add(self._menu_item("Quit", callback=self.rumps.quit_application))
+
+    def _log_ui_event(self, event: str, **fields: Any) -> None:
+        log_ui_event = getattr(self.runner, "log_ui_event", None)
+        if callable(log_ui_event):
+            log_ui_event(event, **fields)
 
     def render_menu(self) -> None:
         rumps = self.rumps
@@ -316,7 +324,7 @@ class ClaudeMonkeyMenuBar:
             cancel=True,
         )
         if response == 1:
-            self._start_mutating_command("build", ["build", "--json"])
+            self._start_mutating_command("build", command_for_rebuild_apply())
 
     def choose_install_target(self, _sender: Any = None) -> None:
         response = self.rumps.Window(
@@ -407,9 +415,9 @@ class ClaudeMonkeyMenuBar:
         self.runner.open_path(logs_dir)
 
     def open_state(self, _sender: Any = None) -> None:
-        if self.state:
-            self.state.state_dir.mkdir(parents=True, exist_ok=True)
-            self.runner.open_path(self.state.state_dir)
+        state_dir = self.state.state_dir if self.state else Path.home() / ".claude-monkey"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        self.runner.open_path(state_dir)
 
     def drain_results(self, _timer: Any = None) -> None:
         results = self.runner.drain_results()

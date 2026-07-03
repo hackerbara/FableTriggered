@@ -3,7 +3,11 @@ from __future__ import annotations
 import base64
 import json
 
-from claude_monkey.install import install_shim_transaction, restore_install_transaction
+from claude_monkey.install import (
+    ProtectedTargetRestoreUnavailable,
+    install_shim_transaction,
+    restore_install_transaction,
+)
 
 
 def test_protected_install_uses_narrow_authorized_file_operation(monkeypatch, tmp_path):
@@ -33,6 +37,27 @@ def test_protected_install_uses_narrow_authorized_file_operation(monkeypatch, tm
     assert target.exists()
     assert "ClaudeMonkey" in target.read_text()
     assert json.loads(record.read_text())["targetPath"] == str(target)
+
+
+def test_protected_install_refuses_existing_non_managed_target(monkeypatch, tmp_path):
+    target = tmp_path / "protected" / "claude"
+    target.parent.mkdir()
+    target.write_text("official")
+    state = tmp_path / "state"
+
+    monkeypatch.setattr(
+        "claude_monkey.install.authorization.target_needs_authorization", lambda path: True
+    )
+
+    try:
+        install_shim_transaction(target, state, dry_run=False)
+    except ProtectedTargetRestoreUnavailable as exc:
+        assert str(target) in str(exc)
+    else:
+        raise AssertionError("expected protected overwrite refusal")
+
+    assert target.read_text() == "official"
+    assert not (state / "install-record.json").exists()
 
 
 def test_protected_restore_uses_narrow_authorized_file_operation(monkeypatch, tmp_path):

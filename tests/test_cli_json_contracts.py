@@ -199,6 +199,35 @@ def test_install_json_success_reports_authorization_metadata(monkeypatch, tmp_pa
     assert payload["targetPath"] == str(target)
 
 
+def test_protected_existing_target_install_json_refuses_without_safe_restore(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "protected" / "claude"
+    target.parent.mkdir()
+    target.write_text("official")
+    monkeypatch.setattr("claude_monkey.cli.target_needs_authorization", lambda path: True)
+    monkeypatch.setattr(
+        "claude_monkey.cli.authorization_method_for_target", lambda path: "macos_gui"
+    )
+    monkeypatch.setattr(
+        "claude_monkey.install.authorization.target_needs_authorization", lambda path: True
+    )
+
+    assert main(["install-shim", "--target", str(target), "--json", "--dry-run"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "protected_restore_unavailable"
+    assert payload["dryRun"] is True
+    assert target.read_text() == "official"
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "protected_restore_unavailable"
+    assert target.read_text() == "official"
+
+
 def test_malformed_uninstall_record_json_returns_envelope(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("HOME", str(tmp_path))
     record = tmp_path / "bad-record.json"

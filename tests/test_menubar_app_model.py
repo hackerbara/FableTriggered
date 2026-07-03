@@ -14,6 +14,7 @@ from claude_monkey.menubar import (
     command_for_install_shim_dry_run,
     command_for_patch_toggle,
     command_for_prompt,
+    command_for_rebuild_apply,
     command_for_uninstall_shim,
     command_for_uninstall_shim_dry_run,
     default_install_target,
@@ -173,6 +174,7 @@ def test_result_alerts_cover_prompt_and_build_summaries(tmp_path):
 
 
 def test_command_mapping_uses_json():
+    assert command_for_rebuild_apply() == ["build", "--json", "--activate"]
     assert command_for_patch_toggle("fable-fallback", enabled=True) == [
         "disable",
         "fable-fallback",
@@ -344,6 +346,7 @@ def test_refresh_failure_renders_minimal_recovery_menu(tmp_path):
     assert "ClaudeMonkey: Error" in labels
     assert "Refresh" in labels
     assert "Open logs folder" in labels
+    assert "Open state folder" in labels
     assert "Quit" in labels
     assert "status boom" in rumps.alerts[-1][1]
 
@@ -360,6 +363,35 @@ def test_open_logs_uses_default_logs_dir_without_state(tmp_path, monkeypatch):
     assert bar.runner.opened == [expected]
 
 
+def test_refresh_failure_with_prior_state_marks_error_status_and_keeps_recovery(tmp_path):
+    runner = FakeRunner(load_error=RuntimeError("status boom"))
+    bar, _rumps = make_bar(tmp_path, runner)
+
+    bar.refresh()
+
+    labels = [item.title for item in flat_items(bar.app.menu.items)]
+    assert "ClaudeMonkey: Error" in labels
+    assert "Refresh" in labels
+    assert "Open state folder" in labels
+
+
+def test_refresh_failure_is_logged(tmp_path):
+    class LoggingRunner(FakeRunner):
+        def __init__(self) -> None:
+            super().__init__(load_error=RuntimeError("status boom"))
+            self.logged = []
+
+        def log_ui_event(self, event, **fields):
+            self.logged.append((event, fields))
+
+    runner = LoggingRunner()
+    bar, _rumps = make_bar(tmp_path, runner)
+
+    bar.refresh()
+
+    assert runner.logged == [("refresh_failed", {"message": "status boom"})]
+
+
 def test_busy_render_disables_mutating_items_and_shows_running_status(tmp_path):
     bar, _rumps = make_bar(tmp_path, FakeRunner())
     bar.busy_command = "build"
@@ -372,6 +404,18 @@ def test_busy_render_disables_mutating_items_and_shows_running_status(tmp_path):
     for title in ("Rebuild / Apply…", "Install shim…", "Uninstall shim…", "Fable"):
         item = next(item for item in items if item.title == title)
         assert item.enabled is False
+
+
+def test_rebuild_apply_enqueues_activating_build(tmp_path):
+    runner = FakeRunner()
+    bar, rumps = make_bar(tmp_path, runner)
+    rumps.next_response = 1
+
+    bar.rebuild()
+
+    assert runner.background_calls == [
+        ("build", ["build", "--json", "--activate"], True)
+    ]
 
 
 def test_open_state_creates_directory_before_opening(tmp_path):

@@ -14,6 +14,10 @@ from claude_monkey.shim import write_shim
 OWNER_MARKER = "ClaudeMonkey managed shim"
 
 
+class ProtectedTargetRestoreUnavailable(RuntimeError):
+    pass
+
+
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -81,8 +85,27 @@ def _install_tmp_candidates(target_path: Path, state_dir: Path) -> tuple[Path, .
     )
 
 
+def protected_install_requires_refusal(target_path: Path, record_path: Path) -> bool:
+    if not authorization.target_needs_authorization(target_path):
+        return False
+    if not target_path.exists() and not target_path.is_symlink():
+        return False
+    if record_path.exists():
+        try:
+            record = json.loads(record_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            record = None
+        if isinstance(record, dict) and current_target_is_installed_shim(target_path, record):
+            return False
+    return True
+
+
 def install_shim_transaction(target_path: Path, state_dir: Path, dry_run: bool) -> Path:
     record_path = state_dir / "install-record.json"
+    if protected_install_requires_refusal(target_path, record_path):
+        raise ProtectedTargetRestoreUnavailable(
+            f"refusing to overwrite protected existing target without safe restore: {target_path}"
+        )
     record = {
         "owner": OWNER_MARKER,
         "targetPath": str(target_path),

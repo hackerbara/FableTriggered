@@ -133,6 +133,20 @@ class CommandRunner:
         with self.log_path.open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")
 
+    def log_ui_event(self, event: str, **fields: Any) -> None:
+        stamp = datetime.now(UTC).isoformat()
+        line = json.dumps(
+            {
+                "timestamp": stamp,
+                "event": event,
+                **fields,
+            },
+            sort_keys=True,
+        )
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.log_path.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+
     def run_json(self, args: list[str], *, mutating: bool) -> dict[str, Any]:
         if self._busy_for_test and mutating:
             raise MutatingCommandBusy("another mutating command is running")

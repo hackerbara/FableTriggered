@@ -26,8 +26,10 @@ from claude_monkey.builder_v15 import (
 from claude_monkey.cli_json import envelope_error, envelope_ok, print_json, to_jsonable
 from claude_monkey.config import Profile, load_config, save_config
 from claude_monkey.install import (
+    ProtectedTargetRestoreUnavailable,
     current_target_is_installed_shim,
     install_shim_transaction,
+    protected_install_requires_refusal,
     restore_install_transaction,
     use_official,
 )
@@ -331,9 +333,26 @@ def _list_prompt_payload(paths: StatePaths, config) -> dict[str, Any]:
     return {"schemaVersion": 1, "prompts": prompts}
 
 
-def _dry_run_install_payload(target: Path, *, uninstall: bool = False) -> Any:
+def _dry_run_install_payload(
+    target: Path, *, uninstall: bool = False, state_dir: Path | None = None
+) -> Any:
     needs_auth = target_needs_authorization(target)
     action = "uninstall managed claude shim" if uninstall else "install managed claude shim"
+    if (
+        not uninstall
+        and state_dir is not None
+        and protected_install_requires_refusal(target, state_dir / "install-record.json")
+    ):
+        message = f"refusing to overwrite protected existing target without safe restore: {target}"
+        return envelope_error(
+            message,
+            code="protected_restore_unavailable",
+            target_path=target,
+            authorization_required=needs_auth,
+            authorization_method=authorization_method_for_target(target),
+            dry_run=True,
+            planned_actions=[action],
+        )
     return envelope_ok(
         f"would {action}",
         target_path=target,
@@ -766,15 +785,31 @@ def main(argv: list[str] | None = None) -> int:
         authorization_required = target_needs_authorization(target)
         authorization_method = authorization_method_for_target(target)
         if args.dry_run:
-            payload = _dry_run_install_payload(target)
+            payload = _dry_run_install_payload(target, state_dir=state_dir)
             if args.json:
                 print_json(payload)
             else:
-                print(f"installRecord={state_dir / 'install-record.json'}")
-                print("dryRun=true")
-            return 0
+                if getattr(payload, "ok", False):
+                    print(f"installRecord={state_dir / 'install-record.json'}")
+                    print("dryRun=true")
+                else:
+                    print(payload.summary, file=sys.stderr)
+            return 0 if getattr(payload, "ok", False) else 1
         try:
             record = install_shim_transaction(target, state_dir, dry_run=False)
+        except ProtectedTargetRestoreUnavailable as exc:
+            payload = envelope_error(
+                str(exc),
+                code="protected_restore_unavailable",
+                target_path=target,
+                authorization_required=authorization_required,
+                authorization_method=authorization_method,
+            )
+            if args.json:
+                print_json(payload)
+            else:
+                print(str(exc), file=sys.stderr)
+            return 1
         except (AuthorizationRequired, AuthorizationDenied) as exc:
             code = (
                 "authorization_denied"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from tests.fixtures_bun import build_macho_fixture
+from tests.fixtures_bun import build_aligned_macho_fixture, build_macho_fixture
 
 from claude_monkey.cli import main
 
@@ -107,7 +107,7 @@ def test_build_json_uses_v15_repack_engine_with_skip_gates(tmp_path, capsys):
     from tests.test_builder_v15 import write_fixture_package
 
     binary = tmp_path / "claude"
-    binary.write_bytes(build_macho_fixture()[0])
+    binary.write_bytes(build_aligned_macho_fixture()[0])
     package = tmp_path / "pkg"
     write_fixture_package(package, binary)
     out_dir = tmp_path / "out"
@@ -142,3 +142,158 @@ def test_build_json_uses_v15_repack_engine_with_skip_gates(tmp_path, capsys):
     assert payload["status"] == "skipped_gates"
     assert payload["activationEligible"] is False
     assert (out_dir / "claude").exists()
+
+
+def test_build_manual_smoke_pending_does_not_set_active_patchset(monkeypatch, tmp_path, capsys):
+    from claude_monkey.reports_v2 import BuildReportV2
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    source = tmp_path / "claude"
+    source.write_bytes(build_macho_fixture()[0])
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "patch.json").write_text("{}")
+
+    def fake_build(request):
+        request.output_dir.mkdir(parents=True, exist_ok=True)
+        report = BuildReportV2(
+            status="manual_smoke_pending",
+            automatedStatus="passed",
+            sourceClaudePath=str(source),
+            sourceVersion="fixture",
+            sourceVersionOutput="fixture (Claude Code)",
+            activationEligible=False,
+            activationBlockers=["manual_smoke_pending"],
+        )
+        report.outputPath = str(request.output_dir / "claude")
+        return report
+
+    monkeypatch.setattr("claude_monkey.cli.build_patchset_v15", fake_build)
+
+    rc = main(
+        [
+            "build",
+            "--source",
+            str(source),
+            "--package",
+            str(package),
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--source-version",
+            "fixture",
+            "--source-version-output",
+            "fixture (Claude Code)",
+        ]
+    )
+
+    assert rc == 0
+    assert "manual_smoke_pending" in capsys.readouterr().out
+    config_path = tmp_path / "home" / ".claude-monkey" / "config.json"
+    if config_path.exists():
+        assert json.loads(config_path.read_text())["activePatchSet"] is None
+
+
+def test_validate_package_json_reports_schema_v1_without_traceback(tmp_path, capsys):
+    binary = tmp_path / "claude"
+    binary.write_bytes(b"notmacho")
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "patch.json").write_text(json.dumps({"schemaVersion": 1}))
+
+    rc = main(
+        [
+            "validate-package",
+            "--source",
+            str(binary),
+            "--package",
+            str(package),
+            "--source-version",
+            "fixture",
+            "--source-version-output",
+            "fixture",
+            "--json",
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["ok"] is False
+    assert payload["errorCode"] == "schema_v1_migration_required"
+
+
+def test_validate_package_json_reports_non_macho_without_traceback(tmp_path, capsys):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    binary = tmp_path / "claude"
+    binary.write_bytes(b"notmacho")
+    manifest = {
+        "schemaVersion": 2,
+        "id": "fixture-v15",
+        "name": "Fixture V1.5",
+        "description": "Fixture package",
+        "packageVersion": "0.1.0",
+        "targets": [
+            {
+                "sourceIdentity": {
+                    "claudeVersion": "fixture",
+                    "versionOutput": "fixture",
+                    "sha256": "0" * 64,
+                    "sizeBytes": 8,
+                    "platform": "darwin",
+                    "arch": "arm64",
+                },
+                "requiredEngine": "bun_graph_repack",
+                "requiredBinaryFormat": "bun_standalone_macho64",
+                "modules": [
+                    {
+                        "path": "/$bunfs/root/src/entrypoints/cli.js",
+                        "contentSha256": "1" * 64,
+                        "contentLength": 1,
+                        "operations": [
+                            {
+                                "opId": "replace-renderer",
+                                "label": "Replace renderer",
+                                "type": "replace_exact",
+                                "exact": "x",
+                                "replacement": {"inline": "y"},
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    import hashlib
+
+    manifest["targets"][0]["sourceIdentity"]["sha256"] = hashlib.sha256(
+        binary.read_bytes()
+    ).hexdigest()
+    (package / "patch.json").write_text(json.dumps(manifest))
+
+    rc = main(
+        [
+            "validate-package",
+            "--source",
+            str(binary),
+            "--package",
+            str(package),
+            "--source-version",
+            "fixture",
+            "--source-version-output",
+            "fixture",
+            "--platform",
+            "darwin",
+            "--arch",
+            "arm64",
+            "--json",
+        ]
+    )
+
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["ok"] is False
+    assert payload["errorCode"] == "unsupported_macho_magic"

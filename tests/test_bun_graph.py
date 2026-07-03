@@ -76,3 +76,18 @@ def test_parse_bun_section_does_not_apply_content_plus_8_assumption():
     module = graph.module_by_path(MODULE_PATH_0)
     assert module.content.startswith(b"function render")
     assert not module.content[0:1] == b" "
+
+
+def test_parse_bun_section_reports_duplicate_module_paths():
+    section, _ = build_payload()
+    payload = bytearray(section)
+    trailer_off = bytes(payload[8:]).rfind(TRAILER)
+    offsets_off = 8 + trailer_off - 32
+    modules_offset = int.from_bytes(payload[offsets_off + 8 : offsets_off + 12], "little")
+    first_record = 8 + modules_offset
+    second_record = first_record + 52
+    payload[second_record : second_record + 8] = payload[first_record : first_record + 8]
+
+    graph = parse_bun_section(bytes(payload))
+
+    assert any("duplicate_module_path" in item for item in graph.validation_errors)

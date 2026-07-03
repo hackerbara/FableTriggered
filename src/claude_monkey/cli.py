@@ -207,7 +207,7 @@ def handle_build(args: argparse.Namespace, paths: StatePaths, config) -> int:
             current_path=paths.current_path,
         )
     )
-    if report.status in {"verified", "manual_smoke_pending"}:
+    if report.status == "verified" and report.activationEligible:
         config.activePatchSet = str(output_dir)
         save_config(paths.config_path, config)
     if args.json:

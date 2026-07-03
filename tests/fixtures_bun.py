@@ -174,3 +174,52 @@ def build_macho_fixture() -> tuple[bytes, FixtureOffsets]:
         module0_content_offset=partial.module0_content_offset,
         module1_content_offset=partial.module1_content_offset,
     )
+
+
+def align_up(value: int, alignment: int = 0x4000) -> int:
+    return ((value + alignment - 1) // alignment) * alignment
+
+
+def build_aligned_macho_fixture() -> tuple[bytes, FixtureOffsets]:
+    bun_section, partial = build_payload()
+    bun_fileoff = 0x4000
+    bun_section_size = len(bun_section)
+    bun_segment_size = align_up(bun_section_size)
+    linkedit_fileoff = bun_fileoff + bun_segment_size
+    code_sig_size = 128
+    code_sig_offset = linkedit_fileoff
+    text = segment_command(b"__TEXT", 0x100000000, 0x4000, 0, 0x4000, [])
+    bun_sec = section(b"__bun", b"__BUN", 0x100004000, bun_section_size, bun_fileoff)
+    bun = segment_command(
+        b"__BUN", 0x100004000, bun_segment_size, bun_fileoff, bun_segment_size, [bun_sec]
+    )
+    linkedit = segment_command(
+        b"__LINKEDIT", 0x100004000 + bun_segment_size, code_sig_size,
+        linkedit_fileoff, code_sig_size, []
+    )
+    code_sig = code_signature_command(code_sig_offset, code_sig_size)
+    load_commands = text + bun + linkedit + code_sig
+    header = struct.pack(
+        "<IiiIIIII",
+        MACHO_MAGIC_64,
+        CPU_TYPE_ARM64,
+        CPU_SUBTYPE_ARM64_ALL,
+        MH_EXECUTE,
+        4,
+        len(load_commands),
+        0,
+        0,
+    )
+    data = bytearray(header + load_commands)
+    data.extend(b"\0" * (bun_fileoff - len(data)))
+    data.extend(bun_section)
+    data.extend(b"P" * (bun_segment_size - bun_section_size))
+    data.extend(b"C" * code_sig_size)
+    return bytes(data), FixtureOffsets(
+        bun_fileoff=bun_fileoff,
+        bun_size=bun_section_size,
+        linkedit_fileoff=linkedit_fileoff,
+        code_signature_offset=code_sig_offset,
+        module0_content_offset=partial.module0_content_offset,
+        module1_content_offset=partial.module1_content_offset,
+    )

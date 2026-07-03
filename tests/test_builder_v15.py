@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from tests.fixtures_bun import MODULE_0, build_macho_fixture
+from tests.fixtures_bun import MODULE_0, build_aligned_macho_fixture
 
 from claude_monkey.builder_v15 import BuildRequestV15, build_patchset_v15
 from claude_monkey.smoke import CommandResult
@@ -83,7 +83,7 @@ def successful_runner(argv):
 
 def test_build_patchset_v15_writes_copied_output_and_report(tmp_path):
     source = tmp_path / "claude-source"
-    source.write_bytes(build_macho_fixture()[0])
+    source.write_bytes(build_aligned_macho_fixture()[0])
     package = tmp_path / "pkg"
     write_fixture_package(package, source)
     report = build_patchset_v15(
@@ -102,12 +102,12 @@ def test_build_patchset_v15_writes_copied_output_and_report(tmp_path):
     assert report.activationEligible is True
     assert report.outputPath is not None
     assert Path(report.outputPath).exists()
-    assert source.read_bytes() == build_macho_fixture()[0]
+    assert source.read_bytes() == build_aligned_macho_fixture()[0]
 
 
 def test_build_patchset_v15_blocks_activation_for_manual_smoke(tmp_path):
     source = tmp_path / "claude-source"
-    source.write_bytes(build_macho_fixture()[0])
+    source.write_bytes(build_aligned_macho_fixture()[0])
     package = tmp_path / "pkg"
     write_fixture_package(package, source, manual_smoke=True)
     report = build_patchset_v15(
@@ -129,7 +129,7 @@ def test_build_patchset_v15_blocks_activation_for_manual_smoke(tmp_path):
 
 def test_schema_v1_package_is_migration_required(tmp_path):
     source = tmp_path / "claude-source"
-    source.write_bytes(build_macho_fixture()[0])
+    source.write_bytes(build_aligned_macho_fixture()[0])
     package = tmp_path / "pkg"
     package.mkdir()
     (package / "patch.json").write_text(json.dumps({"schemaVersion": 1}))

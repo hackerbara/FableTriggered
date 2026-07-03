@@ -192,6 +192,14 @@ def parse_bun_section(section: bytes) -> BunGraph:
                 fields,
             )
         )
+    seen_paths: set[str] = set()
+    duplicate_paths: set[str] = set()
+    for module in modules:
+        if module.path in seen_paths:
+            duplicate_paths.add(module.path)
+        seen_paths.add(module.path)
+    for path in sorted(duplicate_paths):
+        validation_errors.append(f"duplicate_module_path:{path}")
     return BunGraph(
         section_bytes=section,
         declared_payload_len=declared_len,

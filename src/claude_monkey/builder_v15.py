@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Any
 
 from claude_monkey.binary_inspect import inspect_binary_bytes
-from claude_monkey.bun_graph import parse_bun_section
+from claude_monkey.bun_graph import BunGraphError, parse_bun_section
 from claude_monkey.install import use_official
-from claude_monkey.macho import find_macho_layout
+from claude_monkey.macho import MachOError, find_macho_layout
 from claude_monkey.manifest_v2 import (
     AssertionV2,
     ManifestV2,
@@ -22,6 +22,7 @@ from claude_monkey.manifest_v2 import (
     load_manifest_v2_dict,
 )
 from claude_monkey.module_patch import (
+    ModulePatchError,
     PlannedModuleOperation,
     plan_module_operations,
     render_changed_module,
@@ -98,78 +99,101 @@ def target_matches(
     )
 
 
+def _validation_failure(package_id: str | None, error_code: str, message: str) -> dict[str, Any]:
+    return {
+        "schemaVersion": 1,
+        "ok": False,
+        "packageId": package_id,
+        "errorCode": error_code,
+        "errors": [message],
+    }
+
+
 def validate_package(request: ValidationRequestV15) -> dict[str, Any]:
-    source = request.source_path.read_bytes()
-    manifest = load_manifest_v2(request.package_dir)
-    matching_targets = [
-        target for target in manifest.targets if target_matches(target, request, source)
-    ]
-    if len(matching_targets) != 1:
-        return {
-            "schemaVersion": 1,
-            "ok": False,
-            "packageId": manifest.id,
-            "errorCode": "source_identity_mismatch",
-            "errors": ["source identity did not match exactly"],
-        }
-    target = matching_targets[0]
-    layout = find_macho_layout(source)
-    graph = parse_bun_section(
-        source[layout.bun_section.offset : layout.bun_section.offset + layout.bun_section.size]
-    )
-    if graph.validation_errors:
-        return {
-            "schemaVersion": 1,
-            "ok": False,
-            "packageId": manifest.id,
-            "errorCode": "bun_graph_invalid",
-            "errors": graph.validation_errors,
-        }
-    resolved: list[PlannedModuleOperation] = []
-    changed_modules: dict[str, bytes] = {}
-    for module_target in target.modules:
-        module = graph.module_by_path(module_target.path)
-        if (
-            hashlib.sha256(module.content).hexdigest() != module_target.content_sha256
-            or module.content_size != module_target.content_length
-        ):
+    try:
+        source = request.source_path.read_bytes()
+        manifest = load_manifest_v2(request.package_dir)
+        matching_targets = [
+            target for target in manifest.targets if target_matches(target, request, source)
+        ]
+        if len(matching_targets) != 1:
             return {
                 "schemaVersion": 1,
                 "ok": False,
                 "packageId": manifest.id,
-                "errorCode": "module_identity_failed",
-                "errors": [module_target.path],
+                "errorCode": "source_identity_mismatch",
+                "errors": ["source identity did not match exactly"],
             }
-        operation_inputs = [
-            (operation, load_payload(operation.replacement, request.package_dir))
-            for operation in module_target.operations
-        ]
-        planned = plan_module_operations(
-            manifest.id, module_target.path, module.content, operation_inputs
+        target = matching_targets[0]
+        layout = find_macho_layout(source)
+        graph = parse_bun_section(
+            source[layout.bun_section.offset : layout.bun_section.offset + layout.bun_section.size]
         )
-        resolved.extend(planned)
-        changed_modules[module_target.path] = render_changed_module(module.content, planned)
-    return {
-        "schemaVersion": 1,
-        "ok": True,
-        "packageId": manifest.id,
-        "sourceMatched": True,
-        "modulesMatched": True,
-        "operationsResolved": [
-            {
-                "modulePath": item.module_path,
-                "opId": item.op_id,
-                "moduleStart": item.module_start,
-                "moduleEnd": item.module_end,
-                "oldLen": item.old_len,
-                "newLen": item.new_len,
-                "delta": item.delta,
+        if graph.validation_errors:
+            return {
+                "schemaVersion": 1,
+                "ok": False,
+                "packageId": manifest.id,
+                "errorCode": "bun_graph_invalid",
+                "errors": graph.validation_errors,
             }
-            for item in resolved
-        ],
-        "manualSmokeRequired": target.manual_smoke.required,
-        "errors": [],
-    }
+        resolved: list[PlannedModuleOperation] = []
+        changed_modules: dict[str, bytes] = {}
+        for module_target in target.modules:
+            module = graph.module_by_path(module_target.path)
+            if (
+                hashlib.sha256(module.content).hexdigest() != module_target.content_sha256
+                or module.content_size != module_target.content_length
+            ):
+                return {
+                    "schemaVersion": 1,
+                    "ok": False,
+                    "packageId": manifest.id,
+                    "errorCode": "module_identity_failed",
+                    "errors": [module_target.path],
+                }
+            operation_inputs = [
+                (operation, load_payload(operation.replacement, request.package_dir))
+                for operation in module_target.operations
+            ]
+            planned = plan_module_operations(
+                manifest.id, module_target.path, module.content, operation_inputs
+            )
+            resolved.extend(planned)
+            changed_modules[module_target.path] = render_changed_module(module.content, planned)
+        return {
+            "schemaVersion": 1,
+            "ok": True,
+            "packageId": manifest.id,
+            "sourceMatched": True,
+            "modulesMatched": True,
+            "operationsResolved": [
+                {
+                    "modulePath": item.module_path,
+                    "opId": item.op_id,
+                    "moduleStart": item.module_start,
+                    "moduleEnd": item.module_end,
+                    "oldLen": item.old_len,
+                    "newLen": item.new_len,
+                    "delta": item.delta,
+                }
+                for item in resolved
+            ],
+            "manualSmokeRequired": target.manual_smoke.required,
+            "errors": [],
+        }
+    except ManifestV2Error as exc:
+        return _validation_failure(None, str(exc), str(exc))
+    except MachOError as exc:
+        return _validation_failure(None, str(exc), str(exc))
+    except BunGraphError as exc:
+        return _validation_failure(None, str(exc), str(exc))
+    except ModulePatchError as exc:
+        return _validation_failure(None, "operation_resolution_failed", str(exc))
+    except OSError as exc:
+        return _validation_failure(None, "filesystem_error", f"{type(exc).__name__}: {exc}")
+    except ValueError as exc:
+        return _validation_failure(None, "validation_failed", str(exc))
 
 
 def _command_result_dict(result: CommandResult) -> dict[str, Any]:

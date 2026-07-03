@@ -392,6 +392,29 @@ def test_refresh_failure_is_logged(tmp_path):
     assert runner.logged == [("refresh_failed", {"message": "status boom"})]
 
 
+def test_command_completion_refresh_failure_marks_error_and_logs(tmp_path):
+    class CompletionRefreshFailRunner(FakeRunner):
+        def __init__(self) -> None:
+            super().__init__(load_error=RuntimeError("status boom"))
+            self.logged = []
+
+        def drain_results(self):
+            return [("toggle_patch", {"ok": True, "summary": "ok"})]
+
+        def log_ui_event(self, event, **fields):
+            self.logged.append((event, fields))
+
+    runner = CompletionRefreshFailRunner()
+    bar, _rumps = make_bar(tmp_path, runner)
+
+    bar.drain_results()
+
+    labels = [item.title for item in flat_items(bar.app.menu.items)]
+    assert "ClaudeMonkey: Error" in labels
+    assert "Open state folder" in labels
+    assert runner.logged == [("refresh_failed", {"message": "status boom"})]
+
+
 def test_busy_render_disables_mutating_items_and_shows_running_status(tmp_path):
     bar, _rumps = make_bar(tmp_path, FakeRunner())
     bar.busy_command = "build"

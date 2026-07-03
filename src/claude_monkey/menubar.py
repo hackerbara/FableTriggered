@@ -423,6 +423,7 @@ class ClaudeMonkeyMenuBar:
         results = self.runner.drain_results()
         if not results:
             return
+        refresh_failed = False
         for name, payload in results:
             if self.busy_command == name:
                 self.busy_command = None
@@ -430,6 +431,8 @@ class ClaudeMonkeyMenuBar:
                 state = self.load_state()
             except Exception as exc:
                 self.last_error_message = str(exc)
+                self._log_ui_event("refresh_failed", message=self.last_error_message)
+                refresh_failed = True
                 self.rumps.alert("ClaudeMonkey refresh failed", self.last_error_message)
             else:
                 self.state = state
@@ -440,7 +443,7 @@ class ClaudeMonkeyMenuBar:
             alert = alert_for_result(name, payload, self.state)
             if alert is not None:
                 self._show_alert(alert)
-        if self.state is None:
+        if refresh_failed or self.state is None:
             self.render_error_menu()
         else:
             self.render_menu()

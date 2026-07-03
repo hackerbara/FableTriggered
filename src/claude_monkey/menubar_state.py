@@ -132,6 +132,24 @@ def _authorization_method(raw: dict[str, Any]) -> str | None:
     return value
 
 
+def _string_list(raw: dict[str, Any], key: str) -> tuple[str, ...]:
+    value = raw.get(key, [])
+    if not isinstance(value, list):
+        raise ValueError(f"{key} must be a list")
+    if not all(isinstance(item, str) for item in value):
+        raise ValueError(f"{key} items must be strings")
+    return tuple(value)
+
+
+def _dict_list(raw: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    value = raw.get(key, [])
+    if not isinstance(value, list):
+        raise ValueError(f"{key} must be a list")
+    if not all(isinstance(item, dict) for item in value):
+        raise ValueError(f"{key} items must be objects")
+    return value
+
+
 def parse_command_envelope(raw: dict[str, Any]) -> CommandEnvelope:
     _require_schema(raw)
     error = parse_error(raw.get("error"))
@@ -193,7 +211,7 @@ def parse_menu_state(
             available=_optional_bool(item, "available", True),
             compatibility_status=str(item.get("compatibilityStatus", "unknown")),
         )
-        for item in patches_raw.get("patches", [])
+        for item in _dict_list(patches_raw, "patches")
     )
     prompt_items = tuple(
         PromptMenuItem(
@@ -203,7 +221,7 @@ def parse_menu_state(
             mode=str(item.get("mode", "append")),
             source_path=Path(str(item.get("sourcePath", ""))).expanduser(),
         )
-        for item in prompts_raw.get("prompts", [])
+        for item in _dict_list(prompts_raw, "prompts")
     )
     return MenuState(
         status=status,
@@ -214,8 +232,8 @@ def parse_menu_state(
         shim_installed=_optional_bool(status_raw, "shimInstalled", False),
         active_profile=status_raw.get("activeProfile"),
         active_prompt=status_raw.get("activePrompt"),
-        desired_patch_ids=tuple(str(item) for item in status_raw.get("desiredPatchIds", [])),
-        active_patch_ids=tuple(str(item) for item in status_raw.get("activePatchIds", [])),
+        desired_patch_ids=_string_list(status_raw, "desiredPatchIds"),
+        active_patch_ids=_string_list(status_raw, "activePatchIds"),
         rebuild_required=rebuild_required,
         latest_build_report_path=_optional_path(status_raw.get("latestBuildReportPath")),
         active_patch_set=status_raw.get("activePatchSet"),

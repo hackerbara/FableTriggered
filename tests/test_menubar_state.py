@@ -257,3 +257,71 @@ def test_command_envelope_rejects_invalid_status_and_authorization_method():
         assert "authorizationMethod" in str(exc)
     else:
         raise AssertionError("expected authorizationMethod validation")
+
+
+def test_parse_menu_state_rejects_non_list_core_fields():
+    status = {
+        "schemaVersion": 1,
+        "status": "ok",
+        "sourceClaudeVersion": None,
+        "sourceClaudePath": None,
+        "installMode": "shim",
+        "shimInstalled": False,
+        "activeProfile": "default",
+        "activePrompt": None,
+        "desiredPatchIds": "abc",
+        "activePatchIds": [],
+        "rebuildRequired": False,
+        "latestBuildReportPath": None,
+        "activePatchSet": None,
+        "currentClaudePath": None,
+        "shimTargetPath": None,
+        "installRecordPath": None,
+        "stateDir": "/tmp/state",
+        "logsDir": "/tmp/state/logs",
+        "lastError": None,
+    }
+    try:
+        parse_menu_state(
+            status,
+            {"schemaVersion": 1, "patches": []},
+            {"schemaVersion": 1, "prompts": []},
+        )
+    except ValueError as exc:
+        assert "desiredPatchIds must be a list" in str(exc)
+    else:
+        raise AssertionError("expected desiredPatchIds validation")
+
+
+def test_parse_menu_state_rejects_malformed_patch_and_prompt_lists():
+    status = {
+        "schemaVersion": 1,
+        "status": "ok",
+        "sourceClaudeVersion": None,
+        "sourceClaudePath": None,
+        "installMode": "shim",
+        "shimInstalled": False,
+        "activeProfile": "default",
+        "activePrompt": None,
+        "desiredPatchIds": [],
+        "activePatchIds": [],
+        "rebuildRequired": False,
+        "latestBuildReportPath": None,
+        "activePatchSet": None,
+        "currentClaudePath": None,
+        "shimTargetPath": None,
+        "installRecordPath": None,
+        "stateDir": "/tmp/state",
+        "logsDir": "/tmp/state/logs",
+        "lastError": None,
+    }
+    try:
+        parse_menu_state(
+            status,
+            {"schemaVersion": 1, "patches": "bad"},
+            {"schemaVersion": 1, "prompts": []},
+        )
+    except ValueError as exc:
+        assert "patches must be a list" in str(exc)
+    else:
+        raise AssertionError("expected patches validation")

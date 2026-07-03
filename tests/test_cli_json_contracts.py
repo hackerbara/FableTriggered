@@ -423,3 +423,51 @@ def test_verified_build_without_activation_does_not_persist_active_patchset(
     config_path = tmp_path / "home" / ".claude-monkey" / "config.json"
     if config_path.exists():
         assert json.loads(config_path.read_text()).get("activePatchSet") is None
+
+
+def test_status_does_not_trust_forged_install_record_digest(monkeypatch, tmp_path, capsys):
+    import hashlib
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "claude"
+    target.write_text("not a claude monkey shim")
+    state = tmp_path / ".claude-monkey"
+    state.mkdir()
+    (state / "install-record.json").write_text(
+        json.dumps(
+            {
+                "owner": "ClaudeMonkey managed shim",
+                "targetPath": str(target),
+                "stateDir": str(state),
+                "installedShimSha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+            }
+        )
+    )
+    assert main(["status", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["shimInstalled"] is False
+    assert payload["status"] == "not_installed"
+
+
+def test_status_in_shim_mode_requires_installed_shim(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    current_target = tmp_path / "claude"
+    current_target.write_text("#!/bin/sh\nexit 0\n")
+    current_target.chmod(0o755)
+    state = tmp_path / ".claude-monkey"
+    state.mkdir()
+    (state / "current").symlink_to(current_target)
+    assert main(["status", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["currentClaudePath"] == str(current_target)
+    assert payload["shimInstalled"] is False
+    assert payload["status"] == "not_installed"
+
+
+def test_set_prompt_missing_file_json_returns_envelope(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    missing = tmp_path / "missing.md"
+    assert main(["set-prompt", str(missing), "--from-file", "--json"]) == 2
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "missing_prompt_file"

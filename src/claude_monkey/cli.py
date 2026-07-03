@@ -223,7 +223,10 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
     install_record = _install_record_path(paths)
     current_executable = _current_executable_path(paths.current_path)
     shim_installed = _shim_is_installed(install_record)
-    installed = current_executable is not None or shim_installed
+    if config.installMode == "shim":
+        installed = shim_installed
+    else:
+        installed = current_executable is not None or shim_installed
     runnable = current_executable is not None
     if not installed:
         status = "not_installed"
@@ -631,7 +634,11 @@ def handle_set_prompt(args: argparse.Namespace, paths: StatePaths, config) -> in
     if args.from_file:
         source_path = Path(args.prompt).expanduser()
         if not source_path.exists():
-            print(f"prompt file does not exist: {source_path}", file=sys.stderr)
+            message = f"prompt file does not exist: {source_path}"
+            if args.json:
+                print_json(envelope_error(message, code="missing_prompt_file"))
+            else:
+                print(message, file=sys.stderr)
             return 2
     else:
         source_path = profile_dir / f"{args.id}.md"

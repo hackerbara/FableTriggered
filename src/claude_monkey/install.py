@@ -108,7 +108,10 @@ def install_shim_transaction(target_path: Path, state_dir: Path, dry_run: bool) 
 def current_target_is_installed_shim(target_path: Path, record: dict) -> bool:
     if target_path.is_symlink() or not target_path.exists():
         return False
-    expected = record.get("installedShimSha256")
+    state_dir = record.get("stateDir")
+    if not isinstance(state_dir, str):
+        return False
+    expected = shim_digest(Path(state_dir))
     return isinstance(expected, str) and sha256_bytes(target_path.read_bytes()) == expected
 
 

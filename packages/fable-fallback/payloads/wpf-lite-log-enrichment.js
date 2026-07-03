@@ -1,14 +1,1 @@
-async function wpf(e,t){if(!e.isLite||!e.fullPath)return e;
-let n=await Nmc(e.fullPath,e.fileSize??0,t),b=!1;
-try{let l=D$.readFileSync(e.fullPath,"utf8");
-b=l.includes("claude-fable-5")&&(l.includes('"type":"fallback"')||l.includes("model_refusal_fallback"))}catch{}
-let r=n.projectPath!==void 0&&Dg.dirname(e.fullPath)===t_(n.projectPath),
-o=n.relocatedCwd??(r||e.projectPath===void 0?n.projectPath??e.projectPath:e.projectPath),
-s={...e,isLite:!1,firstPrompt:n.firstPrompt,gitBranch:n.gitBranch,isSidechain:n.isSidechain,
-teamName:n.teamName,sessionKind:n.sessionKind,customTitle:n.customTitle,aiTitle:n.aiTitle,
-summary:n.summary,tag:n.tag,agentSetting:n.agentSetting,prNumber:n.prNumber,prUrl:n.prUrl,
-prRepository:n.prRepository,projectPath:o,fableClassifierTriggered:b};
-if(!s.firstPrompt&&!s.customTitle&&!s.aiTitle)s.firstPrompt="(session)";
-if(s.isSidechain||s.teamName||s.sessionKind==="daemon"||s.sessionKind==="daemon-worker")return null;
-let i=rgn.has(Tmc()??"");if(!i&&rgn.has(n.entrypoint??""))return null;
-if(!i&&n.isLoopSession)return null;return s}
+async function CTf(e,t){if(!e.isLite||!e.fullPath)return e;let n=await Byc(e.fullPath,e.fileSize??0,t),a=!1;try{let l=await Ml.readFile(e.fullPath,"utf8");a=l.includes("claude-fable-5")&&(l.includes('"type":"fallback"')||l.includes("model_refusal_fallback"))}catch{}let r=(l)=>l,o=n.projectPath!==void 0&&r(Wg.dirname(e.fullPath))===r(c_(n.projectPath)),s=n.relocatedCwd??(o||e.projectPath===void 0?n.projectPath??e.projectPath:e.projectPath),i={...e,isLite:!1,firstPrompt:n.firstPrompt,gitBranch:n.gitBranch,isSidechain:n.isSidechain,teamName:n.teamName,sessionKind:n.sessionKind,customTitle:n.customTitle,aiTitle:n.aiTitle,summary:n.summary,tag:n.tag,agentSetting:n.agentSetting,prNumber:n.prNumber,prUrl:n.prUrl,prRepository:n.prRepository,projectPath:s,fableClassifierTriggered:a};if(!i.firstPrompt&&!i.customTitle&&!i.aiTitle)i.firstPrompt="(session)";if(i.isSidechain)return C(`Session ${e.sessionId} filtered from /resume: isSidechain=true`),null;if(i.teamName)return C(`Session ${e.sessionId} filtered from /resume: teamName=${i.teamName}`),null;if(i.sessionKind==="daemon"||i.sessionKind==="daemon-worker")return C(`Session ${e.sessionId} filtered from /resume: sessionKind=${i.sessionKind}`),null;let l=A_n.has(Eyc()??"");if(!l&&A_n.has(n.entrypoint??""))return C(`Session ${e.sessionId} filtered from /resume: entrypoint=${n.entrypoint}`),null;if(!l&&n.isLoopSession)return C(`Session ${e.sessionId} filtered from /resume: /loop session`),null;return i}

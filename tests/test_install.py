@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -22,6 +23,27 @@ def test_install_records_previous_symlink_and_owner(tmp_path):
     raw = json.loads(record.read_text())
     assert raw["targetPath"] == str(target)
     assert raw["previousType"] == "symlink"
+
+
+def test_install_caches_previous_resolved_source_binary(tmp_path):
+    target = tmp_path / "bin" / "claude"
+    official = tmp_path / "versions" / "2.1.199"
+    official.parent.mkdir(parents=True)
+    official.write_bytes(b"official binary")
+    official.chmod(0o755)
+    target.parent.mkdir()
+    target.symlink_to(official)
+    state = tmp_path / "state"
+
+    record = install_shim_transaction(target, state, dry_run=False)
+
+    raw = json.loads(record.read_text())
+    cache_path = Path(raw["previousSourceCachePath"])
+    assert cache_path.is_file()
+    assert cache_path.read_bytes() == b"official binary"
+    assert cache_path.stat().st_mode & 0o111
+    assert raw["previousSourceSha256"] == hashlib.sha256(b"official binary").hexdigest()
+    assert raw["previousSourceSizeBytes"] == len(b"official binary")
 
 
 def test_restore_refuses_without_record(tmp_path):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -11,15 +12,26 @@ from claude_monkey.manifest_v2 import load_manifest_v2_dict
 from claude_monkey.payloads import load_payload_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = Path(
-    "/Users/MAC/Documents/Claude-patch/.development/artifacts/claude-2.1.198.unpatched-copy"
-)
 PACKAGE_DIRS = [
     ROOT / "packages" / "fable-fallback",
     ROOT / "packages" / "hidden-context-drawer",
     ROOT / "packages" / "normal-channel-hidden-context",
     ROOT / "packages" / "reminder-suppression",
 ]
+
+
+def source_for_identity(identity) -> Path | None:
+    candidates = [
+        Path.home() / ".claude-monkey" / "sources" / identity.sha256 / "claude",
+        Path("/Users/MAC/.local/bin/claude"),
+        Path("/Users/MAC/.local/share/claude/versions") / identity.claude_version,
+    ]
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        if hashlib.sha256(candidate.read_bytes()).hexdigest() == identity.sha256:
+            return candidate
+    return None
 
 
 def test_reference_packages_are_v15_schema_v2_with_valid_payload_hashes():
@@ -44,18 +56,21 @@ def test_reference_packages_are_v15_schema_v2_with_valid_payload_hashes():
                     assert payload
 
 
-def test_reference_packages_validate_against_real_2_1_198_source():
-    if not SOURCE.exists():
-        pytest.skip(f"local Claude Code 2.1.198 source artifact missing: {SOURCE}")
+def test_reference_packages_validate_against_current_pinned_source():
     for package_dir in PACKAGE_DIRS:
+        manifest = load_manifest_v2_dict(json.loads((package_dir / "patch.json").read_text()))
+        identity = manifest.targets[0].source_identity
+        source = source_for_identity(identity)
+        if source is None:
+            pytest.skip(f"local Claude Code source missing for sha {identity.sha256}")
         result = validate_package(
             ValidationRequestV15(
-                source_path=SOURCE,
+                source_path=source,
                 package_dir=package_dir,
-                source_version="2.1.198",
-                source_version_output="2.1.198 (Claude Code)",
-                platform="darwin",
-                arch="arm64",
+                source_version=identity.claude_version,
+                source_version_output=identity.version_output,
+                platform=identity.platform,
+                arch=identity.arch,
             )
         )
         assert result["ok"] is True, result

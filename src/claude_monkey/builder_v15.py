@@ -289,6 +289,33 @@ def _check_overlaps(planned: list[PlannedModuleOperation]) -> None:
             )
 
 
+def _short_sha(value: str) -> str:
+    return f"{value[:12]}…"
+
+
+def _source_identity_mismatch_reason(
+    manifest: ManifestV2, request: BuildRequestV15, source: bytes
+) -> str:
+    source_sha = hashlib.sha256(source).hexdigest()
+    current = (
+        f"current source is Claude {request.source_version} "
+        f"({request.source_version_output}), {request.platform}/{request.arch}, "
+        f"sha256 {_short_sha(source_sha)}, size {len(source)} bytes"
+    )
+    targets = [
+        (
+            f"Claude {target.source_identity.claude_version} "
+            f"({target.source_identity.version_output}), "
+            f"{target.source_identity.platform}/{target.source_identity.arch}, "
+            f"sha256 {_short_sha(target.source_identity.sha256)}, "
+            f"size {target.source_identity.size_bytes} bytes"
+        )
+        for target in manifest.targets
+    ]
+    target_summary = "; ".join(targets) if targets else "none"
+    return f"source_identity_mismatch:{manifest.id}: {current}; package targets {target_summary}"
+
+
 def _apply_signing_v15(report: BuildReportV2, output: Path, runner: CommandRunner) -> bool:
     safe_runner = _safe_runner(runner)
     sign = codesign_sign(output, safe_runner)
@@ -329,7 +356,7 @@ def _select_packages(
             return selected, _write_failed(
                 request,
                 report_path,
-                f"source_identity_mismatch:{manifest.id}",
+                _source_identity_mismatch_reason(manifest, request, source),
                 source=source,
                 enabled=enabled,
             )

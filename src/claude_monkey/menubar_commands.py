@@ -1,0 +1,229 @@
+from __future__ import annotations
+
+import json
+import queue
+import subprocess
+import threading
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+MAX_CAPTURE_CHARS = 120_000
+MAX_LOG_STDERR_CHARS = 2_000
+
+
+class MutatingCommandBusy(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class CapturedProcess:
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+class _BoundedTextCapture:
+    def __init__(self, max_chars: int) -> None:
+        self.max_chars = max_chars
+        self._chunks: list[str] = []
+        self._length = 0
+
+    def append(self, text: str) -> None:
+        if self._length >= self.max_chars:
+            return
+        remaining = self.max_chars - self._length
+        kept = text[:remaining]
+        self._chunks.append(kept)
+        self._length += len(kept)
+
+    def value(self) -> str:
+        return "".join(self._chunks)
+
+
+def _drain_stream(stream, capture: _BoundedTextCapture) -> None:
+    try:
+        while True:
+            chunk = stream.read(8192)
+            if not chunk:
+                break
+            capture.append(chunk)
+    finally:
+        stream.close()
+
+
+def _run_bounded_subprocess(argv: list[str]) -> CapturedProcess:
+    process = subprocess.Popen(  # noqa: S603 - argv is explicit and shell=False.
+        argv,
+        shell=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if process.stdout is None or process.stderr is None:
+        raise RuntimeError("subprocess pipes were not created")
+    stdout_capture = _BoundedTextCapture(MAX_CAPTURE_CHARS)
+    stderr_capture = _BoundedTextCapture(MAX_CAPTURE_CHARS)
+    stdout_thread = threading.Thread(
+        target=_drain_stream, args=(process.stdout, stdout_capture), daemon=True
+    )
+    stderr_thread = threading.Thread(
+        target=_drain_stream, args=(process.stderr, stderr_capture), daemon=True
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+    returncode = process.wait()
+    stdout_thread.join()
+    stderr_thread.join()
+    return CapturedProcess(returncode, stdout_capture.value(), stderr_capture.value())
+
+
+class CommandRunner:
+    def __init__(
+        self,
+        *,
+        cli_argv: list[str] | None = None,
+        logs_dir: Path,
+        run: Callable[..., subprocess.CompletedProcess[str]] | None = None,
+    ) -> None:
+        self.cli_argv = list(cli_argv or ["claude-monkey"])
+        self.logs_dir = logs_dir
+        self.run = run
+        self._mutating_lock = threading.Lock()
+        self._busy_for_test = False
+        self._results: queue.Queue[tuple[str, dict[str, Any]]] = queue.Queue()
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def log_path(self) -> Path:
+        return self.logs_dir / "menubar.log"
+
+    def mark_busy_for_test(self) -> None:
+        self._busy_for_test = True
+
+    def clear_busy_for_test(self) -> None:
+        self._busy_for_test = False
+
+    def post_result_for_test(self, name: str, payload: dict[str, Any]) -> None:
+        self._results.put((name, payload))
+
+    def drain_results(self) -> list[tuple[str, dict[str, Any]]]:
+        items: list[tuple[str, dict[str, Any]]] = []
+        while True:
+            try:
+                items.append(self._results.get_nowait())
+            except queue.Empty:
+                break
+        return items
+
+    def _log(self, command: list[str], returncode: int, stderr: str) -> None:
+        stamp = datetime.now(UTC).isoformat()
+        line = json.dumps(
+            {
+                "timestamp": stamp,
+                "command": command,
+                "returncode": returncode,
+                "stderr": stderr[:MAX_LOG_STDERR_CHARS],
+            },
+            sort_keys=True,
+        )
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.log_path.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+
+    def log_ui_event(self, event: str, **fields: Any) -> None:
+        stamp = datetime.now(UTC).isoformat()
+        line = json.dumps(
+            {
+                "timestamp": stamp,
+                "event": event,
+                **fields,
+            },
+            sort_keys=True,
+        )
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.log_path.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+
+    def run_json(self, args: list[str], *, mutating: bool) -> dict[str, Any]:
+        if self._busy_for_test and mutating:
+            raise MutatingCommandBusy("another mutating command is running")
+
+        acquired = False
+        if mutating:
+            acquired = self._mutating_lock.acquire(blocking=False)
+            if not acquired:
+                raise MutatingCommandBusy("another mutating command is running")
+
+        try:
+            argv = [*self.cli_argv, *args]
+            result = self._run_command(argv)
+            stdout = result.stdout or ""
+            stderr = result.stderr or ""
+            self._log(argv, int(result.returncode), stderr)
+            if stdout.strip():
+                try:
+                    payload = json.loads(stdout)
+                except json.JSONDecodeError:
+                    payload = None
+                if isinstance(payload, dict):
+                    return payload
+            if result.returncode != 0:
+                message = stderr.strip() or f"command exited {result.returncode}"
+                return {
+                    "schemaVersion": 1,
+                    "ok": False,
+                    "status": "error",
+                    "summary": message,
+                    "reportPath": None,
+                    "targetPath": None,
+                    "authorizationRequired": False,
+                    "authorizationMethod": None,
+                    "dryRun": False,
+                    "plannedActions": [],
+                    "error": {"message": message, "code": "command_failed"},
+                }
+            raise ValueError("command succeeded but did not emit JSON")
+        finally:
+            if acquired:
+                self._mutating_lock.release()
+
+    def open_path(self, path: Path) -> None:
+        expanded = path.expanduser()
+        result = self._run_command(["open", str(expanded)])
+        self._log(["open", str(expanded)], int(result.returncode), result.stderr or "")
+
+    def _run_command(self, argv: list[str]) -> CapturedProcess | subprocess.CompletedProcess[str]:
+        if self.run is not None:
+            return self.run(
+                argv,
+                shell=False,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        return _run_bounded_subprocess(argv)
+
+    def run_background(self, name: str, args: list[str], *, mutating: bool) -> None:
+        def worker() -> None:
+            try:
+                payload = self.run_json(args, mutating=mutating)
+            except Exception as exc:
+                payload = {
+                    "schemaVersion": 1,
+                    "ok": False,
+                    "status": "error",
+                    "summary": str(exc),
+                    "reportPath": None,
+                    "targetPath": None,
+                    "authorizationRequired": False,
+                    "authorizationMethod": None,
+                    "dryRun": False,
+                    "plannedActions": [],
+                    "error": {"message": str(exc), "code": "command_failed"},
+                }
+            self._results.put((name, payload))
+
+        threading.Thread(target=worker, daemon=True).start()

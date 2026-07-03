@@ -14,9 +14,14 @@ dev = [
   "pytest>=8.2",
   "ruff>=0.5"
 ]
+gui = [
+  "rumps>=0.4.0",
+  "pyobjc-framework-Cocoa>=10.0"
+]
 
 [project.scripts]
 claude-monkey = "claude_monkey.cli:main"
+claude-monkey-menubar = "claude_monkey.menubar:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

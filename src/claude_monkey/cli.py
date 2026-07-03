@@ -26,12 +26,6 @@ from claude_monkey.builder_v15 import (
 )
 from claude_monkey.cli_json import envelope_error, envelope_ok, print_json, to_jsonable
 from claude_monkey.config import LaunchProfile, load_config, save_config
-from claude_monkey.launch_profile import (
-    LaunchMergeInput,
-    load_active_launch_packages,
-    merge_launch_profile,
-    select_launch_target,
-)
 from claude_monkey.install import (
     ProtectedTargetRestoreUnavailable,
     current_target_is_installed_shim,
@@ -39,6 +33,19 @@ from claude_monkey.install import (
     protected_install_requires_refusal,
     restore_install_transaction,
     use_official,
+)
+from claude_monkey.launch_profile import (
+    LaunchMergeInput,
+    load_active_launch_packages,
+    merge_launch_profile,
+    select_launch_target,
+)
+from claude_monkey.package_model import (
+    PackageKind,
+    PackageManifest,
+    PackageValidationError,
+    discover_packages,
+    load_package_manifest,
 )
 from claude_monkey.paths import StatePaths, default_paths
 from claude_monkey.smoke import run_command
@@ -52,6 +59,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("doctor")
     list_patches = sub.add_parser("list-patches")
     list_patches.add_argument("--json", action="store_true")
+    list_options = sub.add_parser("list-options")
+    list_options.add_argument("--json", action="store_true")
     status = sub.add_parser("status")
     status.add_argument("--json", action="store_true")
     enable = sub.add_parser("enable")
@@ -60,6 +69,19 @@ def build_parser() -> argparse.ArgumentParser:
     disable = sub.add_parser("disable")
     disable.add_argument("--json", action="store_true")
     disable.add_argument("patch_id")
+    enable_patch = sub.add_parser("enable-patch")
+    enable_patch.add_argument("patch_id")
+    enable_patch.add_argument("--json", action="store_true")
+    disable_patch = sub.add_parser("disable-patch")
+    disable_patch.add_argument("patch_id")
+    disable_patch.add_argument("--json", action="store_true")
+    enable_option = sub.add_parser("enable-option")
+    enable_option.add_argument("option_id")
+    enable_option.add_argument("--confirm", action="store_true")
+    enable_option.add_argument("--json", action="store_true")
+    disable_option = sub.add_parser("disable-option")
+    disable_option.add_argument("option_id")
+    disable_option.add_argument("--json", action="store_true")
     list_prompts = sub.add_parser("list-prompts")
     list_prompts.add_argument("--json", action="store_true")
     set_prompt = sub.add_parser("set-prompt")
@@ -484,6 +506,220 @@ def _list_prompt_payload(paths: StatePaths, config) -> dict[str, Any]:
                 }
             )
     return {"schemaVersion": 1, "prompts": prompts}
+
+
+def _kind_root(paths: StatePaths, kind: PackageKind) -> Path:
+    if kind is PackageKind.PATCH:
+        return paths.patches_dir
+    if kind is PackageKind.PROMPT:
+        return paths.prompts_dir
+    return paths.options_dir
+
+
+def _enabled_ids_for_kind(config, kind: PackageKind) -> set[str]:
+    profile = active_profile(config)
+    if kind is PackageKind.PATCH:
+        return set(profile.patches)
+    if kind is PackageKind.OPTION:
+        return set(profile.options)
+    return {profile.prompt} if profile.prompt else set()
+
+
+def _compatibility_status(manifest: PackageManifest) -> str:
+    compatibility = manifest.compatibility
+    if compatibility is None or not (
+        compatibility.claude_versions or compatibility.platforms or compatibility.arches
+    ):
+        return "unconstrained"
+    return "constrained"
+
+
+def _risk_level(manifest: PackageManifest) -> str:
+    return manifest.risk.level if manifest.risk is not None else "unknown"
+
+
+def _strip_manifest_file_prefix(error: str) -> str:
+    if ": " in error and error.split(": ", 1)[0].endswith(".json"):
+        return error.split(": ", 1)[1]
+    return error
+
+
+def _invalid_package_errors(package_dir: Path, errors: tuple[str, ...]) -> list[str]:
+    formatted: list[str] = []
+    for error in errors:
+        detail = _strip_manifest_file_prefix(error)
+        if "id_must_match_folder" in detail:
+            manifest_id = None
+            for manifest_path in sorted(package_dir.glob("*.json")):
+                raw = _read_json_file(manifest_path)
+                if raw is not None and isinstance(raw.get("id"), str):
+                    manifest_id = raw["id"]
+                    break
+            if manifest_id is not None:
+                formatted.append(f"id_must_match_folder: {manifest_id} != {package_dir.name}")
+                continue
+        formatted.append(detail)
+    return formatted
+
+
+def _package_record(manifest: PackageManifest, enabled: set[str]) -> dict[str, Any]:
+    return {
+        "id": manifest.id,
+        "label": manifest.label,
+        "kind": manifest.kind.value,
+        "enabled": manifest.id in enabled,
+        "valid": True,
+        "compatibilityStatus": _compatibility_status(manifest),
+        "riskLevel": _risk_level(manifest),
+        "errors": [],
+    }
+
+
+def _invalid_package_record(
+    package_dir: Path, kind: PackageKind, errors: tuple[str, ...]
+) -> dict[str, Any]:
+    return {
+        "id": package_dir.name,
+        "label": package_dir.name,
+        "kind": kind.value,
+        "enabled": False,
+        "valid": False,
+        "compatibilityStatus": "unknown",
+        "riskLevel": "unknown",
+        "errors": _invalid_package_errors(package_dir, errors),
+    }
+
+
+def _list_kind_payload(paths: StatePaths, config, kind: PackageKind) -> dict[str, Any]:
+    discovered = discover_packages(_kind_root(paths, kind), kind)
+    enabled = _enabled_ids_for_kind(config, kind)
+    records = [_package_record(manifest, enabled) for manifest in discovered.valid]
+    records.extend(
+        _invalid_package_record(invalid.package_dir, kind, invalid.errors)
+        for invalid in discovered.invalid
+    )
+    records.sort(key=lambda item: (str(item["id"])))
+    collection = {
+        PackageKind.PATCH: "patches",
+        PackageKind.PROMPT: "prompts",
+        PackageKind.OPTION: "options",
+    }[kind]
+    return {"schemaVersion": 1, collection: records}
+
+
+def _load_kind_package_or_emit(
+    args: argparse.Namespace, paths: StatePaths, package_id: str, kind: PackageKind
+):
+    try:
+        return load_package_manifest(_kind_root(paths, kind) / package_id, kind)
+    except PackageValidationError as exc:
+        payload = envelope_error(str(exc), code="invalid_package")
+        if getattr(args, "json", False):
+            print_json(payload)
+        else:
+            print(str(exc), file=sys.stderr)
+        return None
+
+
+def _emit_mutation_error(args: argparse.Namespace, message: str, code: str) -> int:
+    if getattr(args, "json", False):
+        print_json(envelope_error(message, code=code))
+    else:
+        print(message, file=sys.stderr)
+    return 1
+
+
+def _option_conflict_id(
+    profile: LaunchProfile, option: PackageManifest, paths: StatePaths
+) -> str | None:
+    if option.option is None:
+        return None
+    enabled_ids = set(profile.options)
+    for conflict_id in option.option.conflicts_with_options:
+        if conflict_id in enabled_ids:
+            return conflict_id
+    for enabled_id in profile.options:
+        try:
+            enabled = load_package_manifest(paths.options_dir / enabled_id, PackageKind.OPTION)
+        except PackageValidationError:
+            continue
+        if enabled.option is not None and option.id in enabled.option.conflicts_with_options:
+            return enabled_id
+    return None
+
+
+def handle_enable_patch(args: argparse.Namespace, paths: StatePaths, config) -> int:
+    if _load_kind_package_or_emit(args, paths, args.patch_id, PackageKind.PATCH) is None:
+        return 1
+    profile = active_profile(config)
+    if args.patch_id not in profile.patches:
+        profile.patches.append(args.patch_id)
+    save_config(paths.config_path, config)
+    return emit(
+        args,
+        f"enabled {args.patch_id}; rebuild required",
+        envelope_ok(f"enabled {args.patch_id}; rebuild required", status="rebuild_required"),
+    )
+
+
+def handle_disable_patch(args: argparse.Namespace, paths: StatePaths, config) -> int:
+    profile = active_profile(config)
+    profile.patches = [item for item in profile.patches if item != args.patch_id]
+    save_config(paths.config_path, config)
+    return emit(
+        args,
+        f"disabled {args.patch_id}; rebuild required",
+        envelope_ok(f"disabled {args.patch_id}; rebuild required", status="rebuild_required"),
+    )
+
+
+def handle_set_prompt_package(args: argparse.Namespace, paths: StatePaths, config) -> int:
+    if getattr(args, "from_file", False):
+        return handle_set_prompt(args, paths, config)
+    if _load_kind_package_or_emit(args, paths, args.prompt, PackageKind.PROMPT) is None:
+        return 1
+    active_profile(config).prompt = args.prompt
+    save_config(paths.config_path, config)
+    return emit(args, f"set prompt {args.prompt}", envelope_ok(f"prompt set to {args.prompt}"))
+
+
+def handle_enable_option(args: argparse.Namespace, paths: StatePaths, config) -> int:
+    option = _load_kind_package_or_emit(args, paths, args.option_id, PackageKind.OPTION)
+    if option is None:
+        return 1
+    if option.risk is not None and option.risk.requires_confirmation and not args.confirm:
+        return _emit_mutation_error(
+            args,
+            f"option {args.option_id} requires --confirm",
+            "confirmation_required",
+        )
+    profile = active_profile(config)
+    conflict_id = _option_conflict_id(profile, option, paths)
+    if conflict_id is not None:
+        return _emit_mutation_error(
+            args,
+            f"option {args.option_id} conflicts with enabled option {conflict_id}",
+            "option_conflict",
+        )
+    profile.options = [item for item in profile.options if item != args.option_id]
+    profile.options.append(args.option_id)
+    save_config(paths.config_path, config)
+    return emit(
+        args,
+        f"enabled option {args.option_id}",
+        envelope_ok(f"enabled option {args.option_id}"),
+    )
+
+
+def handle_disable_option(args: argparse.Namespace, paths: StatePaths, config) -> int:
+    profile = active_profile(config)
+    profile.options = [item for item in profile.options if item != args.option_id]
+    save_config(paths.config_path, config)
+    return emit(
+        args,
+        f"disabled option {args.option_id}",
+        envelope_ok(f"disabled option {args.option_id}"),
+    )
 
 
 def _dry_run_install_payload(
@@ -954,6 +1190,21 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config(paths.config_path)
     if args.command == "launch-preview":
         return handle_launch_preview(args, paths, config)
+    if args.command == "list-options":
+        if args.json:
+            print_json(_list_kind_payload(paths, config, PackageKind.OPTION))
+        else:
+            for record in _list_kind_payload(paths, config, PackageKind.OPTION)["options"]:
+                print(record["id"])
+        return 0
+    if args.command == "enable-patch":
+        return handle_enable_patch(args, paths, config)
+    if args.command == "disable-patch":
+        return handle_disable_patch(args, paths, config)
+    if args.command == "enable-option":
+        return handle_enable_option(args, paths, config)
+    if args.command == "disable-option":
+        return handle_disable_option(args, paths, config)
     if args.command == "status":
         if args.json:
             print_json(_status_payload(paths, config))
@@ -986,7 +1237,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command == "list-patches":
         if args.json:
-            print_json(_list_patch_payload(paths, config))
+            v3_payload = _list_kind_payload(paths, config, PackageKind.PATCH)
+            print_json(v3_payload if v3_payload["patches"] else _list_patch_payload(paths, config))
         else:
             for root in _package_roots(paths):
                 if root.exists():
@@ -995,7 +1247,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "list-prompts":
         if args.json:
-            print_json(_list_prompt_payload(paths, config))
+            v3_payload = _list_kind_payload(paths, config, PackageKind.PROMPT)
+            print_json(v3_payload if v3_payload["prompts"] else _list_prompt_payload(paths, config))
         else:
             prompt_dir = paths.prompts_dir
             if prompt_dir.exists():
@@ -1003,7 +1256,7 @@ def main(argv: list[str] | None = None) -> int:
                     print(prompt_json.stem)
         return 0
     if args.command == "set-prompt":
-        return handle_set_prompt(args, paths, config)
+        return handle_set_prompt_package(args, paths, config)
     if args.command == "clear-prompt":
         active_profile(config).prompt = None
         save_config(paths.config_path, config)

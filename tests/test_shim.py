@@ -3,20 +3,15 @@ from __future__ import annotations
 from claude_monkey.shim import render_shim_script
 
 
-def test_shim_script_uses_exec_and_bypass():
+def test_shim_script_bootstraps_canonical_entrypoint():
     script = render_shim_script("/tmp/state")
-    assert "CLAUDE_MONKEY_BYPASS" in script
-    assert "os.execv" in script
-    assert "/tmp/state" in script
+    assert "from claude_monkey.shim_entry import main" in script
+    assert 'main("/tmp/state")' in script
     assert "shell=True" not in script
 
 
-def test_shim_script_detects_equals_prompt_flags():
+def test_shim_script_does_not_embed_legacy_prompt_merge_logic():
     script = render_shim_script("/tmp/state")
-    assert "startswith(flag + '=')" in script
-
-
-def test_shim_script_reads_v3_prompt_key_not_legacy_prompt_profile():
-    script = render_shim_script("/tmp/state")
-    assert '.get("prompt")' in script
-    assert "promptProfile" not in script
+    assert "active_prompt_args" not in script
+    assert "PROMPT_FLAGS" not in script
+    assert "CONFIG.read_text" not in script

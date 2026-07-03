@@ -28,6 +28,7 @@ from claude_monkey.module_patch import (
     render_changed_module,
 )
 from claude_monkey.package_model import PackageKind, PackageValidationError, load_package_manifest
+from claude_monkey.progress import StageTracker
 from claude_monkey.repack import repack_changed_modules
 from claude_monkey.reports_v2 import BuildReportV2
 from claude_monkey.smoke import (
@@ -39,6 +40,15 @@ from claude_monkey.smoke import (
 )
 
 CommandRunner = Callable[[list[str]], CommandResult]
+
+BUILD_STAGES: tuple[tuple[str, str], ...] = (
+    ("resolve", "Resolve patches"),
+    ("repack", "Repack binary"),
+    ("sign", "Sign"),
+    ("inspect", "Inspect signed binary"),
+    ("smoke", "Smoke test"),
+    ("activate", "Activate"),
+)
 
 
 @dataclass(frozen=True)
@@ -67,6 +77,7 @@ class BuildRequestV15:
     command_runner: CommandRunner = run_command
     manifest_digests: dict[str, str] | None = None
     build_input_snapshot: dict[str, Any] | None = None
+    on_event: Callable[[dict], None] | None = None
 
 
 def _v3_manifest_as_v2_dict(package_dir: Path) -> dict[str, Any]:
@@ -484,11 +495,15 @@ def _select_packages(
 
 
 def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
+    tracker = StageTracker(request.on_event)
+    tracker.plan(BUILD_STAGES)
+    tracker.start("resolve")
     request.output_dir.mkdir(parents=True, exist_ok=True)
     report_path = request.output_dir / "build-report.json"
     source = request.source_path.read_bytes()
     selected, failure = _select_packages(request, source, report_path)
     if failure is not None:
+        tracker.fail(failure.failureReason)
         return failure
 
     report = _base_report(request, source)
@@ -538,6 +553,8 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
             )
         if not changed_modules:
             raise ValueError("no_module_changes")
+        tracker.done()
+        tracker.start("repack")
         repack = repack_changed_modules(source, changed_modules)
         for _, manifest, target in selected:
             for assertion in target.postconditions:
@@ -584,15 +601,21 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
         report.machoUpdates = repack.macho_updates
         report.machoUpdateDetails = repack.macho_update_details
         report.verificationResults = verification_results
+        tracker.done()
         blockers: list[str] = []
         if request.run_signing:
+            tracker.start("sign")
             if not _apply_signing_v15(report, output, request.command_runner):
+                tracker.fail("signing failed")
                 _write_report(report, report_path)
                 return report
+            tracker.done()
         else:
             report.signingResult = {"status": "skipped"}
             report.skippedGates.append("signing")
             blockers.append("signing_skipped")
+            tracker.skip("sign", "signing skipped")
+        tracker.start("inspect")
         output_bytes = output.read_bytes()
         report.outputSha256 = hashlib.sha256(output_bytes).hexdigest()
         report.outputSizeBytes = len(output_bytes)
@@ -605,9 +628,12 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
             report.status = "failed"
             report.automatedStatus = "failed"
             report.failureReason = "post_sign_inspection_failed"
+            tracker.fail("post-sign inspection failed")
             _write_report(report, report_path)
             return report
+        tracker.done()
         if request.run_smoke:
+            tracker.start("smoke")
             smoke_result = smoke_claude_code_version_and_help(
                 output, request.source_version_output, _safe_runner(request.command_runner)
             )
@@ -616,11 +642,14 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
                 report.status = "failed"
                 report.automatedStatus = "failed"
                 report.failureReason = "smoke_failed"
+                tracker.fail("smoke test failed")
                 _write_report(report, report_path)
                 return report
+            tracker.done()
         else:
             report.skippedGates.append("smoke")
             blockers.append("smoke_skipped")
+            tracker.skip("smoke", "smoke skipped")
         if manual_required:
             blockers.append("manual_smoke_pending")
             report.manualSmoke = {
@@ -640,19 +669,24 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
         else:
             report.status = "skipped_gates"
         if request.activate:
+            tracker.start("activate")
             if report.activationEligible and request.current_path is not None:
                 use_official(request.current_path, output)
                 report.activationStatus = "activated"
+                tracker.done()
             else:
                 if request.current_path is None and report.activationEligible:
                     report.activationBlockers.append("activation_requires_current_path")
                     report.activationEligible = False
                 report.activationStatus = "blocked"
+                tracker.fail("activation blocked: " + ", ".join(report.activationBlockers))
         else:
             report.activationStatus = "skipped"
+            tracker.skip("activate", "activation not requested")
         _write_report(report, report_path)
         return report
     except Exception as exc:
+        tracker.fail(str(exc))
         report.status = "failed"
         report.automatedStatus = "failed"
         report.failureReason = str(exc)

@@ -127,3 +127,23 @@ def test_install_writes_record_before_replacing_target(tmp_path, monkeypatch):
     install_shim_transaction(target, tmp_path / "state", dry_run=False)
     assert calls
     assert calls[0][2] is True
+
+
+def test_reinstall_preserves_source_path_from_existing_managed_record(tmp_path):
+    target = tmp_path / "bin" / "claude"
+    official = tmp_path / "versions" / "2.1.199"
+    official.parent.mkdir(parents=True)
+    official.write_bytes(b"official binary")
+    official.chmod(0o755)
+    target.parent.mkdir()
+    target.symlink_to(official)
+    state = tmp_path / "state"
+
+    record = install_shim_transaction(target, state, dry_run=False)
+    first = json.loads(record.read_text())
+    assert first["sourcePath"] == str(official.resolve())
+
+    second_record = install_shim_transaction(target, state, dry_run=False)
+    second = json.loads(second_record.read_text())
+
+    assert second["sourcePath"] == str(official.resolve())

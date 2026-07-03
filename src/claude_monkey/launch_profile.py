@@ -234,7 +234,7 @@ def _merge_option_argv(
         skipped.append(_skip("option_argv", option.id, "user_argv_conflict"))
         warnings.append(_warning("option_argv", option.id, "user_argv_conflict"))
         return
-    if any(item in argv for item in option.option.argv):
+    if any(item in argv or item in user_argv for item in option.option.argv):
         skipped.append(_skip("option_argv", option.id, "duplicate_argv"))
         warnings.append(_warning("option_argv", option.id, "duplicate_argv"))
         return
@@ -254,24 +254,23 @@ def _option_conflict_errors(options: list[PackageManifest]) -> list[str]:
 
 
 def _env_conflict_errors(
-    options: list[PackageManifest],
+    option: PackageManifest,
+    env: dict[str, str],
     process_env: dict[str, str],
     skipped: list[dict[str, str]],
     warnings: list[str],
-) -> tuple[list[str], set[str]]:
+) -> list[str]:
+    if option.option is None:
+        return []
     errors: list[str] = []
-    blocked: set[str] = set()
-    for option in options:
-        if option.option is None:
-            continue
-        for conflict in option.option.conflicts_with_env:
-            if conflict.policy == "error" and conflict.name in process_env:
-                errors.append(f"option {option.id} conflicts with process env {conflict.name}")
-                if option.id not in blocked:
-                    blocked.add(option.id)
-                    skipped.append(_skip("option", option.id, "conflicts_with_env"))
-                    warnings.append(_warning("option", option.id, "conflicts_with_env"))
-    return errors, blocked
+    for conflict in option.option.conflicts_with_env:
+        if conflict.policy == "error" and conflict.name in env:
+            conflict_source = "process env" if conflict.name in process_env else "env"
+            errors.append(f"option {option.id} conflicts with {conflict_source} {conflict.name}")
+    if errors:
+        skipped.append(_skip("option", option.id, "conflicts_with_env"))
+        warnings.append(_warning("option", option.id, "conflicts_with_env"))
+    return errors
 
 
 def _merge_option_env(
@@ -331,24 +330,23 @@ def merge_launch_profile(merge_input: LaunchMergeInput) -> LaunchMergeResult:
     argv: list[str] = []
     _merge_prompt(merge_input.prompt, merge_input.user_argv, argv, skipped, warnings)
     errors.extend(_option_conflict_errors(merge_input.options))
-    env_errors, blocked_option_ids = _env_conflict_errors(
-        merge_input.options, merge_input.process_env, skipped, warnings
-    )
-    errors.extend(env_errors)
-    active_options = [
-        option for option in merge_input.options if option.id not in blocked_option_ids
-    ]
-    for option in active_options:
+    for option in merge_input.options:
+        env_errors = _env_conflict_errors(
+            option, env, merge_input.process_env, skipped, warnings
+        )
+        if env_errors:
+            errors.extend(env_errors)
+            continue
         _merge_option_argv(option, merge_input.user_argv, argv, skipped, warnings)
+        _merge_option_env(
+            [option],
+            merge_input.process_env,
+            env,
+            secret_names,
+            skipped,
+            warnings,
+        )
     argv.extend(merge_input.user_argv)
-    _merge_option_env(
-        active_options,
-        merge_input.process_env,
-        env,
-        secret_names,
-        skipped,
-        warnings,
-    )
     env_preview = {
         name: ("<redacted>" if name in secret_names else value)
         for name, value in env.items()

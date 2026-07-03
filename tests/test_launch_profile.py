@@ -381,3 +381,36 @@ def test_duplicate_option_argv_skips_whole_option_contribution(tmp_path):
     assert result.skipped == [
         {"kind": "option_argv", "id": "sonnet", "reason": "duplicate_argv"}
     ]
+
+
+def test_conflicts_with_env_error_checks_earlier_option_env(tmp_path):
+    first = option_manifest(
+        tmp_path,
+        "first",
+        env={"FOO": EnvValue(value="one")},
+    )
+    second = option_manifest(
+        tmp_path,
+        "second",
+        argv=("--second",),
+        env={"FOO": EnvValue(value="two")},
+        conflicts_with_env=(EnvConflict(name="FOO", policy="error"),),
+    )
+
+    result = merge(options=[first, second])
+
+    assert result.errors == ["option second conflicts with env FOO"]
+    assert result.env["FOO"] == "one"
+    assert result.argv == []
+    assert {"kind": "option", "id": "second", "reason": "conflicts_with_env"} in result.skipped
+
+
+def test_duplicate_option_argv_checks_explicit_user_argv(tmp_path):
+    option = option_manifest(tmp_path, "debug", argv=("--debug",))
+
+    result = merge(user_argv=["--debug"], options=[option])
+
+    assert result.argv == ["--debug"]
+    assert result.skipped == [
+        {"kind": "option_argv", "id": "debug", "reason": "duplicate_argv"}
+    ]

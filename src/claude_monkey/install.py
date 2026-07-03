@@ -183,7 +183,7 @@ def install_shim_transaction(target_path: Path, state_dir: Path, dry_run: bool) 
         {
             key: value
             for key, value in existing_record.items()
-            if key.startswith("previous")
+            if key.startswith("previous") or key == "sourcePath"
         }
         if existing_record is not None
         else describe_existing(target_path)

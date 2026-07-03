@@ -471,3 +471,34 @@ def test_set_prompt_missing_file_json_returns_envelope(monkeypatch, tmp_path, ca
     payload = parse_json_output(capsys)
     assert payload["ok"] is False
     assert payload["error"]["code"] == "missing_prompt_file"
+
+
+def test_stale_install_record_does_not_expose_shim_target(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    state = tmp_path / ".claude-monkey"
+    state.mkdir()
+    (state / "install-record.json").write_text(
+        json.dumps(
+            {
+                "owner": "ClaudeMonkey managed shim",
+                "targetPath": str(tmp_path / "missing-claude"),
+                "stateDir": str(state),
+                "installedShimSha256": "abc",
+            }
+        )
+    )
+    assert main(["status", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["shimInstalled"] is False
+    assert payload["shimTargetPath"] is None
+
+
+def test_use_official_json_envelope(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    official = tmp_path / "official"
+    official.write_text("#!/bin/sh\nexit 0\n")
+    official.chmod(0o755)
+    assert main(["use-official", "--official", str(official), "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is True
+    assert payload["summary"] == "using official Claude binary"

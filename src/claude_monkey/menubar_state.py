@@ -243,7 +243,7 @@ def parse_menu_state(
         last_build_strategy=str(
             status_raw.get("lastBuildStrategy") or status_raw.get("buildStrategy") or "unknown"
         ),
-        changed_modules=tuple(dict(item) for item in status_raw.get("changedModules", [])),
+        changed_modules=tuple(_dict_list(status_raw, "changedModules")),
         repack_summary=status_raw.get("repackSummary"),
         state_dir=Path(str(status_raw["stateDir"])).expanduser(),
         logs_dir=Path(str(status_raw["logsDir"])).expanduser(),

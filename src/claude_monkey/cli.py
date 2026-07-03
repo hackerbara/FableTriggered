@@ -113,6 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     official = sub.add_parser("use-official")
     official.add_argument("--official")
+    official.add_argument("--json", action="store_true")
     return parser
 
 
@@ -252,7 +253,7 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
         "latestBuildReportPath": str(report_path) if report_path is not None else None,
         "activePatchSet": _display_patch_set(config.activePatchSet),
         "currentClaudePath": current_executable,
-        "shimTargetPath": _shim_target_from_record(install_record),
+        "shimTargetPath": _shim_target_from_record(install_record) if shim_installed else None,
         "installRecordPath": str(install_record) if shim_installed else None,
         "buildStrategy": build_strategy,
         "lastBuildStrategy": build_strategy,
@@ -823,7 +824,10 @@ def main(argv: list[str] | None = None) -> int:
         use_official(paths.current_path, official)
         config.activePatchSet = None
         save_config(paths.config_path, config)
-        print(f"current={paths.current_path.resolve()}")
+        if args.json:
+            print_json(envelope_ok("using official Claude binary", target_path=official))
+        else:
+            print(f"current={paths.current_path.resolve()}")
         return 0
     if args.command == "doctor":
         print(f"stateDir={paths.state_dir}")

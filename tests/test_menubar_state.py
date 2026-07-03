@@ -325,3 +325,38 @@ def test_parse_menu_state_rejects_malformed_patch_and_prompt_lists():
         assert "patches must be a list" in str(exc)
     else:
         raise AssertionError("expected patches validation")
+
+
+def test_parse_menu_state_rejects_malformed_changed_modules():
+    status = {
+        "schemaVersion": 1,
+        "status": "ok",
+        "sourceClaudeVersion": None,
+        "sourceClaudePath": None,
+        "installMode": "shim",
+        "shimInstalled": False,
+        "activeProfile": "default",
+        "activePrompt": None,
+        "desiredPatchIds": [],
+        "activePatchIds": [],
+        "rebuildRequired": False,
+        "latestBuildReportPath": None,
+        "activePatchSet": None,
+        "currentClaudePath": None,
+        "shimTargetPath": None,
+        "installRecordPath": None,
+        "changedModules": [["path", "/tmp/not-object"]],
+        "stateDir": "/tmp/state",
+        "logsDir": "/tmp/state/logs",
+        "lastError": None,
+    }
+    try:
+        parse_menu_state(
+            status,
+            {"schemaVersion": 1, "patches": []},
+            {"schemaVersion": 1, "prompts": []},
+        )
+    except ValueError as exc:
+        assert "changedModules items must be objects" in str(exc)
+    else:
+        raise AssertionError("expected changedModules validation")

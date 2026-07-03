@@ -3,7 +3,7 @@
   "id": "hidden-context-drawer",
   "name": "Hidden Context Drawer",
   "description": "Projects model-visible hidden attachment context into an integrated footer Hidden Context drawer.",
-  "packageVersion": "0.1.4",
+  "packageVersion": "0.1.5",
   "targets": [
     {
       "sourceIdentity": {
@@ -24,7 +24,7 @@
           "operations": [
             {
               "opId": "projection-helpers-before-jlr",
-              "label": "projection helpers before Jlr v16 header line kinds",
+              "label": "projection helpers before Jlr v18 persistent unread flash",
               "type": "replace_exact",
               "exact": "function Jlr(e){",
               "requireWithinRange": [],
@@ -32,7 +32,7 @@
               "oldRangeLength": 16,
               "replacement": {
                 "path": "payloads/01-projection-helpers-before-jlr.js",
-                "sha256": "9df9bb4dec65337086b102e27f60fb6001b717a703c4412276333628c44457c7"
+                "sha256": "a03b5257501f00e58836e708e23ead9094223a297739d93625f731ea4e420a97"
               },
               "knownBehaviorChange": "Adds timestamps, source labels, and broader hidden/model-visible attachment coverage to the Hidden Context Drawer projection."
             },
@@ -116,7 +116,7 @@
             },
             {
               "opId": "footer-availability-bar-hidden-context",
-              "label": "footer availability bar Hidden Context v13",
+              "label": "footer availability bar Hidden Context v18 unread flash",
               "type": "replace_exact",
               "exact": "xe=Hhe(g,_,E).length>0||E!==void 0&&Hee(g[E]),He=re?di.jsx(OXo,{tasksSelected:c,onOpenDialog:d}):null;if(le.length===0&&!He&&!ue&&!ae&&ce.length===0&&!Ae&&n){if(!z)le.push(di.jsx(v,{dimColor:!0,children:\"? for shortcuts\"},\"shortcuts-hint\"))}if(we)le.push(we);let Fe=Ot().copyOnSelect??!0,Ge=O&&(!Fe||vT());if(x&&D)le.push(di.jsx(ZJe,{},\"voice-warmup\"));else if(js()&&Ge){let Ue=Wt()===\"macos\",We=Ue&&(M()?.lastPressHadAlt??!1);le.push(di.jsx(v,{dimColor:!0,children:di.jsxs($n,{children:[!Fe&&di.jsx(wt,{chord:\"ctrl+c\",action:\"copy\"}),vT()&&(We?di.jsx(v,{children:\"set macOptionClickForcesSelection in VS Code settings\"}):di.jsxs(v,{children:[Ue?\"option+click\":\"shift+click\",\" to native select\"]}))]})},\"selection-copy\"))}else if(le.length>0&&n&&x&&I===\"idle\"&&pe.length===0&&K)le.push(di.jsxs(v,{dimColor:!0,children:[\"hold \",q,\" to speak\"]},\"voice-hint\"));if((He||xe)&&n&&!y)le.push(di.jsx(v,{dimColor:!0,children:c?di.jsx(wt,{chord:\"enter\",action:\"view tasks\"}):di.jsx(wt,{chord:\"down\",action:\"manage\"})},\"manage-tasks\"));if(le.length===0&&!He&&!ue&&!de&&!ae&&ce.length===0&&!Ae)return js()?di.jsx(v,{children:\" \"}):null;return di.jsxs(B,{height:1,overflow:\"hidden\",children:[ue&&di.jsxs(B,{flexShrink:0,children:[ue,(de||Ae||ae||ce.length>0||He||le.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),de&&di.jsxs(B,{flexShrink:0,children:[de,(Ae||ae||ce.length>0||He||le.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),Ae&&di.jsxs(B,{flexShrink:0,children:[Ae,(ae||ce.length>0||He||le.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ae&&di.jsxs(B,{flexShrink:0,children:[ae,(ce.length>0||He||le.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ce.length>0&&di.jsxs(B,{flexShrink:0,children:[di.jsx($n,{children:ce}),(He||le.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),He&&di.jsxs(B,{flexShrink:0,children:[He,le.length>0&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),le.length>0&&di.jsx(v,{wrap:\"truncate\",children:di.jsx($n,{children:le})})]})}",
               "requireWithinRange": [],
@@ -124,7 +124,7 @@
               "oldRangeLength": 1988,
               "replacement": {
                 "path": "payloads/16-footer-availability-bar-hidden-context.js",
-                "sha256": "934d22f971c0acc2e4f560dd8aec8788a351078cedfd4223c2617b05de64b5eb"
+                "sha256": "6352dd331e15715160eadbe3e9110ee71af55c12cf2dae8098951e930c576d32"
               }
             },
             {
@@ -181,7 +181,7 @@
             },
             {
               "opId": "footer-hiddencontext-up-down-scroll",
-              "label": "footer hiddenContext up/down scroll v17 step3",
+              "label": "footer hiddenContext up/down scroll v18 clear unread flash",
               "type": "replace_exact",
               "exact": "function tI(){if(cm&&Cs>0&&Os>zn){ec((Bt)=>Bt-1);return}if(jA&&oa>0){Pu((Bt)=>Bt-1);return}Z_(-1,!0)}function CH(){if(cm&&Cs>0){if(Os<Cs-1){ec((Bt)=>Bt+1);return}Z_(1);return}if(cm){if(!Z_(1))D(!0),Pc(null);return}if(jA){if(oa<Lr.length-1){Pu((Bt)=>Bt+1);return}Z_(1);return}Z_(1)}function aae",
               "requireWithinRange": [],
@@ -189,7 +189,7 @@
               "oldRangeLength": 293,
               "replacement": {
                 "path": "payloads/12-footer-hiddencontext-up-down-scroll.js",
-                "sha256": "b5cdaa56b11302fcca12f739598a87834385cbc20a6e6b8bf3272491f7343ec5"
+                "sha256": "2d5c264f97135939cbac1cc8664984de88d85167762e444a39a683e3fc483487"
               }
             },
             {
@@ -207,7 +207,7 @@
             },
             {
               "opId": "selected-only-bottom-overlay-hidden-context-globals",
-              "label": "selected-only bottom overlay Hidden Context globals v13",
+              "label": "selected-only bottom overlay Hidden Context globals v18 clear unread flash",
               "type": "replace_exact",
               "exact": "return Nd.jsxs(B,{flexDirection:\"column\",marginTop:jt||hae?0:1,children:[Ym&&!se&&Nd.jsx(B,{tabIndex:0,autoFocus:!0,onKeyDown:az}),!js()&&Nd.jsx(ogr,{}),J&&",
               "requireWithinRange": [],
@@ -215,7 +215,7 @@
               "oldRangeLength": 156,
               "replacement": {
                 "path": "payloads/14-selected-only-bottom-overlay-hidden-context-globals.js",
-                "sha256": "c73ee945c3ecf0394640a21f5a69b858ab2943047c4d68dddbe954d1d57a91a4"
+                "sha256": "250766e5666b819c82658391180e03507f14b865aebe160cd1923e0ad3a9b2e5"
               }
             },
             {
@@ -311,6 +311,31 @@
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
           "value": "Bt-3"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "Number.MAX_SAFE_INTEGER"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "hCflash=!hCsel&&Date.now()<(hCf?.flashUntil??0)"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "backgroundColor:\"blue\""
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "color:\"white\""
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "flashUntil=0"
         }
       ],
       "manualSmoke": {

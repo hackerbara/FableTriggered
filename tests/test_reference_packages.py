@@ -192,6 +192,29 @@ def test_hidden_context_drawer_scroll_step_is_three_for_keyboard_and_mouse():
     assert "Bt+1" not in keyboard_payload.split("if(cm&&Cs>0)")[0]
 
 
+def test_hidden_context_drawer_footer_flashes_blue_until_selection_clears():
+    package_dir = ROOT / "packages" / "hidden-context-drawer"
+    helper_payload = (
+        package_dir / "payloads" / "01-projection-helpers-before-jlr.js"
+    ).read_text()
+    footer_payload = (
+        package_dir / "payloads" / "16-footer-availability-bar-hidden-context.js"
+    ).read_text()
+    globals_payload = (
+        package_dir / "payloads" / "14-selected-only-bottom-overlay-hidden-context-globals.js"
+    ).read_text()
+    keyboard_payload = (
+        package_dir / "payloads" / "12-footer-hiddencontext-up-down-scroll.js"
+    ).read_text()
+
+    assert "flashUntil:o?Number.MAX_SAFE_INTEGER:r?.flashUntil??0" in helper_payload
+    assert "hCflash=!hCsel&&Date.now()<(hCf?.flashUntil??0)" in footer_payload
+    assert 'color:"white",backgroundColor:"blue"' in footer_payload
+    assert "Date.now()<(hCf?.flashUntil??0)" in footer_payload
+    assert "flashUntil=0" in globals_payload
+    assert "flashUntil=0" in keyboard_payload
+
+
 def test_hidden_context_drawer_payload_avoids_utf8_separator_mojibake_and_uses_warning_header():
     package_dir = ROOT / "packages" / "hidden-context-drawer"
     helper_payload = (

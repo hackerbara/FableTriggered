@@ -129,9 +129,7 @@ def test_user_prompt_flag_skips_active_prompt(tmp_path):
     result = merge(user_argv=["--system-prompt", "mine"], prompt=prompt)
 
     assert result.argv == ["--system-prompt", "mine"]
-    assert result.skipped == [
-        {"kind": "prompt", "id": "research", "reason": "user_prompt_flag"}
-    ]
+    assert result.skipped == [{"kind": "prompt", "id": "research", "reason": "user_prompt_flag"}]
 
 
 @pytest.mark.parametrize("token", sorted(MANAGEMENT_TOKENS))
@@ -170,9 +168,7 @@ def test_user_argv_conflict_skips_whole_option_argv_contribution(tmp_path):
     result = merge(user_argv=["--model", "sonnet"], options=[option])
 
     assert result.argv == ["--model", "sonnet"]
-    assert result.skipped == [
-        {"kind": "option_argv", "id": "opus", "reason": "user_argv_conflict"}
-    ]
+    assert result.skipped == [{"kind": "option_argv", "id": "opus", "reason": "user_argv_conflict"}]
 
 
 def test_conflicts_with_options_between_enabled_options_creates_error(tmp_path):
@@ -231,10 +227,11 @@ def test_value_from_env_and_secret_preview_redaction(tmp_path):
     assert result.env_preview["API_KEY"] == "<redacted>"
     assert result.env_preview["COPIED"] == "<redacted>"
     assert "MISSING" not in result.env
-    assert (
-        {"kind": "option_env", "id": "secrets", "reason": "missing_value_from_env"}
-        in result.skipped
-    )
+    assert {
+        "kind": "option_env",
+        "id": "secrets",
+        "reason": "missing_value_from_env",
+    } in result.skipped
 
 
 def test_conflicts_with_env_error_blocks_option_argv_and_env(tmp_path):
@@ -272,9 +269,7 @@ def test_load_active_launch_packages_skips_missing_packages_with_warnings(tmp_pa
     paths = StatePaths(state_dir=tmp_path / ".claude-monkey")
     config = ClaudeMonkeyConfig(
         activeProfile="default",
-        profiles={
-            "default": LaunchProfile(prompt="missing-prompt", options=["missing-option"])
-        },
+        profiles={"default": LaunchProfile(prompt="missing-prompt", options=["missing-option"])},
     )
 
     loaded = load_active_launch_packages(paths, config)
@@ -317,6 +312,42 @@ def test_load_active_launch_packages_skips_invalid_option_with_warning(tmp_path)
     assert any("bad-option" in warning and "invalid" in warning for warning in loaded.warnings)
 
 
+def test_load_active_launch_packages_rejects_non_slug_active_ids_before_path_join(tmp_path):
+    paths = StatePaths(state_dir=tmp_path / ".claude-monkey")
+    outside_dir = paths.state_dir / "outside-option"
+    outside_dir.mkdir(parents=True)
+    (outside_dir / "outside-option.json").write_text(
+        """
+        {
+          "schemaVersion": 1,
+          "kind": "option",
+          "id": "outside-option",
+          "label": "Outside option",
+          "description": "Should not be loadable via ../",
+          "option": {
+            "argv": ["--outside"],
+            "env": {},
+            "conflictsWithArgv": [],
+            "conflictsWithOptions": [],
+            "conflictsWithEnv": []
+          }
+        }
+        """
+    )
+    config = ClaudeMonkeyConfig(
+        activeProfile="default",
+        profiles={"default": LaunchProfile(options=["../outside-option"])},
+    )
+
+    loaded = load_active_launch_packages(paths, config)
+
+    assert loaded.options == []
+    assert {"kind": "option", "id": "../outside-option", "reason": "invalid_id"} in loaded.skipped
+    assert any(
+        "../outside-option" in warning and "invalid id" in warning for warning in loaded.warnings
+    )
+
+
 def test_select_launch_target_uses_executable_managed_patched_current(tmp_path):
     paths = StatePaths(state_dir=tmp_path / ".claude-monkey")
     patched = paths.patchset_dir("2.1.199", "default") / "claude"
@@ -325,9 +356,7 @@ def test_select_launch_target_uses_executable_managed_patched_current(tmp_path):
     patched.chmod(0o755)
     paths.current_path.parent.mkdir(parents=True, exist_ok=True)
     paths.current_path.symlink_to(patched)
-    config = ClaudeMonkeyConfig(
-        activeProfile="default", profiles={"default": LaunchProfile()}
-    )
+    config = ClaudeMonkeyConfig(activeProfile="default", profiles={"default": LaunchProfile()})
 
     target = select_launch_target(paths, config, {"PATH": ""})
 
@@ -366,9 +395,7 @@ def test_user_argv_conflict_matches_equals_form(tmp_path):
     result = merge(user_argv=["--model=sonnet"], options=[option])
 
     assert result.argv == ["--model=sonnet"]
-    assert result.skipped == [
-        {"kind": "option_argv", "id": "opus", "reason": "user_argv_conflict"}
-    ]
+    assert result.skipped == [{"kind": "option_argv", "id": "opus", "reason": "user_argv_conflict"}]
 
 
 def test_duplicate_option_argv_skips_whole_option_contribution(tmp_path):
@@ -378,9 +405,7 @@ def test_duplicate_option_argv_skips_whole_option_contribution(tmp_path):
     result = merge(options=[first, second])
 
     assert result.argv == ["--model", "opus"]
-    assert result.skipped == [
-        {"kind": "option_argv", "id": "sonnet", "reason": "duplicate_argv"}
-    ]
+    assert result.skipped == [{"kind": "option_argv", "id": "sonnet", "reason": "duplicate_argv"}]
 
 
 def test_conflicts_with_env_error_checks_earlier_option_env(tmp_path):
@@ -411,6 +436,4 @@ def test_duplicate_option_argv_checks_explicit_user_argv(tmp_path):
     result = merge(user_argv=["--debug"], options=[option])
 
     assert result.argv == ["--debug"]
-    assert result.skipped == [
-        {"kind": "option_argv", "id": "debug", "reason": "duplicate_argv"}
-    ]
+    assert result.skipped == [{"kind": "option_argv", "id": "debug", "reason": "duplicate_argv"}]

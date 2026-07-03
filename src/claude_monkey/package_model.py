@@ -183,6 +183,13 @@ def _validate_slug(value: str, field: str) -> None:
         _fail(f"{field}_invalid_slug")
 
 
+def validate_package_id(value: str) -> str:
+    if not isinstance(value, str) or value == "":
+        _fail("id_must_be_non_empty_string")
+    _validate_slug(value, "id")
+    return value
+
+
 def _validate_env_name(value: str, field: str) -> None:
     if not ENV_RE.fullmatch(value):
         _fail(f"{field}_invalid_env_name")
@@ -379,7 +386,7 @@ def load_package_manifest_from_dict(
     if isinstance(schema_version, bool) or schema_version != 1:
         _fail("schemaVersion_must_be_1")
     package_id = _require_string(top, "id")
-    _validate_slug(package_id, "id")
+    validate_package_id(package_id)
     folder_slug = package_dir.name
     _validate_slug(folder_slug, "folder")
     if package_id != folder_slug:

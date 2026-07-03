@@ -52,9 +52,7 @@ def option_manifest(
         "risk": risk or {"level": "low"},
         "option": {
             "argv": (
-                ["--dangerously-skip-permissions"]
-                if package_id == "dangerous-permissions"
-                else []
+                ["--dangerously-skip-permissions"] if package_id == "dangerous-permissions" else []
             ),
             "env": {},
             "conflictsWithArgv": [],
@@ -238,14 +236,30 @@ def test_status_payload_uses_live_source_identity_when_report_source_is_stale(
 
     assert payload["sourceClaudePath"] == str(source_b)
     assert payload["sourceSha256"] == source_b_sha
-    assert payload["sourceIdentityStatus"] == "source_mismatch"
-    assert payload["compatibilityStatus"] == "source_mismatch"
+    assert payload["sourceIdentityStatus"] == "source_sha_mismatch"
+    assert payload["compatibilityStatus"] == "source_sha_mismatch"
     assert payload["rebuildRequired"] is True
 
 
-def test_status_source_path_drift_does_not_require_rebuild_for_same_identity(
-    monkeypatch, tmp_path
-):
+def test_status_payload_distinguishes_version_mismatch(monkeypatch, tmp_path):
+    state, _source_a, _source_a_sha = seed_matching_state(tmp_path, monkeypatch)
+    source_b = make_executable(
+        tmp_path / "source-b" / "claude",
+        "#!/bin/sh\necho '2.1.200 (Claude Code)'\n",
+    )
+    config = json.loads((state / "config.json").read_text())
+    config["officialClaudePath"] = str(source_b)
+    write_json(state / "config.json", config)
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["sourceClaudeVersion"] == "2.1.200"
+    assert payload["sourceIdentityStatus"] == "version_mismatch"
+    assert payload["compatibilityStatus"] == "version_mismatch"
+    assert payload["rebuildRequired"] is True
+
+
+def test_status_source_path_drift_does_not_require_rebuild_for_same_identity(monkeypatch, tmp_path):
     state, source, source_sha = seed_matching_state(tmp_path, monkeypatch)
     source_copy = tmp_path / "different-path" / "claude"
     source_copy.parent.mkdir(parents=True)
@@ -287,9 +301,7 @@ def test_status_payload_requires_rebuild_when_active_report_lacks_manifest_diges
     monkeypatch, tmp_path
 ):
     state, _source, _source_sha = seed_matching_state(tmp_path, monkeypatch)
-    report_path = (
-        state / "versions" / "2.1.199" / "patchsets" / "default" / "build-report.json"
-    )
+    report_path = state / "versions" / "2.1.199" / "patchsets" / "default" / "build-report.json"
     report = json.loads(report_path.read_text())
     report.pop("packageManifestDigests")
     write_json(report_path, report)
@@ -297,10 +309,10 @@ def test_status_payload_requires_rebuild_when_active_report_lacks_manifest_diges
     payload = status_payload(StatePaths(state), load_config(state / "config.json"))
 
     assert payload["rebuildRequired"] is True
-    assert "enabled patch package manifest digest missing from last build" in payload[
-        "compatibilityWarnings"
-    ]
-
+    assert (
+        "enabled patch package manifest digest missing from last build"
+        in payload["compatibilityWarnings"]
+    )
 
 
 def test_status_cli_reports_official_fallback_with_desired_patches(monkeypatch, tmp_path, capsys):
@@ -352,12 +364,10 @@ def test_status_payload_keeps_invalid_active_prompt_and_option_visible(monkeypat
     assert payload["activePrompt"] == "broken-prompt"
     assert payload["activeOptionIds"] == ["broken-option"]
     assert any(
-        "prompt broken-prompt skipped: invalid" in item
-        for item in payload["compatibilityWarnings"]
+        "prompt broken-prompt skipped: invalid" in item for item in payload["compatibilityWarnings"]
     )
     assert any(
-        "option broken-option skipped: invalid" in item
-        for item in payload["compatibilityWarnings"]
+        "option broken-option skipped: invalid" in item for item in payload["compatibilityWarnings"]
     )
     assert payload["status"] == "warning"
 
@@ -385,7 +395,6 @@ def test_status_payload_keeps_invalid_desired_patch_visible(monkeypatch, tmp_pat
     assert payload["builtPatchIds"] == []
     assert payload["manifestCompatibilityStatus"] == "invalid"
     assert any(
-        "patch bad-patch skipped: invalid" in item
-        for item in payload["compatibilityWarnings"]
+        "patch bad-patch skipped: invalid" in item for item in payload["compatibilityWarnings"]
     )
     assert payload["rebuildRequired"] is True

@@ -104,9 +104,7 @@ def load_manifest_v2(package_dir: Path) -> ManifestV2:
 def load_payload(ref: PayloadRefV2, package_dir: Path) -> bytes:
     if ref.inline is not None:
         data = (
-            ref.inline.encode("utf-8")
-            if ref.encoding == "utf-8"
-            else base64.b64decode(ref.inline)
+            ref.inline.encode("utf-8") if ref.encoding == "utf-8" else base64.b64decode(ref.inline)
         )
     else:
         assert ref.path is not None
@@ -284,6 +282,7 @@ def _write_failed(
     *,
     source: bytes | None = None,
     enabled: list[str] | None = None,
+    compatibility_status: str | None = None,
 ) -> BuildReportV2:
     report = _base_report(request, source)
     report.status = "failed"
@@ -291,7 +290,10 @@ def _write_failed(
     report.enabledPatches = enabled or []
     report.failureReason = reason
     if reason.startswith("source_identity_mismatch:"):
-        report.compatibility = {"status": "source_sha_mismatch", "warnings": []}
+        report.compatibility = {
+            "status": compatibility_status or "source_sha_mismatch",
+            "warnings": [],
+        }
     elif reason.startswith("package_manifest_invalid:"):
         report.compatibility = {"status": "package_manifest_invalid", "warnings": []}
     report.activationEligible = False
@@ -381,6 +383,49 @@ def _source_identity_mismatch_reason(
     return f"source_identity_mismatch:{manifest.id}: {current}; package targets {target_summary}"
 
 
+BUILD_IDENTITY_MISMATCH_PRIORITY = {
+    "source_sha_mismatch": 0,
+    "source_size_mismatch": 1,
+    "platform_mismatch": 2,
+    "arch_mismatch": 3,
+    "version_mismatch": 4,
+    "unknown": 5,
+}
+
+
+def _build_identity_mismatch_status(
+    manifest: ManifestV2, request: BuildRequestV15, source: bytes
+) -> str:
+    statuses = [
+        _target_identity_mismatch_status(target, request, source) for target in manifest.targets
+    ]
+    if not statuses:
+        return "unknown"
+    return min(
+        statuses,
+        key=lambda status: BUILD_IDENTITY_MISMATCH_PRIORITY.get(status, 99),
+    )
+
+
+def _target_identity_mismatch_status(
+    target: TargetV2, request: BuildRequestV15, source: bytes
+) -> str:
+    identity = target.source_identity
+    if identity.claude_version != request.source_version:
+        return "version_mismatch"
+    if identity.version_output != request.source_version_output:
+        return "version_mismatch"
+    if identity.platform != request.platform:
+        return "platform_mismatch"
+    if identity.arch != request.arch:
+        return "arch_mismatch"
+    if identity.sha256 != hashlib.sha256(source).hexdigest():
+        return "source_sha_mismatch"
+    if identity.size_bytes != len(source):
+        return "source_size_mismatch"
+    return "unknown"
+
+
 def _apply_signing_v15(report: BuildReportV2, output: Path, runner: CommandRunner) -> bool:
     safe_runner = _safe_runner(runner)
     sign = codesign_sign(output, safe_runner)
@@ -432,6 +477,7 @@ def _select_packages(
                 _source_identity_mismatch_reason(manifest, request, source),
                 source=source,
                 enabled=enabled,
+                compatibility_status=_build_identity_mismatch_status(manifest, request, source),
             )
         selected.append((package_dir, manifest, matching[0]))
     return selected, None

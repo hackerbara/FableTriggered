@@ -319,9 +319,7 @@ def test_list_options_marks_active_invalid_package_enabled(monkeypatch, tmp_path
         {
             "schemaVersion": 1,
             "activeProfile": "default",
-            "profiles": {
-                "default": {"prompt": None, "patches": [], "options": ["bad-option"]}
-            },
+            "profiles": {"default": {"prompt": None, "patches": [], "options": ["bad-option"]}},
         },
     )
     write_invalid_package(state, "option", "bad-option")
@@ -341,6 +339,56 @@ def test_list_options_marks_active_invalid_package_enabled(monkeypatch, tmp_path
     } in records
 
 
+def test_list_options_exposes_confirmation_metadata_for_high_risk_menu(
+    monkeypatch, tmp_path, capsys
+):
+    home = tmp_path / "home"
+    state = home / ".claude-monkey"
+    monkeypatch.setenv("HOME", str(home))
+    write_json(
+        state / "config.json",
+        {
+            "schemaVersion": 1,
+            "activeProfile": "default",
+            "profiles": {
+                "default": {
+                    "prompt": None,
+                    "patches": [],
+                    "options": ["dangerous-permissions"],
+                }
+            },
+        },
+    )
+    package_dir = state / "options" / "dangerous-permissions"
+    write_json(
+        package_dir / "dangerous-permissions.json",
+        option_manifest(
+            "dangerous-permissions",
+            label="Dangerous permissions",
+            risk={
+                "level": "high",
+                "requiresConfirmation": True,
+                "statusWarning": "Dangerous permissions enabled",
+            },
+            option={
+                "argv": ["--dangerously-skip-permissions"],
+                "env": {},
+                "conflictsWithArgv": [],
+                "conflictsWithOptions": [],
+                "conflictsWithEnv": [],
+            },
+        ),
+    )
+
+    assert main(["list-options", "--json"]) == 0
+
+    [record] = read_cli_json(capsys)["options"]
+    assert record["id"] == "dangerous-permissions"
+    assert record["riskLevel"] == "high"
+    assert record["requiresConfirmation"] is True
+    assert record["statusWarning"] == "Dangerous permissions enabled"
+
+
 def test_patch_and_prompt_mutation_commands_update_default_profile(monkeypatch, tmp_path, capsys):
     state, _official = configure_home(monkeypatch, tmp_path)
     write_patch_package(state, "fable-fallback")
@@ -358,14 +406,51 @@ def test_patch_and_prompt_mutation_commands_update_default_profile(monkeypatch, 
 
     assert main(["set-prompt", "research-prompt", "--json"]) == 0
     assert read_cli_json(capsys)["ok"] is True
+
+    assert main(["clear-prompt", "--json"]) == 0
+    assert read_cli_json(capsys)["ok"] is True
+    assert json.loads((state / "config.json").read_text())["profiles"]["default"]["prompt"] is None
+
+
+def test_set_prompt_from_file_creates_package_manifest(monkeypatch, tmp_path, capsys):
+    state, _official = configure_home(monkeypatch, tmp_path)
+    source = tmp_path / "prompt-source.md"
+    source.write_text("external prompt text")
+
+    assert (
+        main(["set-prompt", str(source), "--id", "research-prompt", "--from-file", "--json"]) == 0
+    )
+    assert read_cli_json(capsys)["ok"] is True
+
+    package_dir = state / "prompts" / "research-prompt"
+    copied_prompt = package_dir / "prompt.md"
+    manifest = json.loads((package_dir / "research-prompt.json").read_text())
+    assert copied_prompt.read_text() == "external prompt text"
+    assert manifest["kind"] == "prompt"
+    assert manifest["id"] == "research-prompt"
+    assert manifest["prompt"]["source"]["path"] == "prompt.md"
     assert (
         json.loads((state / "config.json").read_text())["profiles"]["default"]["prompt"]
         == "research-prompt"
     )
 
-    assert main(["clear-prompt", "--json"]) == 0
-    assert read_cli_json(capsys)["ok"] is True
-    assert json.loads((state / "config.json").read_text())["profiles"]["default"]["prompt"] is None
+
+def test_set_prompt_from_file_rejects_non_slug_id_before_writing(monkeypatch, tmp_path, capsys):
+    state, _official = configure_home(monkeypatch, tmp_path)
+    source = tmp_path / "prompt-source.md"
+    source.write_text("external prompt text")
+
+    assert main(["set-prompt", str(source), "--id", "../escape", "--from-file", "--json"]) == 1
+
+    payload = read_cli_json(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_package_id"
+    assert not (state / "escape").exists()
+    assert not (state / "escape.json").exists()
+    assert (
+        json.loads((state / "config.json").read_text())["profiles"]["default"]["prompt"]
+        == "research-prompt"
+    )
 
 
 def test_set_prompt_missing_v3_package_returns_single_error(monkeypatch, tmp_path, capsys):

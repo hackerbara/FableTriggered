@@ -13,6 +13,7 @@ from claude_monkey.menubar import (
     build_menu_labels,
     command_for_install_shim,
     command_for_install_shim_dry_run,
+    command_for_option_toggle,
     command_for_patch_toggle,
     command_for_prompt,
     command_for_rebuild_apply,
@@ -23,7 +24,13 @@ from claude_monkey.menubar import (
     patch_menu_label,
     refuse_root_menu_process,
 )
-from claude_monkey.menubar_state import MenuState, PatchMenuItem, PromptMenuItem
+from claude_monkey.menubar_state import (
+    HighRiskOptionSummary,
+    MenuState,
+    OptionMenuItem,
+    PatchMenuItem,
+    PromptMenuItem,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -119,12 +126,37 @@ def sample_state(tmp_path):
         logs_dir=tmp_path / "logs",
         last_error=None,
         patch_items=(
-            PatchMenuItem(
-                "fable-fallback", "Fable", True, False, True, "compatible", None
-            ),
+            PatchMenuItem("fable-fallback", "Fable", True, False, True, "compatible", None),
         ),
         prompt_items=(
             PromptMenuItem("research", "Research", True, "append", tmp_path / "research.md"),
+        ),
+        active_option_ids=("dangerous-permissions",),
+        high_risk_options=(
+            HighRiskOptionSummary(
+                "dangerous-permissions",
+                "Dangerous permissions",
+                "Dangerous permissions enabled",
+            ),
+        ),
+        option_items=(
+            OptionMenuItem(
+                "dangerous-permissions",
+                "Dangerous permissions",
+                True,
+                True,
+                "unconstrained",
+                "high",
+                True,
+            ),
+            OptionMenuItem(
+                "local-proxy",
+                "Local proxy",
+                False,
+                True,
+                "unconstrained",
+                "low",
+            ),
         ),
     )
 
@@ -132,8 +164,10 @@ def sample_state(tmp_path):
 def test_build_menu_labels_contains_required_actions(tmp_path):
     labels = build_menu_labels(sample_state(tmp_path))
     assert "ClaudeMonkey: Rebuild Required" in labels
+    assert "Options: 1 active ⚠" in labels
     assert "Open logs folder" in labels
     assert "Open state folder" in labels
+    assert "Refresh" not in labels
     assert "Quit" in labels
 
 
@@ -229,23 +263,36 @@ def test_result_alerts_cover_prompt_and_build_summaries(tmp_path):
 def test_command_mapping_uses_json():
     assert command_for_rebuild_apply() == ["build", "--json", "--activate"]
     assert command_for_patch_toggle("fable-fallback", enabled=True) == [
-        "disable",
+        "disable-patch",
         "fable-fallback",
         "--json",
     ]
     assert command_for_patch_toggle("fable-fallback", enabled=False) == [
-        "enable",
+        "enable-patch",
         "fable-fallback",
+        "--json",
+    ]
+    assert command_for_option_toggle("local-proxy", enabled=True) == [
+        "disable-option",
+        "local-proxy",
+        "--json",
+    ]
+    assert command_for_option_toggle("local-proxy", enabled=False) == [
+        "enable-option",
+        "local-proxy",
+        "--json",
+    ]
+    assert command_for_option_toggle("dangerous-permissions", enabled=False, confirmed=True) == [
+        "enable-option",
+        "dangerous-permissions",
+        "--confirm",
         "--json",
     ]
     target = default_install_target()
     prompt_path = target.parent / "research.md"
     assert command_for_prompt("research", prompt_path) == [
         "set-prompt",
-        str(prompt_path),
-        "--id",
         "research",
-        "--from-file",
         "--json",
     ]
     assert command_for_prompt("research") == ["set-prompt", "research", "--json"]
@@ -401,7 +448,7 @@ def test_refresh_failure_renders_minimal_recovery_menu(tmp_path):
 
     labels = [item.title for item in flat_items(bar.app.menu.items)]
     assert "ClaudeMonkey: Error" in labels
-    assert "Refresh" in labels
+    assert "Refresh" not in labels
     assert "Open logs folder" in labels
     assert "Open state folder" in labels
     assert "Quit" in labels
@@ -428,8 +475,130 @@ def test_refresh_failure_with_prior_state_marks_error_status_and_keeps_recovery(
 
     labels = [item.title for item in flat_items(bar.app.menu.items)]
     assert "ClaudeMonkey: Error" in labels
-    assert "Refresh" in labels
+    assert "Refresh" not in labels
     assert "Open state folder" in labels
+
+
+def test_load_state_fetches_options_payload(tmp_path):
+    class LoadingRunner(FakeRunner):
+        def run_json(self, args, *, mutating):
+            if args == ["status", "--json"]:
+                return {
+                    "schemaVersion": 1,
+                    "status": "ok",
+                    "activeProfile": "default",
+                    "activePrompt": None,
+                    "desiredPatchIds": [],
+                    "builtPatchIds": [],
+                    "activePatchIds": [],
+                    "patchedBuildActive": False,
+                    "targetClaudeKind": "official_fallback",
+                    "activeOptionIds": ["local-proxy"],
+                    "highRiskOptions": [],
+                    "sourceClaudeVersion": None,
+                    "sourceClaudePath": None,
+                    "detectedClaudeCommandPath": None,
+                    "installMode": "shim",
+                    "shimInstalled": False,
+                    "compatibilityStatus": "unknown",
+                    "manifestCompatibilityStatus": "unknown",
+                    "sourceIdentityStatus": "unknown",
+                    "lastBuildCompatibilityStatus": "unknown",
+                    "liveValidationStatus": "unknown",
+                    "compatibilityWarnings": [],
+                    "rebuildRequired": False,
+                    "latestBuildReportPath": None,
+                    "activePatchSet": None,
+                    "currentClaudePath": None,
+                    "shimTargetPath": None,
+                    "installRecordPath": None,
+                    "lastBuildStrategy": "unknown",
+                    "changedModules": [],
+                    "repackSummary": None,
+                    "stateDir": str(tmp_path),
+                    "logsDir": str(tmp_path / "logs"),
+                    "lastError": None,
+                }
+            if args == ["list-patches", "--json"]:
+                return {"schemaVersion": 1, "patches": []}
+            if args == ["list-prompts", "--json"]:
+                return {"schemaVersion": 1, "prompts": []}
+            if args == ["list-options", "--json"]:
+                return {
+                    "schemaVersion": 1,
+                    "options": [
+                        {
+                            "id": "local-proxy",
+                            "label": "Local proxy",
+                            "kind": "option",
+                            "enabled": True,
+                            "valid": True,
+                            "compatibilityStatus": "unconstrained",
+                            "riskLevel": "low",
+                            "errors": [],
+                        }
+                    ],
+                }
+            raise AssertionError(f"unexpected run_json call: {args}")
+
+    bar, _rumps = make_bar(tmp_path, LoadingRunner())
+
+    state = bar.load_state()
+
+    assert state.active_option_ids == ("local-proxy",)
+    assert state.option_items[0].option_id == "local-proxy"
+
+
+def test_render_menu_includes_command_line_options_submenu(tmp_path):
+    bar, _rumps = make_bar(tmp_path, FakeRunner())
+
+    bar.render_menu()
+
+    top_labels = [item.title for item in bar.app.menu.items if item is not None]
+    assert "Command Line Options" in top_labels
+    assert "Refresh" not in top_labels
+    submenu = next(
+        item
+        for item in bar.app.menu.items
+        if getattr(item, "title", None) == "Command Line Options"
+    )
+    child_titles = [item.title for item in submenu.children]
+    assert "Dangerous permissions — high risk" in child_titles
+    assert "Local proxy" in child_titles
+
+
+def test_high_risk_option_enable_confirms_before_mutation(tmp_path):
+    bar, rumps = make_bar(tmp_path, FakeRunner())
+    bar.state = MenuState(
+        **{
+            **bar.state.__dict__,
+            "active_option_ids": (),
+            "high_risk_options": (),
+            "option_items": (
+                OptionMenuItem(
+                    "dangerous-permissions",
+                    "Dangerous permissions",
+                    False,
+                    True,
+                    "unconstrained",
+                    "high",
+                    True,
+                ),
+            ),
+        }
+    )
+    rumps.next_response = 1
+
+    bar.toggle_option(bar.state.option_items[0])
+
+    assert rumps.alerts[-1][0] == "Enable high-risk Claude option?"
+    assert bar.runner.background_calls == [
+        (
+            "toggle_option",
+            ["enable-option", "dangerous-permissions", "--confirm", "--json"],
+            True,
+        )
+    ]
 
 
 def test_refresh_failure_is_logged(tmp_path):
@@ -591,9 +760,7 @@ def test_rebuild_apply_enqueues_activating_build(tmp_path):
 
     bar.rebuild()
 
-    assert runner.background_calls == [
-        ("build", ["build", "--json", "--activate"], True)
-    ]
+    assert runner.background_calls == [("build", ["build", "--json", "--activate"], True)]
 
 
 def test_install_confirmation_activates_app_before_alert(tmp_path):
@@ -651,9 +818,7 @@ def test_open_build_report_uses_last_failed_report_after_refresh(tmp_path):
     active_report = tmp_path / "active-report.json"
     failed_report = tmp_path / "failed-report.json"
     bar.last_build_report_path = None
-    bar.state = MenuState(
-        **{**bar.state.__dict__, "latest_build_report_path": active_report}
-    )
+    bar.state = MenuState(**{**bar.state.__dict__, "latest_build_report_path": active_report})
     bar._remember_report_path({"ok": False, "reportPath": str(failed_report)})
 
     bar.open_build_report()

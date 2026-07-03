@@ -12,6 +12,7 @@ from claude_monkey.package_model import (
     PackageManifest,
     PackageValidationError,
     load_package_manifest,
+    validate_package_id,
 )
 from claude_monkey.paths import StatePaths
 from claude_monkey.source_discovery import discover_official_claude, is_managed_launcher_path
@@ -95,7 +96,12 @@ def is_management_invocation(user_argv: list[str]) -> bool:
 def _load_optional_package(
     root: Path, package_id: str, kind: PackageKind
 ) -> tuple[PackageManifest | None, dict[str, str] | None, str | None]:
-    package_dir = root / package_id
+    try:
+        safe_package_id = validate_package_id(package_id)
+    except PackageValidationError as exc:
+        skipped = _skip(kind.value, package_id, "invalid_id")
+        return None, skipped, f"{kind.value} {package_id} skipped: invalid id ({exc})"
+    package_dir = root / safe_package_id
     if not package_dir.exists():
         skipped = _skip(kind.value, package_id, "missing")
         return None, skipped, _warning(kind.value, package_id, "missing")
@@ -170,9 +176,7 @@ def select_launch_target(
 ) -> LaunchTarget | None:
     which = _which_from_env(process_env)
     official = (
-        discover_official_claude(config, paths, process_env, which)
-        if prefer_official
-        else None
+        discover_official_claude(config, paths, process_env, which) if prefer_official else None
     )
     if official is not None:
         return LaunchTarget(path=official, kind="official_fallback")
@@ -214,9 +218,7 @@ def _merge_prompt(
         warnings.append(_warning("prompt", prompt.id, "user_prompt_flag"))
         return
     flag = (
-        "--system-prompt-file"
-        if prompt.prompt.mode == "replace"
-        else "--append-system-prompt-file"
+        "--system-prompt-file" if prompt.prompt.mode == "replace" else "--append-system-prompt-file"
     )
     argv.extend([flag, str(prompt.prompt.source.path)])
 
@@ -227,9 +229,7 @@ def _token_matches_conflict(token: str, conflict: str) -> bool:
 
 def _user_has_conflict(user_argv: list[str], conflicts: tuple[str, ...]) -> bool:
     return any(
-        _token_matches_conflict(token, conflict)
-        for token in user_argv
-        for conflict in conflicts
+        _token_matches_conflict(token, conflict) for token in user_argv for conflict in conflicts
     )
 
 
@@ -343,9 +343,7 @@ def merge_launch_profile(merge_input: LaunchMergeInput) -> LaunchMergeResult:
     _merge_prompt(merge_input.prompt, merge_input.user_argv, argv, skipped, warnings)
     errors.extend(_option_conflict_errors(merge_input.options))
     for option in merge_input.options:
-        env_errors = _env_conflict_errors(
-            option, env, merge_input.process_env, skipped, warnings
-        )
+        env_errors = _env_conflict_errors(option, env, merge_input.process_env, skipped, warnings)
         if env_errors:
             errors.extend(env_errors)
             continue
@@ -360,8 +358,7 @@ def merge_launch_profile(merge_input: LaunchMergeInput) -> LaunchMergeResult:
         )
     argv.extend(merge_input.user_argv)
     env_preview = {
-        name: ("<redacted>" if name in secret_names else value)
-        for name, value in env.items()
+        name: ("<redacted>" if name in secret_names else value) for name, value in env.items()
     }
     return LaunchMergeResult(
         target=target,

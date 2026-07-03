@@ -40,7 +40,17 @@ def default_install_target(state: MenuState | None = None) -> Path:
 
 
 def command_for_patch_toggle(patch_id: str, *, enabled: bool) -> list[str]:
-    return ["disable" if enabled else "enable", patch_id, "--json"]
+    return ["disable-patch" if enabled else "enable-patch", patch_id, "--json"]
+
+
+def command_for_option_toggle(
+    option_id: str, *, enabled: bool, confirmed: bool = False
+) -> list[str]:
+    command = ["disable-option" if enabled else "enable-option", option_id]
+    if confirmed:
+        command.append("--confirm")
+    command.append("--json")
+    return command
 
 
 def command_for_rebuild_apply() -> list[str]:
@@ -50,16 +60,7 @@ def command_for_rebuild_apply() -> list[str]:
 def command_for_prompt(prompt_id: str | None, source_path: Path | None = None) -> list[str]:
     if prompt_id is None:
         return ["clear-prompt", "--json"]
-    if source_path is None:
-        return ["set-prompt", prompt_id, "--json"]
-    return [
-        "set-prompt",
-        str(source_path.expanduser()),
-        "--id",
-        prompt_id,
-        "--from-file",
-        "--json",
-    ]
+    return ["set-prompt", prompt_id, "--json"]
 
 
 def command_for_install_shim_dry_run(target: Path) -> list[str]:
@@ -91,13 +92,18 @@ def command_for_uninstall_shim(
 
 
 def build_menu_labels(state: MenuState) -> list[str]:
+    option_label = f"Options: {len(state.active_option_ids)} active"
+    if state.high_risk_options:
+        option_label += " ⚠"
     return [
         f"ClaudeMonkey: {state.status_label}",
         f"Claude Code: {state.source_claude_version or 'unknown'}",
         f"Prompt: {state.active_prompt or 'none'}",
+        option_label,
         f"Patches: {len(state.desired_patch_ids)} enabled",
         "Prompts",
         "Patches",
+        "Command Line Options",
         "Rebuild / Apply…",
         "Install shim…",
         "Uninstall shim…",
@@ -105,7 +111,6 @@ def build_menu_labels(state: MenuState) -> list[str]:
         "Open build report",
         "Open logs folder",
         "Open state folder",
-        "Refresh",
         "Quit",
     ]
 
@@ -127,6 +132,21 @@ def patch_menu_item_enabled(patch, *, mutating_enabled: bool) -> bool:
     if not patch.available:
         return False
     return patch.compatibility_status in {"compatible", "unknown"}
+
+
+def option_menu_label(option) -> str:
+    label = option.label
+    if not option.valid:
+        return f"{label} — invalid"
+    if option.risk_level == "high":
+        return f"{label} — high risk"
+    if option.compatibility_status not in {"compatible", "unconstrained", "unknown"}:
+        return f"{label} — {option.compatibility_status}"
+    return label
+
+
+def option_menu_item_enabled(option, *, mutating_enabled: bool) -> bool:
+    return mutating_enabled and option.valid
 
 
 def install_target_menu_label(target: Path, *, state_dir: Path) -> str:
@@ -182,9 +202,7 @@ def alert_for_result(
         return AlertPlan("ClaudeMonkey command failed", message)
 
     if name == "set_prompt":
-        return AlertPlan(
-            "ClaudeMonkey prompt selected", "Prompt will apply on next Claude launch."
-        )
+        return AlertPlan("ClaudeMonkey prompt selected", "Prompt will apply on next Claude launch.")
     if name == "build":
         summary = str(payload.get("summary") or "Build activated")
         active_patch_set = state.active_patch_set if state else None
@@ -241,7 +259,8 @@ class ClaudeMonkeyMenuBar:
         status = self.runner.run_json(["status", "--json"], mutating=False)
         patches = self.runner.run_json(["list-patches", "--json"], mutating=False)
         prompts = self.runner.run_json(["list-prompts", "--json"], mutating=False)
-        return parse_menu_state(status, patches, prompts)
+        options = self.runner.run_json(["list-options", "--json"], mutating=False)
+        return parse_menu_state(status, patches, prompts, options)
 
     def refresh(self, _sender: Any = None) -> None:
         try:
@@ -278,7 +297,6 @@ class ClaudeMonkeyMenuBar:
         self.app.menu.add(None)
         self.app.menu.add(self._menu_item("Open logs folder", callback=self.open_logs))
         self.app.menu.add(self._menu_item("Open state folder", callback=self.open_state))
-        self.app.menu.add(self._menu_item("Refresh", callback=self.refresh))
         self.app.menu.add(self._menu_item("Quit", callback=self.rumps.quit_application))
 
     def _log_ui_event(self, event: str, **fields: Any) -> None:
@@ -301,10 +319,7 @@ class ClaudeMonkeyMenuBar:
             return
         try:
             app = NSApplication.sharedApplication()
-            if (
-                app is not None
-                and app.activationPolicy() != NSApplicationActivationPolicyAccessory
-            ):
+            if app is not None and app.activationPolicy() != NSApplicationActivationPolicyAccessory:
                 app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
         except Exception:
             pass
@@ -342,7 +357,7 @@ class ClaudeMonkeyMenuBar:
         if self.state is None:
             return
         self.app.menu.clear()
-        for label in build_menu_labels(self.state)[:4]:
+        for label in build_menu_labels(self.state)[:5]:
             self.app.menu.add(self._menu_item(label, callback=None, enabled=False))
         mutating_enabled = self.busy_command is None
         if self.busy_command:
@@ -360,9 +375,7 @@ class ClaudeMonkeyMenuBar:
         for prompt in self.state.prompt_items:
             item = self._menu_item(
                 prompt.label,
-                callback=lambda _sender, p=prompt: self.set_prompt(
-                    p.prompt_id, p.source_path
-                ),
+                callback=lambda _sender, p=prompt: self.set_prompt(p.prompt_id, p.source_path),
                 enabled=mutating_enabled,
             )
             item.state = 1 if prompt.checked else 0
@@ -380,11 +393,20 @@ class ClaudeMonkeyMenuBar:
             patches.add(item)
         self.app.menu.add(patches)
 
+        options = rumps.MenuItem("Command Line Options")
+        for option in self.state.option_items:
+            item = self._menu_item(
+                option_menu_label(option),
+                callback=lambda _sender, o=option: self.toggle_option(o),
+                enabled=option_menu_item_enabled(option, mutating_enabled=mutating_enabled),
+            )
+            item.state = 1 if option.enabled else 0
+            options.add(item)
+        self.app.menu.add(options)
+
         self.app.menu.add(None)
         self.app.menu.add(
-            self._menu_item(
-                "Rebuild / Apply…", callback=self.rebuild, enabled=mutating_enabled
-            )
+            self._menu_item("Rebuild / Apply…", callback=self.rebuild, enabled=mutating_enabled)
         )
         state_dir = self.state.state_dir if self.state else Path.home() / ".claude-monkey"
         self.app.menu.add(self._install_target_menu(state_dir, mutating_enabled))
@@ -399,14 +421,11 @@ class ClaudeMonkeyMenuBar:
         self.app.menu.add(self._menu_item("Open build report", callback=self.open_build_report))
         self.app.menu.add(self._menu_item("Open logs folder", callback=self.open_logs))
         self.app.menu.add(self._menu_item("Open state folder", callback=self.open_state))
-        self.app.menu.add(self._menu_item("Refresh", callback=self.refresh))
         self.app.menu.add(self._menu_item("Quit", callback=rumps.quit_application))
 
     def _start_mutating_command(self, name: str, args: list[str]) -> None:
         if self.busy_command is not None:
-            self._alert(
-                "ClaudeMonkey is busy", f"{self.busy_command} is already running."
-            )
+            self._alert("ClaudeMonkey is busy", f"{self.busy_command} is already running.")
             return
         self.busy_command = name
         self.render_menu()
@@ -418,6 +437,25 @@ class ClaudeMonkeyMenuBar:
     def toggle_patch(self, patch_id: str, enabled: bool) -> None:
         self._start_mutating_command(
             "toggle_patch", command_for_patch_toggle(patch_id, enabled=enabled)
+        )
+
+    def toggle_option(self, option) -> None:
+        confirmed = False
+        if not option.enabled and option.requires_confirmation:
+            response = self._alert(
+                "Enable high-risk Claude option?",
+                f"{option.label} is marked high risk and will apply on next Claude launch.",
+                ok="Enable",
+                cancel=True,
+            )
+            if response != 1:
+                return
+            confirmed = True
+        self._start_mutating_command(
+            "toggle_option",
+            command_for_option_toggle(
+                option.option_id, enabled=option.enabled, confirmed=confirmed
+            ),
         )
 
     def rebuild(self, _sender: Any = None) -> None:
@@ -524,12 +562,7 @@ class ClaudeMonkeyMenuBar:
             )
         if dry_run.get("plannedActions"):
             message += "\n\nPlanned: " + "; ".join(str(item) for item in dry_run["plannedActions"])
-        if (
-            self._alert(
-                "Uninstall ClaudeMonkey shim?", message, ok="Uninstall", cancel=True
-            )
-            == 1
-        ):
+        if self._alert("Uninstall ClaudeMonkey shim?", message, ok="Uninstall", cancel=True) == 1:
             self._start_mutating_command("uninstall_shim", real_args)
 
     def _alert_preflight_failure(self, action: str, payload: dict[str, Any]) -> None:
@@ -542,9 +575,7 @@ class ClaudeMonkeyMenuBar:
             self.state.latest_build_report_path if self.state else None
         )
         if not report_path:
-            self._alert(
-                "No build report", "No active or failed build report is available yet."
-            )
+            self._alert("No build report", "No active or failed build report is available yet.")
             return
         self.runner.open_path(report_path)
 

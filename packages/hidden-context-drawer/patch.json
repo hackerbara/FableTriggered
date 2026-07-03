@@ -46,7 +46,7 @@
               "oldRangeLength": 193,
               "replacement": {
                 "path": "payloads/15-uxl-refresh-bottom-overlay.js",
-                "sha256": "0457b090a592a6393c96dc2a7a29b0e144b8f14753286cac173a617228f11291"
+                "sha256": "6738e4022ee68ee3f03c411236aeaea492d270b0c94a08b26c021c9bab845162"
               }
             },
             {
@@ -216,7 +216,7 @@
               "oldRangeLength": 156,
               "replacement": {
                 "path": "payloads/14-selected-only-bottom-overlay-hidden-context-globals.js",
-                "sha256": "250766e5666b819c82658391180e03507f14b865aebe160cd1923e0ad3a9b2e5"
+                "sha256": "5a4a8f3340503d013b24d995ee15c78f27667845e5f9dc24413caf370ff99aca"
               }
             },
             {

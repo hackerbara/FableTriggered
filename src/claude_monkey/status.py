@@ -186,8 +186,45 @@ def _source_identity_status(
         if not identities:
             return "unknown"
         if not any(_identity_matches(source, identity) for identity in identities):
-            return "source_mismatch"
+            return _best_identity_mismatch_status(source, identities)
     return "compatible"
+
+
+IDENTITY_MISMATCH_PRIORITY = {
+    "source_sha_mismatch": 0,
+    "source_size_mismatch": 1,
+    "platform_mismatch": 2,
+    "arch_mismatch": 3,
+    "version_mismatch": 4,
+    "unknown": 5,
+}
+
+
+def _best_identity_mismatch_status(source: dict[str, Any], targets: list[dict[str, Any]]) -> str:
+    statuses = [_identity_mismatch_status(source, target) for target in targets]
+    return min(statuses, key=lambda status: IDENTITY_MISMATCH_PRIORITY.get(status, 99))
+
+
+def _identity_mismatch_status(source: dict[str, Any], target: dict[str, Any]) -> str:
+    version = target.get("claudeVersion")
+    if version is not None and str(source.get("claudeVersion")) != str(version):
+        return "version_mismatch"
+    version_output = target.get("versionOutput")
+    if version_output is not None and str(source.get("versionOutput")) != str(version_output):
+        return "version_mismatch"
+    platform = target.get("platform")
+    if platform is not None and str(source.get("platform")) != str(platform):
+        return "platform_mismatch"
+    arch = target.get("arch")
+    if arch is not None and str(source.get("arch")) != str(arch):
+        return "arch_mismatch"
+    sha = target.get("sha256")
+    if sha is not None and str(source.get("sha256")) != str(sha):
+        return "source_sha_mismatch"
+    size = target.get("sizeBytes")
+    if size is not None and str(source.get("sizeBytes")) != str(size):
+        return "source_size_mismatch"
+    return "unknown"
 
 
 def _identity_matches(source: dict[str, Any], target: dict[str, Any]) -> bool:
@@ -299,6 +336,7 @@ def _detected_claude_command_path() -> Path | None:
 
     found = shutil.which("claude")
     return Path(found) if found else None
+
 
 def _patchset_path(active_patch_set: str | None) -> Path | None:
     if not active_patch_set:
@@ -484,14 +522,10 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
         if _detected_claude_command_path()
         else None,
         "buildStrategy": (
-            (report or {}).get("buildStrategy")
-            or (report or {}).get("engine")
-            or "unknown"
+            (report or {}).get("buildStrategy") or (report or {}).get("engine") or "unknown"
         ),
         "lastBuildStrategy": (
-            (report or {}).get("buildStrategy")
-            or (report or {}).get("engine")
-            or "unknown"
+            (report or {}).get("buildStrategy") or (report or {}).get("engine") or "unknown"
         ),
         "changedModules": (report or {}).get("changedModules", []),
         "repackSummary": (report or {}).get("repackSummary"),

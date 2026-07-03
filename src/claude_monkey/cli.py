@@ -41,6 +41,7 @@ from claude_monkey.package_model import (
     discover_packages,
     load_package_manifest,
     manifest_digest,
+    validate_package_id,
 )
 from claude_monkey.paths import StatePaths, default_paths
 from claude_monkey.shim_entry import compute_launch_with_paths
@@ -397,9 +398,7 @@ def _patch_compatibility(
 
     current_version = str(source["claudeVersion"])
     same_version = [
-        identity
-        for identity in identities
-        if str(identity.get("claudeVersion")) == current_version
+        identity for identity in identities if str(identity.get("claudeVersion")) == current_version
     ]
     if not same_version:
         return (
@@ -456,9 +455,7 @@ def _list_patch_payload(paths: StatePaths, config) -> dict[str, Any]:
                 continue
             seen.add(patch_id)
             raw = _read_json_file(patch_json) or {}
-            compatibility_status, compatibility_message = _patch_compatibility(
-                raw, source_identity
-            )
+            compatibility_status, compatibility_message = _patch_compatibility(raw, source_identity)
             patches.append(
                 {
                     "id": patch_id,
@@ -560,7 +557,7 @@ def _invalid_package_errors(package_dir: Path, errors: tuple[str, ...]) -> list[
 
 
 def _package_record(manifest: PackageManifest, enabled: set[str]) -> dict[str, Any]:
-    return {
+    record = {
         "id": manifest.id,
         "label": manifest.label,
         "kind": manifest.kind.value,
@@ -570,6 +567,11 @@ def _package_record(manifest: PackageManifest, enabled: set[str]) -> dict[str, A
         "riskLevel": _risk_level(manifest),
         "errors": [],
     }
+    if manifest.risk is not None and manifest.risk.requires_confirmation:
+        record["requiresConfirmation"] = True
+    if manifest.risk is not None and manifest.risk.status_warning is not None:
+        record["statusWarning"] = manifest.risk.status_warning
+    return record
 
 
 def _invalid_package_record(
@@ -595,7 +597,7 @@ def _list_kind_payload(paths: StatePaths, config, kind: PackageKind) -> dict[str
         _invalid_package_record(invalid.package_dir, kind, invalid.errors, enabled)
         for invalid in discovered.invalid
     )
-    records.sort(key=lambda item: (str(item["id"])))
+    records.sort(key=lambda item: str(item["id"]))
     collection = {
         PackageKind.PATCH: "patches",
         PackageKind.PROMPT: "prompts",
@@ -622,7 +624,16 @@ def _load_kind_package_or_emit(
     args: argparse.Namespace, paths: StatePaths, package_id: str, kind: PackageKind
 ):
     try:
-        return load_package_manifest(_kind_root(paths, kind) / package_id, kind)
+        safe_package_id = validate_package_id(package_id)
+    except PackageValidationError as exc:
+        payload = envelope_error(str(exc), code="invalid_package_id")
+        if getattr(args, "json", False):
+            print_json(payload)
+        else:
+            print(str(exc), file=sys.stderr)
+        return None
+    try:
+        return load_package_manifest(_kind_root(paths, kind) / safe_package_id, kind)
     except PackageValidationError as exc:
         payload = envelope_error(str(exc), code="invalid_package")
         if getattr(args, "json", False):
@@ -651,7 +662,11 @@ def _option_conflict_id(
             return conflict_id
     for enabled_id in profile.options:
         try:
-            enabled = load_package_manifest(paths.options_dir / enabled_id, PackageKind.OPTION)
+            safe_enabled_id = validate_package_id(enabled_id)
+        except PackageValidationError:
+            continue
+        try:
+            enabled = load_package_manifest(paths.options_dir / safe_enabled_id, PackageKind.OPTION)
         except PackageValidationError:
             continue
         if enabled.option is not None and option.id in enabled.option.conflicts_with_options:
@@ -800,10 +815,7 @@ def _build_failure_summary(summary: str) -> str:
     if summary.startswith("source_identity_mismatch:"):
         parts = summary.split(":", 2)
         if len(parts) == 3:
-            return (
-                f"Patch {parts[1]} is not compatible with this Claude Code source. "
-                f"{parts[2]}"
-            )
+            return f"Patch {parts[1]} is not compatible with this Claude Code source. {parts[2]}"
     return summary
 
 
@@ -897,8 +909,6 @@ def _source_version(explicit_version: str | None, version_output: str | None) ->
     return first or None
 
 
-
-
 def _manifest_digests_for_build(package_dirs: list[Path]) -> dict[str, str]:
     digests: dict[str, str] = {}
     for package_dir in package_dirs:
@@ -929,6 +939,7 @@ def _build_input_snapshot(config, package_dirs: list[Path]) -> dict[str, Any]:
         "promptAtBuildTime": profile.prompt,
         "optionsAtBuildTime": list(profile.options),
     }
+
 
 def _default_output_dir(paths: StatePaths, config, source_version: str) -> Path:
     return paths.patchset_dir(source_version, config.activeProfile)
@@ -1119,37 +1130,51 @@ def handle_restore(args: argparse.Namespace, paths: StatePaths) -> int:
 
 
 def handle_set_prompt(args: argparse.Namespace, paths: StatePaths, config) -> int:
-    profile_dir = paths.prompts_dir
-    profile_dir.mkdir(parents=True, exist_ok=True)
-    if args.from_file:
-        source_path = Path(args.prompt).expanduser()
-        if not source_path.exists():
-            message = f"prompt file does not exist: {source_path}"
-            if args.json:
-                print_json(envelope_error(message, code="missing_prompt_file"))
-            else:
-                print(message, file=sys.stderr)
-            return 2
-    else:
-        source_path = profile_dir / f"{args.id}.md"
-        source_path.write_text(args.prompt)
-    profile_json = profile_dir / f"{args.id}.json"
-    profile_json.write_text(
+    if not args.from_file:
+        return handle_set_prompt_package(args, paths, config)
+
+    source_path = Path(args.prompt).expanduser()
+    if not source_path.exists():
+        message = f"prompt file does not exist: {source_path}"
+        if args.json:
+            print_json(envelope_error(message, code="missing_prompt_file"))
+        else:
+            print(message, file=sys.stderr)
+        return 2
+
+    try:
+        prompt_id = validate_package_id(args.id)
+    except PackageValidationError as exc:
+        if args.json:
+            print_json(envelope_error(str(exc), code="invalid_package_id"))
+        else:
+            print(str(exc), file=sys.stderr)
+        return 1
+
+    package_dir = paths.prompts_dir / prompt_id
+    package_dir.mkdir(parents=True, exist_ok=True)
+    prompt_path = package_dir / "prompt.md"
+    prompt_path.write_text(source_path.read_text())
+    manifest_path = package_dir / f"{prompt_id}.json"
+    manifest_path.write_text(
         json.dumps(
             {
-                "id": args.id,
-                "name": args.name or args.id,
-                "mode": args.mode,
-                "sourcePath": str(source_path),
+                "schemaVersion": 1,
+                "kind": "prompt",
+                "id": prompt_id,
+                "label": args.name or prompt_id,
+                "description": f"Prompt package {prompt_id}",
+                "risk": {"level": "low"},
+                "prompt": {"mode": args.mode, "source": {"path": "prompt.md"}},
             },
             indent=2,
             sort_keys=True,
         )
         + "\n"
     )
-    active_profile(config).prompt = args.id
+    active_profile(config).prompt = prompt_id
     save_config(paths.config_path, config)
-    return emit(args, f"set prompt profile {args.id}", envelope_ok(f"prompt set to {args.id}"))
+    return emit(args, f"set prompt profile {prompt_id}", envelope_ok(f"prompt set to {prompt_id}"))
 
 
 def _strip_launch_separator(argv: list[str]) -> list[str]:

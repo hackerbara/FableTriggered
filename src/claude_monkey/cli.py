@@ -26,6 +26,12 @@ from claude_monkey.builder_v15 import (
 )
 from claude_monkey.cli_json import envelope_error, envelope_ok, print_json, to_jsonable
 from claude_monkey.config import LaunchProfile, load_config, save_config
+from claude_monkey.launch_profile import (
+    LaunchMergeInput,
+    load_active_launch_packages,
+    merge_launch_profile,
+    select_launch_target,
+)
 from claude_monkey.install import (
     ProtectedTargetRestoreUnavailable,
     current_target_is_installed_shim,
@@ -118,6 +124,10 @@ def build_parser() -> argparse.ArgumentParser:
     official = sub.add_parser("use-official")
     official.add_argument("--official")
     official.add_argument("--json", action="store_true")
+
+    launch_preview = sub.add_parser("launch-preview")
+    launch_preview.add_argument("--json", action="store_true")
+    launch_preview.add_argument("argv", nargs=argparse.REMAINDER)
     return parser
 
 
@@ -859,6 +869,69 @@ def handle_set_prompt(args: argparse.Namespace, paths: StatePaths, config) -> in
     return emit(args, f"set prompt profile {args.id}", envelope_ok(f"prompt set to {args.id}"))
 
 
+def _strip_launch_separator(argv: list[str]) -> list[str]:
+    if argv[:1] == ["--"]:
+        return argv[1:]
+    return argv
+
+
+def _env_preview_delta(env_preview: dict[str, str], process_env: dict[str, str]) -> dict[str, str]:
+    return {
+        name: value
+        for name, value in env_preview.items()
+        if process_env.get(name) != value or value == "<redacted>"
+    }
+
+
+def _launch_preview_payload(
+    paths: StatePaths, config, user_argv: list[str], process_env: dict[str, str]
+) -> dict[str, Any]:
+    loaded = load_active_launch_packages(paths, config)
+    target = select_launch_target(paths, config, process_env)
+    if target is None:
+        return {
+            "schemaVersion": 1,
+            "targetClaudePath": None,
+            "targetClaudeKind": "missing",
+            "argv": list(user_argv),
+            "envPreview": {},
+            "skipped": list(loaded.skipped),
+            "warnings": list(loaded.warnings),
+            "errors": ["no launch target found"],
+        }
+    result = merge_launch_profile(
+        LaunchMergeInput(
+            user_argv=list(user_argv),
+            process_env=dict(process_env),
+            prompt=loaded.prompt,
+            options=loaded.options,
+            target=target,
+            initial_skipped=list(loaded.skipped),
+            initial_warnings=list(loaded.warnings),
+        )
+    )
+    return {
+        "schemaVersion": 1,
+        "targetClaudePath": str(result.target.path),
+        "targetClaudeKind": result.target.kind,
+        "argv": result.argv,
+        "envPreview": _env_preview_delta(result.env_preview, process_env),
+        "skipped": result.skipped,
+        "warnings": result.warnings,
+        "errors": result.errors,
+    }
+
+
+def handle_launch_preview(args: argparse.Namespace, paths: StatePaths, config) -> int:
+    user_argv = _strip_launch_separator(list(args.argv))
+    payload = _launch_preview_payload(paths, config, user_argv, dict(os.environ))
+    if args.json:
+        print_json(payload)
+    else:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -879,6 +952,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     paths = default_paths()
     config = load_config(paths.config_path)
+    if args.command == "launch-preview":
+        return handle_launch_preview(args, paths, config)
     if args.command == "status":
         if args.json:
             print_json(_status_payload(paths, config))

@@ -338,6 +338,8 @@ def make_bar(tmp_path, runner):
     bar.user_selected_install_target = False
     bar.busy_command = None
     bar.last_error_message = None
+    bar.activation_calls = []
+    bar._activate_for_modal = lambda: bar.activation_calls.append("activate")
     bar.app = SimpleNamespace(menu=FakeMenu())
     return bar, rumps
 
@@ -472,6 +474,45 @@ def test_rebuild_apply_enqueues_activating_build(tmp_path):
     assert runner.background_calls == [
         ("build", ["build", "--json", "--activate"], True)
     ]
+
+
+def test_install_confirmation_activates_app_before_alert(tmp_path):
+    bar, rumps = make_bar(tmp_path, FakeRunner())
+
+    bar.install_shim()
+
+    assert bar.activation_calls
+    assert rumps.alerts[0][0] == "Install ClaudeMonkey shim?"
+
+
+def test_show_alert_activates_app_before_modal(tmp_path):
+    bar, rumps = make_bar(tmp_path, FakeRunner())
+
+    bar._show_alert(alert_for_result("install_shim", {"ok": True}, bar.state))
+
+    assert bar.activation_calls
+    assert rumps.alerts[-1][0] == "ClaudeMonkey shim installed"
+
+
+def test_result_alerts_cover_install_and_uninstall_success(tmp_path):
+    state = sample_state(tmp_path)
+    install_alert = alert_for_result(
+        "install_shim",
+        {"ok": True, "summary": "installed", "targetPath": str(tmp_path / "bin" / "claude")},
+        state,
+    )
+    assert install_alert is not None
+    assert install_alert.title == "ClaudeMonkey shim installed"
+    assert str(tmp_path / "bin" / "claude") in install_alert.message
+
+    uninstall_alert = alert_for_result(
+        "uninstall_shim",
+        {"ok": True, "summary": "uninstalled", "targetPath": str(tmp_path / "bin" / "claude")},
+        state,
+    )
+    assert uninstall_alert is not None
+    assert uninstall_alert.title == "ClaudeMonkey shim uninstalled"
+    assert str(tmp_path / "bin" / "claude") in uninstall_alert.message
 
 
 def test_open_state_creates_directory_before_opening(tmp_path):

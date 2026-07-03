@@ -173,6 +173,14 @@ def alert_for_result(
             f"{summary}\nActive patch set: {active_patch_set or 'unknown'}\n"
             f"Report: {report or 'unknown'}",
         )
+    if name == "install_shim":
+        summary = str(payload.get("summary") or "Installed managed ClaudeMonkey shim")
+        target = str(payload.get("targetPath") or "unknown target")
+        return AlertPlan("ClaudeMonkey shim installed", f"{summary}\nTarget: {target}")
+    if name == "uninstall_shim":
+        summary = str(payload.get("summary") or "Uninstalled managed ClaudeMonkey shim")
+        target = str(payload.get("targetPath") or "unknown target")
+        return AlertPlan("ClaudeMonkey shim uninstalled", f"{summary}\nTarget: {target}")
     return None
 
 
@@ -215,7 +223,7 @@ class ClaudeMonkeyMenuBar:
             self.last_error_message = str(exc)
             self._log_ui_event("refresh_failed", message=self.last_error_message)
             self.render_error_menu()
-            self.rumps.alert("ClaudeMonkey refresh failed", self.last_error_message)
+            self._alert("ClaudeMonkey refresh failed", self.last_error_message)
             return
         self.state = state
         self.last_error_message = None
@@ -250,6 +258,32 @@ class ClaudeMonkeyMenuBar:
         log_ui_event = getattr(self.runner, "log_ui_event", None)
         if callable(log_ui_event):
             log_ui_event(event, **fields)
+
+    def _activate_for_modal(self) -> None:
+        try:
+            from AppKit import (  # type: ignore[import-not-found]
+                NSApplication,
+                NSApplicationActivateIgnoringOtherApps,
+                NSRunningApplication,
+            )
+        except Exception:
+            return
+        try:
+            app = NSApplication.sharedApplication()
+            if app is not None:
+                app.activateIgnoringOtherApps_(True)
+        except Exception:
+            pass
+        try:
+            NSRunningApplication.currentApplication().activateWithOptions_(
+                NSApplicationActivateIgnoringOtherApps
+            )
+        except Exception:
+            pass
+
+    def _alert(self, title: str, message: str = "", **kwargs: Any) -> Any:
+        self._activate_for_modal()
+        return self.rumps.alert(title, message, **kwargs)
 
     def render_menu(self) -> None:
         rumps = self.rumps
@@ -318,7 +352,7 @@ class ClaudeMonkeyMenuBar:
 
     def _start_mutating_command(self, name: str, args: list[str]) -> None:
         if self.busy_command is not None:
-            self.rumps.alert(
+            self._alert(
                 "ClaudeMonkey is busy", f"{self.busy_command} is already running."
             )
             return
@@ -335,7 +369,7 @@ class ClaudeMonkeyMenuBar:
         )
 
     def rebuild(self, _sender: Any = None) -> None:
-        response = self.rumps.alert(
+        response = self._alert(
             "Rebuild ClaudeMonkey patched binary?",
             REBUILD_CONFIRMATION_BODY,
             ok="Rebuild",
@@ -383,7 +417,7 @@ class ClaudeMonkeyMenuBar:
     def choose_install_target_from_clipboard(self) -> None:
         text = self.clipboard_text()
         if not text:
-            self.rumps.alert(
+            self._alert(
                 "No install target on clipboard",
                 "Copy a target path first, then choose Use path from clipboard.",
             )
@@ -407,7 +441,7 @@ class ClaudeMonkeyMenuBar:
             )
         if dry_run.get("plannedActions"):
             message += "\n\nPlanned: " + "; ".join(str(item) for item in dry_run["plannedActions"])
-        if self.rumps.alert("Install ClaudeMonkey shim?", message, ok="Install", cancel=True) == 1:
+        if self._alert("Install ClaudeMonkey shim?", message, ok="Install", cancel=True) == 1:
             self._start_mutating_command("install_shim", command_for_install_shim(plan.target))
 
     def uninstall_shim(self, _sender: Any = None) -> None:
@@ -439,7 +473,7 @@ class ClaudeMonkeyMenuBar:
         if dry_run.get("plannedActions"):
             message += "\n\nPlanned: " + "; ".join(str(item) for item in dry_run["plannedActions"])
         if (
-            self.rumps.alert(
+            self._alert(
                 "Uninstall ClaudeMonkey shim?", message, ok="Uninstall", cancel=True
             )
             == 1
@@ -449,11 +483,11 @@ class ClaudeMonkeyMenuBar:
     def _alert_preflight_failure(self, action: str, payload: dict[str, Any]) -> None:
         error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
         message = str(error.get("message") or payload.get("summary") or "Preflight failed")
-        self.rumps.alert(f"ClaudeMonkey {action} preflight failed", message)
+        self._alert(f"ClaudeMonkey {action} preflight failed", message)
 
     def open_build_report(self, _sender: Any = None) -> None:
         if not self.state or not self.state.latest_build_report_path:
-            self.rumps.alert(
+            self._alert(
                 "No build report", "No active or failed build report is available yet."
             )
             return
@@ -483,7 +517,7 @@ class ClaudeMonkeyMenuBar:
                 self.last_error_message = str(exc)
                 self._log_ui_event("refresh_failed", message=self.last_error_message)
                 refresh_failed = True
-                self.rumps.alert("ClaudeMonkey refresh failed", self.last_error_message)
+                self._alert("ClaudeMonkey refresh failed", self.last_error_message)
             else:
                 self.state = state
                 self.last_error_message = None
@@ -499,7 +533,7 @@ class ClaudeMonkeyMenuBar:
             self.render_menu()
 
     def _show_alert(self, alert: AlertPlan) -> None:
-        response = self.rumps.alert(
+        response = self._alert(
             alert.title,
             alert.message,
             ok=alert.ok,

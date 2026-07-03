@@ -15,7 +15,7 @@ Each drawer entry now includes:
 
 This is intentionally **not** a full request viewer. It does not duplicate ordinary visible transcript/user/tool content; it audits hidden or abbreviated attachment families that are candidates for model-visible context.
 
-Manual smoke is required: arrow down to select Hidden Context, arrow down again to open it, verify the header appears, arrow keys scroll, and Escape closes without leaking into the underlying prompt.
+Manual smoke is required: arrow down to select Hidden Context, arrow down again to open it, verify the header appears, arrow keys scroll, and x closes the drawer without using the prompt cancellation key.
 
 ## Compatibility
 

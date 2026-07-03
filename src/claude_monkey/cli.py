@@ -45,6 +45,7 @@ from claude_monkey.paths import StatePaths, default_paths
 from claude_monkey.shim_entry import compute_launch_with_paths
 from claude_monkey.smoke import run_command
 from claude_monkey.source_discovery import discover_official_claude
+from claude_monkey.status import status_payload
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1193,7 +1194,7 @@ def main(argv: list[str] | None = None) -> int:
         return handle_disable_option(args, paths, config)
     if args.command == "status":
         if args.json:
-            print_json(_status_payload(paths, config))
+            print_json(status_payload(paths, config))
         else:
             print(f"stateDir={paths.state_dir}")
             print(f"patchesDir={paths.patches_dir}")

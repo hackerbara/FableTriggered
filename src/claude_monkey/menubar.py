@@ -402,9 +402,9 @@ class ClaudeMonkeyMenuBar:
         self.runner.open_path(self.state.latest_build_report_path)
 
     def open_logs(self, _sender: Any = None) -> None:
-        if self.state:
-            self.state.logs_dir.mkdir(parents=True, exist_ok=True)
-            self.runner.open_path(self.state.logs_dir)
+        logs_dir = self.state.logs_dir if self.state else Path.home() / ".claude-monkey" / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        self.runner.open_path(logs_dir)
 
     def open_state(self, _sender: Any = None) -> None:
         if self.state:

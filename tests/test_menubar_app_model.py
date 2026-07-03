@@ -348,6 +348,18 @@ def test_refresh_failure_renders_minimal_recovery_menu(tmp_path):
     assert "status boom" in rumps.alerts[-1][1]
 
 
+def test_open_logs_uses_default_logs_dir_without_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    bar, _rumps = make_bar(tmp_path, FakeRunner())
+    bar.state = None
+
+    bar.open_logs()
+
+    expected = tmp_path / ".claude-monkey" / "logs"
+    assert expected.exists()
+    assert bar.runner.opened == [expected]
+
+
 def test_busy_render_disables_mutating_items_and_shows_running_status(tmp_path):
     bar, _rumps = make_bar(tmp_path, FakeRunner())
     bar.busy_command = "build"

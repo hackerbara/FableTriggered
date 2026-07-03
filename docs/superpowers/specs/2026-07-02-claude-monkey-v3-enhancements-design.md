@@ -1,9 +1,17 @@
 # ClaudeMonkey V3 package, launch-profile, options, and compatibility design
 
 Date: 2026-07-02
-Status: draft revised after adversarial review
+Status: draft revised after adversarial review; §16 and refresh-cadence superseded (see note)
 Project: ClaudeMonkey
 Scope: V3 design only; no runtime implementation in this document
+
+> **Supersession note (2026-07-03):** §16 (menu bar integration) and its
+> refresh-cadence rules are superseded by
+> `2026-07-03-claude-monkey-v3-gui-design.md` (PySide6 tray + manager window
+> + progress window; manual Refresh retained alongside this spec's
+> auto-refresh cadence). §§2–15 remain the authoritative package-model
+> design and are **implementation phase 1**; the GUI spec is phase 2 and
+> builds against this spec's CLI surface.
 
 ## 1. Product position
 

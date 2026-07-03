@@ -229,3 +229,49 @@ def test_option_rejects_prompt_channel_flags_equals_form(tmp_path):
 
     with pytest.raises(PackageValidationError, match="forbidden_prompt_flag"):
         load_package_manifest(package_dir, PackageKind.OPTION)
+
+
+def test_patch_replacement_path_cannot_escape_package(tmp_path):
+    package_dir = tmp_path / "patches" / "payload-escape"
+    payload = patch_manifest("payload-escape")
+    payload["patch"]["targets"] = [
+        {
+            "modules": [
+                {
+                    "path": "/$bunfs/root.js",
+                    "operations": [
+                        {
+                            "replacement": {
+                                "path": "../escape.js",
+                                "sha256": "0" * 64,
+                            }
+                        }
+                    ],
+                }
+            ]
+        }
+    ]
+    write_json(package_dir / "payload-escape.json", payload)
+
+    with pytest.raises(PackageValidationError, match="package_path_escape"):
+        load_package_manifest(package_dir, PackageKind.PATCH)
+
+
+def test_patch_inline_replacement_and_module_path_remain_valid(tmp_path):
+    package_dir = tmp_path / "patches" / "inline-patch"
+    payload = patch_manifest("inline-patch")
+    payload["patch"]["targets"] = [
+        {
+            "modules": [
+                {
+                    "path": "/$bunfs/root.js",
+                    "operations": [{"replacement": {"inline": "patched"}}],
+                }
+            ]
+        }
+    ]
+    write_json(package_dir / "inline-patch.json", payload)
+
+    loaded = load_package_manifest(package_dir, PackageKind.PATCH)
+
+    assert loaded.patch is not None

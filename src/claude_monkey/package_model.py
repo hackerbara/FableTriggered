@@ -324,7 +324,19 @@ def _parse_option(value: Any) -> OptionPackage:
     )
 
 
-def _parse_patch(value: Any) -> PatchPackage:
+def _validate_patch_replacement_paths(value: Any, package_dir: Path) -> None:
+    if isinstance(value, dict):
+        replacement = value.get("replacement")
+        if isinstance(replacement, dict) and "path" in replacement:
+            _package_local_path(package_dir, replacement.get("path"), "replacement.path")
+        for item in value.values():
+            _validate_patch_replacement_paths(item, package_dir)
+    elif isinstance(value, list):
+        for item in value:
+            _validate_patch_replacement_paths(item, package_dir)
+
+
+def _parse_patch(value: Any, package_dir: Path) -> PatchPackage:
     patch = _require_mapping(value, "patch")
     engine = _require_string(patch, "engine")
     if engine not in SUPPORTED_PATCH_ENGINES:
@@ -332,6 +344,7 @@ def _parse_patch(value: Any) -> PatchPackage:
     targets = patch.get("targets")
     if not isinstance(targets, list) or not all(isinstance(item, dict) for item in targets):
         _fail("patch.targets_must_be_object_list")
+    _validate_patch_replacement_paths(targets, package_dir)
     return PatchPackage(engine=engine, targets=tuple(targets))
 
 
@@ -381,7 +394,7 @@ def load_package_manifest_from_dict(
     elif kind is PackageKind.PATCH:
         if "patch" not in top:
             _fail("patch_required")
-        patch = _parse_patch(top.get("patch"))
+        patch = _parse_patch(top.get("patch"), package_dir)
 
     return PackageManifest(
         schema_version=1,

@@ -34,12 +34,6 @@ from claude_monkey.install import (
     restore_install_transaction,
     use_official,
 )
-from claude_monkey.launch_profile import (
-    LaunchMergeInput,
-    load_active_launch_packages,
-    merge_launch_profile,
-    select_launch_target,
-)
 from claude_monkey.package_model import (
     PackageKind,
     PackageManifest,
@@ -48,6 +42,7 @@ from claude_monkey.package_model import (
     load_package_manifest,
 )
 from claude_monkey.paths import StatePaths, default_paths
+from claude_monkey.shim_entry import compute_launch_with_paths
 from claude_monkey.smoke import run_command
 from claude_monkey.source_discovery import discover_official_claude
 
@@ -607,6 +602,20 @@ def _list_kind_payload(paths: StatePaths, config, kind: PackageKind) -> dict[str
     return {"schemaVersion": 1, collection: records}
 
 
+def _list_payload(paths: StatePaths, config, kind: PackageKind) -> dict[str, Any]:
+    v3_payload = _list_kind_payload(paths, config, kind)
+    if kind is PackageKind.PATCH:
+        return v3_payload if v3_payload["patches"] else _list_patch_payload(paths, config)
+    if kind is PackageKind.PROMPT:
+        return v3_payload if v3_payload["prompts"] else _list_prompt_payload(paths, config)
+    return v3_payload
+
+
+def _print_package_ids(payload: dict[str, Any], collection: str) -> None:
+    for record in payload[collection]:
+        print(record["id"])
+
+
 def _load_kind_package_or_emit(
     args: argparse.Namespace, paths: StatePaths, package_id: str, kind: PackageKind
 ):
@@ -1122,33 +1131,10 @@ def _env_preview_delta(env_preview: dict[str, str], process_env: dict[str, str])
 def _launch_preview_payload(
     paths: StatePaths, config, user_argv: list[str], process_env: dict[str, str]
 ) -> dict[str, Any]:
-    loaded = load_active_launch_packages(paths, config)
-    target = select_launch_target(paths, config, process_env)
-    if target is None:
-        return {
-            "schemaVersion": 1,
-            "targetClaudePath": None,
-            "targetClaudeKind": "missing",
-            "argv": list(user_argv),
-            "envPreview": {},
-            "skipped": list(loaded.skipped),
-            "warnings": list(loaded.warnings),
-            "errors": ["no launch target found"],
-        }
-    result = merge_launch_profile(
-        LaunchMergeInput(
-            user_argv=list(user_argv),
-            process_env=dict(process_env),
-            prompt=loaded.prompt,
-            options=loaded.options,
-            target=target,
-            initial_skipped=list(loaded.skipped),
-            initial_warnings=list(loaded.warnings),
-        )
-    )
+    result = compute_launch_with_paths(paths, config, user_argv, process_env)
     return {
         "schemaVersion": 1,
-        "targetClaudePath": str(result.target.path),
+        "targetClaudePath": None if result.target.kind == "missing" else str(result.target.path),
         "targetClaudeKind": result.target.kind,
         "argv": result.argv,
         "envPreview": _env_preview_delta(result.env_preview, process_env),
@@ -1191,11 +1177,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "launch-preview":
         return handle_launch_preview(args, paths, config)
     if args.command == "list-options":
+        payload = _list_payload(paths, config, PackageKind.OPTION)
         if args.json:
-            print_json(_list_kind_payload(paths, config, PackageKind.OPTION))
+            print_json(payload)
         else:
-            for record in _list_kind_payload(paths, config, PackageKind.OPTION)["options"]:
-                print(record["id"])
+            _print_package_ids(payload, "options")
         return 0
     if args.command == "enable-patch":
         return handle_enable_patch(args, paths, config)
@@ -1236,24 +1222,18 @@ def main(argv: list[str] | None = None) -> int:
             envelope_ok(f"disabled {args.patch_id}; rebuild required", status="rebuild_required"),
         )
     if args.command == "list-patches":
+        payload = _list_payload(paths, config, PackageKind.PATCH)
         if args.json:
-            v3_payload = _list_kind_payload(paths, config, PackageKind.PATCH)
-            print_json(v3_payload if v3_payload["patches"] else _list_patch_payload(paths, config))
+            print_json(payload)
         else:
-            for root in _package_roots(paths):
-                if root.exists():
-                    for patch_json in sorted(root.glob("*/patch.json")):
-                        print(patch_json.parent.name)
+            _print_package_ids(payload, "patches")
         return 0
     if args.command == "list-prompts":
+        payload = _list_payload(paths, config, PackageKind.PROMPT)
         if args.json:
-            v3_payload = _list_kind_payload(paths, config, PackageKind.PROMPT)
-            print_json(v3_payload if v3_payload["prompts"] else _list_prompt_payload(paths, config))
+            print_json(payload)
         else:
-            prompt_dir = paths.prompts_dir
-            if prompt_dir.exists():
-                for prompt_json in sorted(prompt_dir.glob("*.json")):
-                    print(prompt_json.stem)
+            _print_package_ids(payload, "prompts")
         return 0
     if args.command == "set-prompt":
         return handle_set_prompt_package(args, paths, config)

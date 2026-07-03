@@ -290,6 +290,26 @@ def test_kind_list_commands_include_valid_and_invalid_packages(monkeypatch, tmp_
         } in records
 
 
+def test_plain_list_prompts_prints_v3_package_ids(monkeypatch, tmp_path, capsys):
+    configure_package_lists(monkeypatch, tmp_path)
+
+    assert main(["list-prompts"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert "research-prompt" in captured.out.splitlines()
+
+
+def test_plain_list_patches_prints_v3_package_ids(monkeypatch, tmp_path, capsys):
+    configure_package_lists(monkeypatch, tmp_path)
+
+    assert main(["list-patches"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert "fable-fallback" in captured.out.splitlines()
+
+
 def test_list_options_marks_active_invalid_package_enabled(monkeypatch, tmp_path, capsys):
     home = tmp_path / "home"
     state = home / ".claude-monkey"

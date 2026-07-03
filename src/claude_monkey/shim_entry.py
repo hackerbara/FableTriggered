@@ -23,6 +23,15 @@ def compute_launch(
     state_dir = state_dir.expanduser()
     paths = StatePaths(state_dir=state_dir)
     config = load_config(paths.config_path)
+    return compute_launch_with_paths(paths, config, user_argv, process_env)
+
+
+def compute_launch_with_paths(
+    paths: StatePaths,
+    config,
+    user_argv: list[str],
+    process_env: Mapping[str, str],
+) -> LaunchMergeResult:
     loaded = load_active_launch_packages(paths, config)
     env = dict(process_env)
     target = select_launch_target(paths, config, env)

@@ -6,8 +6,15 @@ from pathlib import Path
 
 def render_shim_script(state_dir: str) -> str:
     state_dir_literal = json.dumps(state_dir)
+    package_root_literal = json.dumps(str(Path(__file__).resolve().parent.parent))
     return f'''#!/usr/bin/env python3
 from __future__ import annotations
+
+import sys
+
+PACKAGE_ROOT = {package_root_literal}
+if PACKAGE_ROOT not in sys.path:
+    sys.path.insert(0, PACKAGE_ROOT)
 
 from claude_monkey.shim_entry import main
 

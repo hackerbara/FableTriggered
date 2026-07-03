@@ -23,6 +23,12 @@ The implementation should optimize for a proper source-first macOS utility: real
 
 Current main is the build-mechanism baseline. V2 is a UI/control surface over that baseline. V2 calls the CLI and reads JSON status/reports; it must never parse Bun graphs, patch binaries, or know module-coordinate patching details.
 
+Verified current-main decisions for V2:
+
+- Current install helpers are `install_shim_transaction`, `restore_install_transaction`, and `use_official`; protected-target authorization is not present yet and is part of V2 CLI/core work.
+- Current `install_shim_transaction(target_path, state_dir, dry_run=False)` does not require `~/.claude-monkey/current` to exist, so real user-writable install/uninstall JSON tests can run against a disposable temp target without a fake build artifact.
+- The source-run V2 icon asset is `assets/claude-monkey-menubar-template.png`; state-specific variants may be added, but the real icon-only menu bar item does not wait on alternate pixels.
+
 ## 2. CLI/core contracts V2 depends on
 
 Current main includes the Bun graph-aware repack path as the internal build mechanism. V2 depends only on these strategy-agnostic CLI/core behaviors:
@@ -506,17 +512,17 @@ Permissions rules:
 
 - Do not run the menu bar process as root.
 - User-writable targets run without elevation.
-- Protected targets are in scope for V2 and must use a narrow elevation path for the protected install/restore operation only.
-- The preferred macOS UX is GUI authorization for the single protected operation, with terminal `sudo` fallback if GUI authorization is unavailable.
+- Protected targets are in scope for V2 and must use a narrow elevation path for the protected install/restore file operation only.
+- The macOS protected-path implementation is a CLI/core authorization helper that runs only the file operation with elevated privileges: prefer `/usr/bin/osascript` `do shell script ... with administrator privileges` for GUI authorization, with terminal `sudo` fallback when GUI authorization is unavailable.
 - V2 should display the CLI/core authorization prompt/result and log the command outcome; it must not invent a second install transaction format.
 - V2 must preserve rollback/restore evidence and never silently overwrite an unrelated target without the CLI/core's transaction checks.
 
 Protected-target command contract:
 
 - `install-shim --target <protected> --json --dry-run` should return `authorizationRequired: true`, `authorizationMethod`, `targetPath`, and planned actions without writing the target.
-- `install-shim --target <protected> --json` may trigger the narrow CLI/core authorization path for that single target write.
+- `install-shim --target <protected> --json` may trigger the narrow CLI/core authorization helper for the single target write/move.
 - `uninstall-shim --target <protected> --json --dry-run` should report whether restore authorization is required.
-- `uninstall-shim --target <protected> --json` may trigger the narrow CLI/core authorization path for that single restore/delete operation.
+- `uninstall-shim --target <protected> --json` may trigger the narrow CLI/core authorization helper for the single restore/delete/move operation.
 - If authorization is unavailable or denied, the command should fail with `ok: false`, `error.code: "authorization_required"` or `"authorization_denied"`, and no partial install/restore should be reported as success.
 
 ### Open report, logs, and folders

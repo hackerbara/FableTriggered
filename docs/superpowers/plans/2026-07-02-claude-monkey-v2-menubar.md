@@ -27,6 +27,15 @@ tests/conftest.py
 
 If current `main` uses different helper names, preserve the contracts in this plan and adapt imports locally. Do not move patch/build/shim, Bun graph, repack, signing, smoke, authorization, or rollback logic into the menu bar layer.
 
+## Verified current-main decisions
+
+These are settled by reading current `main`:
+
+- Current install helpers are `install_shim_transaction`, `restore_install_transaction`, and `use_official` in `/Users/MAC/Documents/Claude-patch/src/claude_monkey/install.py`.
+- Protected-target authorization is not implemented in current `main`; V2 must add `/Users/MAC/Documents/Claude-patch/src/claude_monkey/authorization.py` and thread its helper through install/restore transactions.
+- Real disposable user-writable install/uninstall JSON tests do not need a built `current` symlink or fake build artifact. Current `install_shim_transaction()` writes a shim script that points at state/current, but it does not require that symlink to exist during installation.
+- The V2 source-run icon decision is concrete: create `/Users/MAC/Documents/Claude-patch/assets/claude-monkey-menubar-template.png` as the menu bar template icon. Optional state variants can follow the same file contract but are not an implementation blocker.
+
 ## File structure
 
 Create or modify these files:
@@ -36,11 +45,13 @@ assets/claude-monkey-menubar-template.png
 pyproject.toml
 src/claude_monkey/cli.py
 src/claude_monkey/cli_json.py
+src/claude_monkey/authorization.py
 src/claude_monkey/menubar_state.py
 src/claude_monkey/menubar_commands.py
 src/claude_monkey/menubar_install.py
 src/claude_monkey/menubar.py
 tests/test_cli_json_contracts.py
+tests/test_authorization.py
 tests/test_menubar_state.py
 tests/test_menubar_commands.py
 tests/test_menubar_install.py
@@ -51,6 +62,7 @@ Responsibilities:
 
 - `cli_json.py`: shared JSON envelope helpers and dry-run result helpers for current-main/V2 contracts.
 - `cli.py`: add `--json` / `--dry-run` additively to existing rich command parsers/handlers; preserve human CLI behavior.
+- `authorization.py`: narrow protected-path helper for install/restore file operations only; GUI `osascript` authorization first, terminal `sudo` fallback, never running the full manager as root.
 - `menubar_state.py`: pure dataclasses and tolerant parsers for status, patches, prompts, optional strategy/repack metadata, and command envelopes.
 - `menubar_commands.py`: safe argv-list subprocess runner, serialized mutation gate, bounded output capture, menu log writer, thread-safe worker-result queue, and raw `open` helper.
 - `menubar_install.py`: target selection model for user-writable and protected shim targets, plus authorization-required planning state.
@@ -130,8 +142,8 @@ def test_dry_run_envelope(monkeypatch, tmp_path, capsys):
 def test_real_install_uninstall_json_wraps_cli_core_transaction(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("HOME", str(tmp_path))
     target = tmp_path / ".claude-monkey" / "bin" / "claude"
-    # Use a disposable user-writable target or monkeypatch the CLI/core transaction
-    # if current main requires a built current symlink for real install.
+    # Current install_shim_transaction does not require a built current symlink;
+    # this is a real disposable user-writable install path.
     assert main(["install-shim", "--target", str(target), "--json"]) == 0
     install_payload = parse_json_output(capsys)
     assert install_payload["ok"] is True
@@ -490,7 +502,7 @@ if args.command == "uninstall-shim" and args.json:
     return 0
 ```
 
-Add `_target_needs_authorization()` as a small helper or reuse the CLI/core authorization planner if current main provides one. This helper is only for JSON planning; the actual protected write must still go through the CLI/core's transaction and authorization path.
+Add `/Users/MAC/Documents/Claude-patch/src/claude_monkey/authorization.py` with `target_needs_authorization(target_path: Path) -> bool`, `authorization_method_for_target(target_path: Path) -> str | None`, and `run_privileged_argv(argv: list[str], *, reason: str) -> AuthorizationResult`. The helper should prefer `/usr/bin/osascript` `do shell script ... with administrator privileges` for GUI authorization and fall back to terminal `sudo` when GUI authorization is unavailable. Use this helper only for the protected install/restore file operation; do not run the menu bar process or the whole manager as root.
 
 If the current builder performs real source/package discovery and operation planning during dry-run, include `buildStrategy`, `changedModules`, `repackSummary`, and planned operation/module details in the envelope. If it does not, the summary must stay honest: this is a planning envelope, not proof that visual behavior or patch applicability has been verified.
 
@@ -1124,7 +1136,7 @@ def managed_user_target(state_dir: Path) -> Path:
     return state_dir / "bin" / "claude"
 
 
-def is_probably_protected_target(target: Path) -> bool:
+def is_protected_target(target: Path) -> bool:
     expanded = target.expanduser()
     protected_roots = (Path("/bin"), Path("/sbin"), Path("/usr/bin"), Path("/usr/sbin"), Path("/usr/local/bin"), Path("/opt/homebrew/bin"))
     return any(expanded == root or root in expanded.parents for root in protected_roots)
@@ -1132,7 +1144,7 @@ def is_probably_protected_target(target: Path) -> bool:
 
 def install_plan_for_target(target: Path, *, state_dir: Path) -> InstallTargetPlan:
     expanded = target.expanduser()
-    protected = is_probably_protected_target(expanded)
+    protected = is_protected_target(expanded)
     return InstallTargetPlan(
         target=expanded,
         authorization_required=protected,
@@ -1657,7 +1669,7 @@ def test_v2_contract_acceptance_uses_one_disposable_home(monkeypatch, tmp_path, 
 python3 -m pytest tests/test_v2_contract_acceptance.py -q
 ```
 
-Expected: PASS. If current main requires a built `current` symlink before real shim install, monkeypatch the CLI/core install transaction for this acceptance test rather than weakening the JSON contract. A failure here means an earlier task did not implement the documented current-main/V2 contract; stop and repair the specific earlier task before continuing.
+Expected: PASS. This test uses a real disposable user-writable shim target; do not monkeypatch away install/uninstall JSON behavior. A failure here means an earlier task did not implement the documented current-main/V2 contract; stop and repair the specific earlier task before continuing.
 
 - [ ] **Step 3: Commit Task 7**
 

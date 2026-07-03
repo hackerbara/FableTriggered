@@ -52,7 +52,10 @@ def base_status(**overrides):
 
 def test_parse_menu_state_captures_v3_status_and_option_payloads():
     state = parse_menu_state(
-        base_status(),
+        base_status(
+            launchPreviewAction={"command": "launch-preview"},
+            refreshAction={"command": "refresh"},
+        ),
         {"schemaVersion": 1, "patches": []},
         {"schemaVersion": 1, "prompts": []},
         {
@@ -116,7 +119,8 @@ def test_parse_menu_state_captures_v3_status_and_option_payloads():
     assert second.valid is False
     assert second.errors == ("id_must_match_folder: different != broken-option",)
 
-    assert not any("launch_preview" in field or "refresh" in field for field in state.__dict__)
+    assert not hasattr(state, "launch_preview_action")
+    assert not hasattr(state, "refresh_action")
 
 
 def test_parse_menu_state_tolerates_missing_options_payload_for_v2_callers():

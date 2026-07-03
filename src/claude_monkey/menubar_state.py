@@ -12,7 +12,7 @@ STATUS_LABELS = {
     "not_installed": "Not Installed",
     "unknown": "Unknown",
 }
-COMMAND_STATUSES = {"ok", "warning", "rebuild_required", "error", "not_installed", "unknown"}
+COMMAND_STATUSES = {"ok", "rebuild_required", "error", "not_installed", "unknown"}
 AUTHORIZATION_METHODS = {None, "macos_gui", "sudo", "not_available"}
 
 

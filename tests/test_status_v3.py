@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform as platform_module
+import sys
 from pathlib import Path
 
 from claude_monkey.cli import main
@@ -16,7 +18,7 @@ def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
-def make_executable(path: Path, text: str = "#!/bin/sh\necho 2.1.199\n") -> Path:
+def make_executable(path: Path, text: str = "#!/bin/sh\necho '2.1.199 (Claude Code)'\n") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
     path.chmod(path.stat().st_mode | 0o111)
@@ -79,8 +81,8 @@ def patch_manifest(package_id: str, source: Path) -> dict:
                         "versionOutput": "2.1.199 (Claude Code)",
                         "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
                         "sizeBytes": source.stat().st_size,
-                        "platform": "darwin",
-                        "arch": "arm64",
+                        "platform": sys.platform,
+                        "arch": platform_module.machine() or "unknown",
                     },
                     "requiredEngine": "bun_graph_repack",
                     "requiredBinaryFormat": "bun_standalone_macho64",
@@ -215,6 +217,49 @@ def test_status_payload_reports_matching_patched_v3_build(monkeypatch, tmp_path)
     assert {key: payload[key] for key in expected} == expected
     assert payload["sourceSha256"] == source_sha
     assert payload["latestBuildReportPath"].endswith("build-report.json")
+
+
+def test_status_payload_uses_live_source_identity_when_report_source_is_stale(
+    monkeypatch, tmp_path
+):
+    state, _source_a, _source_a_sha = seed_matching_state(tmp_path, monkeypatch)
+    source_b = make_executable(
+        tmp_path / "source-b" / "claude",
+        "#!/bin/sh\n"
+        "echo '2.1.199 (Claude Code)'\n"
+        "# source-b has different bytes from the report source\n",
+    )
+    source_b_sha = hashlib.sha256(source_b.read_bytes()).hexdigest()
+    config = json.loads((state / "config.json").read_text())
+    config["officialClaudePath"] = str(source_b)
+    write_json(state / "config.json", config)
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["sourceClaudePath"] == str(source_b)
+    assert payload["sourceSha256"] == source_b_sha
+    assert payload["sourceIdentityStatus"] == "source_mismatch"
+    assert payload["compatibilityStatus"] == "source_mismatch"
+    assert payload["rebuildRequired"] is True
+
+
+def test_status_payload_does_not_claim_report_patch_ids_for_other_current_patchset(
+    monkeypatch, tmp_path
+):
+    state, _source, _source_sha = seed_matching_state(tmp_path, monkeypatch)
+    other_patched = make_executable(
+        state / "versions" / "2.1.199" / "patchsets" / "other" / "claude",
+        "#!/bin/sh\necho other patched\n",
+    )
+    (state / "current").unlink()
+    os.symlink(other_patched, state / "current")
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["builtPatchIds"] == ["fable-fallback"]
+    assert payload["patchedBuildActive"] is False
+    assert payload["activePatchIds"] == []
+    assert payload["rebuildRequired"] is True
 
 
 

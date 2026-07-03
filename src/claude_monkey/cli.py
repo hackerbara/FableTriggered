@@ -909,10 +909,22 @@ def _manifest_digests_for_build(package_dirs: list[Path]) -> dict[str, str]:
     return digests
 
 
-def _build_input_snapshot(config) -> dict[str, Any]:
+def _patch_ids_for_build_snapshot(package_dirs: list[Path]) -> list[str]:
+    patch_ids: list[str] = []
+    for package_dir in package_dirs:
+        try:
+            manifest = load_package_manifest(package_dir, PackageKind.PATCH)
+        except PackageValidationError:
+            patch_ids.append(package_dir.name)
+            continue
+        patch_ids.append(manifest.id)
+    return patch_ids
+
+
+def _build_input_snapshot(config, package_dirs: list[Path]) -> dict[str, Any]:
     profile = active_profile(config)
     return {
-        "patches": list(profile.patches),
+        "patches": _patch_ids_for_build_snapshot(package_dirs),
         "promptAtBuildTime": profile.prompt,
         "optionsAtBuildTime": list(profile.options),
     }
@@ -990,7 +1002,7 @@ def handle_build(args: argparse.Namespace, paths: StatePaths, config) -> int:
             activate=args.activate,
             current_path=paths.current_path,
             manifest_digests=_manifest_digests_for_build(package_dirs),
-            build_input_snapshot=_build_input_snapshot(config),
+            build_input_snapshot=_build_input_snapshot(config, package_dirs),
         )
     )
     if report.status == "verified" and report.activationStatus == "activated":

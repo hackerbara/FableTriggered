@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform as platform_module
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -145,6 +147,8 @@ def _source_identity_from_discovery(
         "claudeVersion": _version_from_output(version_output),
         "versionOutput": version_output,
         "sha256": _file_sha256(source),
+        "platform": sys.platform,
+        "arch": platform_module.machine() or "unknown",
     }
     if size is not None:
         identity["sizeBytes"] = size
@@ -156,7 +160,7 @@ def _source_identity(
 ) -> dict[str, Any]:
     from_report = _source_identity_from_report(report)
     from_discovery = _source_identity_from_discovery(paths, config)
-    return {**from_discovery, **from_report}
+    return from_discovery or from_report
 
 
 def _target_identities(manifest: PackageManifest) -> list[dict[str, Any]]:
@@ -243,6 +247,18 @@ def _reported_manifest_digests(report: dict[str, Any] | None) -> dict[str, str]:
     return {str(key): str(item) for key, item in value.items() if isinstance(item, str)}
 
 
+def _source_matches_report(source: dict[str, Any], report: dict[str, Any] | None) -> bool:
+    report_identity = _source_identity_from_report(report)
+    if not source or not report_identity:
+        return True
+    for key in ("path", "sha256", "sizeBytes"):
+        expected = report_identity.get(key)
+        if expected is None:
+            continue
+        actual = source.get(key)
+        if actual is None or str(actual) != str(expected):
+            return False
+    return True
 
 
 def _current_executable_path(current_path: Path) -> str | None:
@@ -284,17 +300,44 @@ def _detected_claude_command_path() -> Path | None:
     found = shutil.which("claude")
     return Path(found) if found else None
 
-def _patched_build_active(paths: StatePaths) -> bool:
+def _patchset_path(active_patch_set: str | None) -> Path | None:
+    if not active_patch_set:
+        return None
+    patchset_path = Path(active_patch_set).expanduser()
+    if not patchset_path.is_absolute():
+        patchset_path = patchset_path.resolve(strict=False)
+    return patchset_path
+
+
+def _expected_active_executables(
+    active_patch_set: str | None, report: dict[str, Any] | None
+) -> list[Path]:
+    expected: list[Path] = []
+    patchset_path = _patchset_path(active_patch_set)
+    if patchset_path is not None:
+        expected.append(patchset_path / "claude")
+    output_path = (report or {}).get("outputPath")
+    if isinstance(output_path, str):
+        expected.append(Path(output_path).expanduser())
+    return expected
+
+
+def _patched_build_active(
+    paths: StatePaths, active_patch_set: str | None, report: dict[str, Any] | None
+) -> bool:
     try:
         resolved = paths.current_path.resolve(strict=True)
     except OSError:
         return False
-    versions_root = paths.versions_dir.resolve(strict=False)
-    try:
-        resolved.relative_to(versions_root)
-    except ValueError:
+    if not (resolved.is_file() and os.access(resolved, os.X_OK)):
         return False
-    return resolved.is_file() and os.access(resolved, os.X_OK)
+    for expected in _expected_active_executables(active_patch_set, report):
+        try:
+            if resolved == expected.resolve(strict=True):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def _high_risk_options(loaded_options: list[PackageManifest]) -> list[dict[str, str]]:
@@ -334,7 +377,8 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
         and reported_digests
         and any(reported_digests.get(pid) != current_digests.get(pid) for pid in desired_patch_ids)
     )
-    patched_active = _patched_build_active(paths)
+    source_report_mismatch = not _source_matches_report(source, report)
+    patched_active = _patched_build_active(paths, config.activePatchSet, report)
     target = select_launch_target(paths, config, dict(os.environ))
     target_kind = target.kind if target is not None else "missing"
     active_patch_ids = built_patch_ids if patched_active else []
@@ -353,6 +397,8 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
         or desired_patch_ids != active_patch_ids
         or active_report_missing
         or digest_mismatch
+        or source_status not in {"compatible", "unknown"}
+        or source_report_mismatch
         or manifest_status == "invalid"
         or (installed and not runnable)
     )
@@ -363,10 +409,14 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
     ]
     if digest_mismatch:
         compatibility_warnings.append("enabled patch package manifest changed since last build")
+    if source_report_mismatch:
+        compatibility_warnings.append("source identity changed since last build")
     if manifest_status == "invalid":
         compatibility_status = "invalid"
     elif source_status not in {"compatible", "unknown"}:
         compatibility_status = source_status
+    elif source_report_mismatch:
+        compatibility_status = "source_mismatch"
     else:
         compatibility_status = (
             last_build_status if last_build_status != "unknown" else manifest_status

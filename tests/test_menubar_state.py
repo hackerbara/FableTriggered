@@ -126,3 +126,23 @@ def test_command_envelope_rejects_string_booleans():
         assert "ok must be boolean" in str(exc)
     else:
         raise AssertionError("expected strict boolean validation")
+
+
+def test_command_envelope_rejects_string_planned_actions():
+    try:
+        parse_command_envelope(
+            {
+                "schemaVersion": 1,
+                "ok": True,
+                "status": "ok",
+                "summary": "ok",
+                "reportPath": None,
+                "dryRun": True,
+                "plannedActions": "rm -rf",
+                "error": None,
+            }
+        )
+    except ValueError as exc:
+        assert "plannedActions must be a list" in str(exc)
+    else:
+        raise AssertionError("expected plannedActions validation")

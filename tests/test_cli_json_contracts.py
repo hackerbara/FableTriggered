@@ -141,3 +141,115 @@ def test_build_json_success_uses_command_envelope_schema(monkeypatch, tmp_path, 
     assert payload["summary"] == "Build activated"
     assert payload["error"] is None
     assert payload["reportPath"] == str(tmp_path / "out" / "build-report.json")
+
+
+def test_status_ignores_stale_install_record(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    state = tmp_path / ".claude-monkey"
+    state.mkdir()
+    (state / "install-record.json").write_text(
+        json.dumps(
+            {
+                "owner": "ClaudeMonkey managed shim",
+                "targetPath": str(tmp_path / "missing-claude"),
+                "installedShimSha256": "abc",
+            }
+        )
+    )
+    assert main(["status", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["shimInstalled"] is False
+    assert payload["status"] == "not_installed"
+
+
+def test_install_auth_failure_human_cli_uses_stderr(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "protected" / "claude"
+
+    def fake_install(*args, **kwargs):
+        from claude_monkey.authorization import AuthorizationDenied
+
+        raise AuthorizationDenied("denied", method="macos_gui")
+
+    monkeypatch.setattr("claude_monkey.cli.install_shim_transaction", fake_install)
+    assert main(["install-shim", "--target", str(target)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "denied" in captured.err
+
+
+def test_install_json_success_reports_authorization_metadata(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "protected" / "claude"
+
+    monkeypatch.setattr("claude_monkey.cli.target_needs_authorization", lambda path: True)
+    monkeypatch.setattr(
+        "claude_monkey.cli.authorization_method_for_target", lambda path: "macos_gui"
+    )
+
+    def fake_install(target_path, state_dir, dry_run):
+        return state_dir / "install-record.json"
+
+    monkeypatch.setattr("claude_monkey.cli.install_shim_transaction", fake_install)
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["authorizationRequired"] is True
+    assert payload["authorizationMethod"] == "macos_gui"
+    assert payload["targetPath"] == str(target)
+
+
+def test_malformed_uninstall_record_json_returns_envelope(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    record = tmp_path / "bad-record.json"
+    record.write_text("{bad json")
+    assert main(["uninstall-shim", "--record", str(record), "--json"]) == 2
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_record"
+
+
+def test_manual_smoke_pending_json_summary_does_not_claim_activation(monkeypatch, tmp_path, capsys):
+    from claude_monkey.reports_v2 import BuildReportV2
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    source = tmp_path / "claude"
+    source.write_text("source")
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "patch.json").write_text("{}")
+
+    def fake_build(request):
+        request.output_dir.mkdir(parents=True, exist_ok=True)
+        return BuildReportV2(
+            status="manual_smoke_pending",
+            automatedStatus="passed",
+            sourceClaudePath=str(source),
+            sourceVersion="fixture",
+            sourceVersionOutput="fixture (Claude Code)",
+            activationEligible=False,
+            activationBlockers=["manual_smoke_pending"],
+        )
+
+    monkeypatch.setattr("claude_monkey.cli.build_patchset_v15", fake_build)
+    assert (
+        main(
+            [
+                "build",
+                "--source",
+                str(source),
+                "--package",
+                str(package),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--source-version",
+                "fixture",
+                "--source-version-output",
+                "fixture (Claude Code)",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is True
+    assert payload["summary"] == "Build requires manual smoke before activation"

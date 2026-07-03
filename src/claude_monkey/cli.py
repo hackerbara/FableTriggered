@@ -25,6 +25,7 @@ from claude_monkey.builder_v15 import (
 from claude_monkey.cli_json import envelope_error, envelope_ok, print_json, to_jsonable
 from claude_monkey.config import Profile, load_config, save_config
 from claude_monkey.install import (
+    current_target_is_installed_shim,
     install_shim_transaction,
     restore_install_transaction,
     use_official,
@@ -187,6 +188,18 @@ def _shim_target_from_record(record_path: Path) -> str | None:
     return target if isinstance(target, str) else None
 
 
+def _shim_record(record_path: Path) -> dict[str, Any] | None:
+    return _read_json_file(record_path)
+
+
+def _shim_is_installed(record_path: Path) -> bool:
+    record = _shim_record(record_path)
+    if not record:
+        return False
+    target = record.get("targetPath")
+    return isinstance(target, str) and current_target_is_installed_shim(Path(target), record)
+
+
 def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
     profile = active_profile(config)
     desired = list(profile.enabledPatches)
@@ -195,7 +208,8 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
     rebuild_required = desired != active
     install_record = _install_record_path(paths)
     current_known = paths.current_path.exists() or paths.current_path.is_symlink()
-    installed = current_known or install_record.exists() or report is not None
+    shim_installed = _shim_is_installed(install_record)
+    installed = current_known or shim_installed or report is not None
     if not installed:
         status = "not_installed"
     elif rebuild_required:
@@ -211,7 +225,7 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
         "sourceClaudeVersion": (report or {}).get("sourceVersion"),
         "sourceClaudePath": (report or {}).get("sourceClaudePath"),
         "installMode": config.installMode,
-        "shimInstalled": install_record.exists(),
+        "shimInstalled": shim_installed,
         "activeProfile": config.activeProfile,
         "activePrompt": profile.promptProfile,
         "desiredPatchIds": desired,
@@ -221,7 +235,7 @@ def _status_payload(paths: StatePaths, config) -> dict[str, Any]:
         "activePatchSet": _display_patch_set(config.activePatchSet),
         "currentClaudePath": _safe_resolve(paths.current_path) if current_known else None,
         "shimTargetPath": _shim_target_from_record(install_record),
-        "installRecordPath": str(install_record) if install_record.exists() else None,
+        "installRecordPath": str(install_record) if shim_installed else None,
         "buildStrategy": build_strategy,
         "lastBuildStrategy": build_strategy,
         "changedModules": (report or {}).get("changedModules", []),
@@ -327,13 +341,14 @@ def _build_dry_run_payload() -> Any:
 def _build_report_json_payload(report: Any, report_path: Path | None = None) -> dict[str, Any]:
     report_payload = dict(to_jsonable(report))
     ok = report_payload.get("status") in {"verified", "manual_smoke_pending"}
-    summary = (
-        "Build activated"
-        if ok
-        else str(
+    if report_payload.get("status") == "verified" and report_payload.get("activationEligible"):
+        summary = "Build activated"
+    elif report_payload.get("status") == "manual_smoke_pending":
+        summary = "Build requires manual smoke before activation"
+    else:
+        summary = str(
             report_payload.get("failureReason") or report_payload.get("status") or "build failed"
         )
-    )
     envelope = envelope_ok(
         summary,
         report_path=report_path,
@@ -497,7 +512,12 @@ def _target_from_args_or_record(args: argparse.Namespace, record_path: Path) -> 
         return Path(args.target).expanduser()
     if not record_path.exists():
         return None
-    raw: dict[str, Any] = json.loads(record_path.read_text())
+    try:
+        raw = json.loads(record_path.read_text())
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid install record JSON: {record_path}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"invalid install record JSON: {record_path}")
     target = raw.get("targetPath")
     return Path(target) if isinstance(target, str) else None
 
@@ -505,20 +525,30 @@ def _target_from_args_or_record(args: argparse.Namespace, record_path: Path) -> 
 def handle_restore(args: argparse.Namespace, paths: StatePaths) -> int:
     state_dir = Path(args.state_dir).expanduser() if args.state_dir else paths.state_dir
     record_path = _record_path(args, state_dir)
-    target = _target_from_args_or_record(args, record_path)
+    command_label = "rollback" if args.command == "rollback" else "uninstall-shim"
+    try:
+        target = _target_from_args_or_record(args, record_path)
+    except ValueError as exc:
+        if getattr(args, "json", False):
+            print_json(envelope_error(str(exc), code="invalid_record"))
+        else:
+            print(str(exc), file=sys.stderr)
+        return 2
     if target is None:
         payload = envelope_error(
-            "uninstall-shim requires --target or an install record with targetPath",
+            f"{command_label} requires --target or an install record with targetPath",
             code="missing_target",
         )
         if getattr(args, "json", False):
             print_json(payload)
         else:
             print(
-                "uninstall-shim requires --target or an install record with targetPath",
+                f"{command_label} requires --target or an install record with targetPath",
                 file=sys.stderr,
             )
         return 2
+    authorization_required = target_needs_authorization(target)
+    authorization_method = authorization_method_for_target(target)
     if getattr(args, "dry_run", False):
         payload = _dry_run_install_payload(target, uninstall=True)
         if getattr(args, "json", False):
@@ -535,25 +565,35 @@ def handle_restore(args: argparse.Namespace, paths: StatePaths) -> int:
             if isinstance(exc, AuthorizationDenied)
             else "authorization_required"
         )
-        print_json(
-            envelope_error(
-                str(exc),
-                code=code,
-                target_path=target,
-                authorization_required=True,
-                authorization_method=exc.method,
-            )
+        payload = envelope_error(
+            str(exc),
+            code=code,
+            target_path=target,
+            authorization_required=True,
+            authorization_method=exc.method,
         )
+        if getattr(args, "json", False):
+            print_json(payload)
+        else:
+            print(str(exc), file=sys.stderr)
         return 1
     except OSError as exc:
+        payload = envelope_error(str(exc), code="filesystem_error", target_path=target)
         if getattr(args, "json", False):
-            print_json(envelope_error(str(exc), code="filesystem_error", target_path=target))
+            print_json(payload)
         else:
             print(str(exc), file=sys.stderr)
         return 1
     if getattr(args, "json", False):
         if restored:
-            print_json(envelope_ok("uninstalled managed claude shim", target_path=target))
+            print_json(
+                envelope_ok(
+                    "uninstalled managed claude shim",
+                    target_path=target,
+                    authorization_required=authorization_required,
+                    authorization_method=authorization_method,
+                )
+            )
         else:
             print_json(
                 envelope_error(
@@ -694,6 +734,8 @@ def main(argv: list[str] | None = None) -> int:
                 print("install-shim requires --target", file=sys.stderr)
             return 2
         target = Path(args.target).expanduser()
+        authorization_required = target_needs_authorization(target)
+        authorization_method = authorization_method_for_target(target)
         if args.dry_run:
             payload = _dry_run_install_payload(target)
             if args.json:
@@ -710,15 +752,17 @@ def main(argv: list[str] | None = None) -> int:
                 if isinstance(exc, AuthorizationDenied)
                 else "authorization_required"
             )
-            print_json(
-                envelope_error(
-                    str(exc),
-                    code=code,
-                    target_path=target,
-                    authorization_required=True,
-                    authorization_method=exc.method,
-                )
+            payload = envelope_error(
+                str(exc),
+                code=code,
+                target_path=target,
+                authorization_required=True,
+                authorization_method=exc.method,
             )
+            if args.json:
+                print_json(payload)
+            else:
+                print(str(exc), file=sys.stderr)
             return 1
         except OSError as exc:
             if args.json:
@@ -727,7 +771,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(str(exc), file=sys.stderr)
             return 1
         if args.json:
-            print_json(envelope_ok("installed managed claude shim", target_path=target))
+            print_json(
+                envelope_ok(
+                    "installed managed claude shim",
+                    target_path=target,
+                    authorization_required=authorization_required,
+                    authorization_method=authorization_method,
+                )
+            )
         else:
             print(f"installRecord={record}")
             print("dryRun=false")

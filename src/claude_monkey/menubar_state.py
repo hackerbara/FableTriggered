@@ -107,6 +107,13 @@ def _optional_bool(raw: dict[str, Any], key: str, default: bool = False) -> bool
     return value
 
 
+def _planned_actions(raw: dict[str, Any]) -> tuple[str, ...]:
+    value = raw.get("plannedActions", [])
+    if not isinstance(value, list):
+        raise ValueError("plannedActions must be a list")
+    return tuple(str(item) for item in value)
+
+
 def parse_command_envelope(raw: dict[str, Any]) -> CommandEnvelope:
     error = parse_error(raw.get("error"))
     ok = _required_bool(raw, "ok")
@@ -123,7 +130,7 @@ def parse_command_envelope(raw: dict[str, Any]) -> CommandEnvelope:
         authorization_required=_optional_bool(raw, "authorizationRequired", False),
         authorization_method=raw.get("authorizationMethod"),
         dry_run=_optional_bool(raw, "dryRun", False),
-        planned_actions=tuple(str(item) for item in raw.get("plannedActions", [])),
+        planned_actions=_planned_actions(raw),
         error=error,
     )
 

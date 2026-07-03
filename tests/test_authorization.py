@@ -58,3 +58,97 @@ def test_protected_restore_uses_narrow_authorized_file_operation(monkeypatch, tm
     assert restore_install_transaction(target, record, force=False) is True
     assert calls
     assert target.read_text() == "official"
+
+
+def test_osascript_uses_valid_double_quoted_shell_script(monkeypatch):
+    calls = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr("claude_monkey.authorization.Path.exists", lambda self: True)
+
+    def fake_run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return Result()
+
+    monkeypatch.setattr("claude_monkey.authorization.subprocess.run", fake_run)
+
+    from claude_monkey.authorization import run_privileged_argv
+
+    run_privileged_argv(["/bin/echo", "hi"], reason="test")
+    script = calls[0][0][2]
+    assert script.startswith('do shell script "')
+    assert script.endswith('" with administrator privileges')
+    assert "/bin/echo hi" in script
+
+
+def test_failed_protected_install_cleans_record_and_temp(monkeypatch, tmp_path):
+    target = tmp_path / "protected" / "claude"
+    state = tmp_path / "state"
+
+    monkeypatch.setattr(
+        "claude_monkey.install.authorization.target_needs_authorization", lambda path: True
+    )
+
+    def fake_privileged(argv, *, reason):
+        if argv[0].endswith("mv"):
+            from claude_monkey.authorization import AuthorizationDenied
+
+            raise AuthorizationDenied("denied", method="macos_gui")
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(
+        "claude_monkey.install.authorization.run_privileged_argv", fake_privileged
+    )
+
+    from claude_monkey.authorization import AuthorizationDenied
+
+    try:
+        install_shim_transaction(target, state, dry_run=False)
+    except AuthorizationDenied:
+        pass
+    else:
+        raise AssertionError("expected authorization denial")
+
+    assert not (state / "install-record.json").exists()
+    assert not (state / "claude.claude-monkey.tmp").exists()
+    assert not target.exists()
+
+
+def test_protected_restore_keeps_current_target_if_replacement_fails(monkeypatch, tmp_path):
+    target = tmp_path / "protected" / "claude"
+    target.parent.mkdir()
+    target.write_text("official")
+    state = tmp_path / "state"
+    record = install_shim_transaction(target, state, dry_run=False)
+    target.write_text("managed shim replacement")
+
+    monkeypatch.setattr(
+        "claude_monkey.install.current_target_is_installed_shim", lambda path, record: True
+    )
+    monkeypatch.setattr(
+        "claude_monkey.install.authorization.target_needs_authorization", lambda path: True
+    )
+
+    def fake_privileged(argv, *, reason):
+        from claude_monkey.authorization import AuthorizationDenied
+
+        raise AuthorizationDenied("denied", method="macos_gui")
+
+    monkeypatch.setattr(
+        "claude_monkey.install.authorization.run_privileged_argv", fake_privileged
+    )
+
+    from claude_monkey.authorization import AuthorizationDenied
+
+    try:
+        restore_install_transaction(target, record, force=False)
+    except AuthorizationDenied:
+        pass
+    else:
+        raise AssertionError("expected authorization denial")
+
+    assert target.read_text() == "managed shim replacement"

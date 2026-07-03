@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import shutil
@@ -61,7 +62,7 @@ def run_privileged_argv(argv: list[str], *, reason: str) -> AuthorizationResult:
     osascript = Path("/usr/bin/osascript")
     if osascript.exists():
         command = " ".join(shlex.quote(item) for item in argv)
-        script = f"do shell script {command!r} with administrator privileges"
+        script = f"do shell script {json.dumps(command)} with administrator privileges"
         result = subprocess.run(
             [str(osascript), "-e", script],
             shell=False,

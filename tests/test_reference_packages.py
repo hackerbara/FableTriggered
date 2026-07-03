@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_DIRS = [
     ROOT / "packages" / "fable-fallback",
     ROOT / "packages" / "hidden-context-drawer",
+    ROOT / "packages" / "hotrod-dragons",
     ROOT / "packages" / "normal-channel-hidden-context",
     ROOT / "packages" / "reminder-suppression",
 ]
@@ -115,8 +116,8 @@ def test_normal_channel_hidden_context_projects_hidden_attachments_before_filter
 def test_normal_channel_hidden_context_projection_payload_handles_known_records():
     package_dir = ROOT / "packages" / "normal-channel-hidden-context"
     helper_payload = (package_dir / "payloads" / "projection-helpers-before-jlr.js").read_text()
-    helper_block = helper_payload.removesuffix("function Jlr(e){\n").removesuffix(
-        "function Jlr(e){"
+    helper_block = helper_payload.removesuffix("function Jur(e){\n").removesuffix(
+        "function Jur(e){"
     )
     script = f"""
 {helper_block}
@@ -179,14 +180,15 @@ def test_hidden_context_drawer_package_uses_footer_overlay_without_global_ijo_ca
     assert "__CODEX_HIDDEN_CONTEXT_DRAWER_FRAME_V13__" in payloads[
         "projection-helpers-before-jlr"
     ]
-    assert 'function UXl(){let e=$Ye.c(12),[t,n]=p_.useState(0)' in payloads[
+    assert 'function qnc(){let e=KJe.c(12),[t,n]=S_.useState(0)' in payloads[
         "uxl-refresh-bottom-overlay"
     ]
-    assert "Yc(()=>n(Date.now()),100)" in payloads["uxl-refresh-bottom-overlay"]
+    assert "Zc(()=>n(Date.now()),100)" in payloads["uxl-refresh-bottom-overlay"]
     assert 'bottom:"100%"' in payloads["uxl-refresh-bottom-overlay"]
     assert 'position:"absolute",marginTop:-(hCh+1)' not in "".join(payloads.values())
     assert any(
-        assertion["value"] == 'x=iNn()?y-kjo:"50%"'
+        assertion["value"]
+        == 'function qnc(){let e=KJe.c(12),[t,n]=S_.useState(0);Zc(()=>n(Date.now()),100)'
         for assertion in manifest_data["targets"][0]["postconditions"]
     )
 
@@ -203,8 +205,8 @@ def test_hidden_context_drawer_scroll_step_is_three_for_keyboard_and_mouse():
     assert "Bt-3" in keyboard_payload
     assert "Bt+3" in keyboard_payload
     assert "d.deltaY>0?3:-3" in overlay_payload
-    assert "Bt-1" not in keyboard_payload.split("if(cm&&Cs>0&&Os>zn)")[0]
-    assert "Bt+1" not in keyboard_payload.split("if(cm&&Cs>0)")[0]
+    assert "Bt-1" not in keyboard_payload.split("if(qb&&oa>0&&xs>br)")[0]
+    assert "Bt+1" not in keyboard_payload.split("if(qb&&oa>0)")[0]
 
 
 def test_hidden_context_drawer_footer_flashes_blue_until_selection_clears():
@@ -230,34 +232,32 @@ def test_hidden_context_drawer_footer_flashes_blue_until_selection_clears():
     assert "flashUntil=0" in keyboard_payload
 
 
-def test_hidden_context_drawer_ctrl_period_closes_and_enter_opens():
+def test_hidden_context_drawer_footer_x_closes_and_enter_opens():
     package_dir = ROOT / "packages" / "hidden-context-drawer"
     globals_payload = (
         package_dir / "payloads" / "14-selected-only-bottom-overlay-hidden-context-globals.js"
     ).read_text()
-    main_close_payload = (
-        package_dir / "payloads" / "17-main-keydown-ctrl-period-hiddencontext.js"
-    ).read_text()
-    open_payload = (
+    open_close_payload = (
         package_dir / "payloads" / "13-footer-clearselection-consumes-hiddencontext.js"
     ).read_text()
     overlay_payload = (
         package_dir / "payloads" / "15-uxl-refresh-bottom-overlay.js"
     ).read_text()
 
-    assert 'onKeyDown:(Bt)=>{if(hC&&Bt.ctrl&&Bt.key===".")' in globals_payload
+    assert not (
+        package_dir / "payloads" / "17-main-keydown-ctrl-period-hiddencontext.js"
+    ).exists()
+    assert 'onKeyDown:(Bt)=>{if(hC&&Bt.ctrl&&Bt.key===".")' not in globals_payload
     assert 'Bt.ctrl&&Bt.name==="escape"' not in globals_payload
-    assert 'if(hC&&Bt.ctrl&&Bt.key===".")' in main_close_payload
-    assert 'Bt.ctrl&&Bt.name==="escape"' not in main_close_payload
-    assert "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1" in main_close_payload
-    assert "hCp(!1)" in main_close_payload
-    assert "Pc(null)" in main_close_payload
-    assert "Bt.consume?.()" in main_close_payload
-    assert 'return}if(EP(Bt),Bt.name==="escape")' in main_close_payload
-    assert 'case"hiddenContext"' in open_payload
-    assert "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!0" in open_payload
-    assert "hCp(!0)" in open_payload
-    assert "ctrl+. closes" in overlay_payload
+    assert 'case"hiddenContext"' in open_close_payload
+    assert "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!0" in open_close_payload
+    assert "hCp(!0)" in open_close_payload
+    assert "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1" in open_close_payload
+    assert "hCp(!1)" in open_close_payload
+    assert "Sf(null)" in open_close_payload
+    assert '"footer:clearSelection":()=>{if(hC)return!1;' in open_close_payload
+    assert "x closes" in overlay_payload
+    assert "ctrl+. closes" not in overlay_payload
     assert "ctrl+esc closes" not in overlay_payload
     assert "| esc closes" not in overlay_payload
 
@@ -286,8 +286,8 @@ def test_hidden_context_drawer_projection_frame_has_timestamps_sources_and_broad
     helper_payload = (
         package_dir / "payloads" / "01-projection-helpers-before-jlr.js"
     ).read_text()
-    helper_block = helper_payload.removesuffix("function Jlr(e){\n").removesuffix(
-        "function Jlr(e){"
+    helper_block = helper_payload.removesuffix("function Jur(e){\n").removesuffix(
+        "function Jur(e){"
     )
     script = f"""
 {helper_block}

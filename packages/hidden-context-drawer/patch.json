@@ -3,14 +3,14 @@
   "id": "hidden-context-drawer",
   "name": "Hidden Context Drawer",
   "description": "Projects model-visible hidden attachment context into an integrated footer Hidden Context drawer.",
-  "packageVersion": "0.1.11",
+  "packageVersion": "0.1.12",
   "targets": [
     {
       "sourceIdentity": {
-        "claudeVersion": "2.1.198",
-        "versionOutput": "2.1.198 (Claude Code)",
-        "sha256": "ab6f7ee109816ede414f7c285446633f805b623aa609f425609a64266451d61e",
-        "sizeBytes": 229328464,
+        "claudeVersion": "2.1.199",
+        "versionOutput": "2.1.199 (Claude Code)",
+        "sha256": "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0",
+        "sizeBytes": 232155536,
         "platform": "darwin",
         "arch": "arm64"
       },
@@ -19,217 +19,217 @@
       "modules": [
         {
           "path": "/$bunfs/root/src/entrypoints/cli.js",
-          "contentSha256": "d8f9b3c079edf689031a16c35e5abd3c61cca8b70fc5b0e1f7da3398d52206f1",
-          "contentLength": 18439743,
+          "contentSha256": "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55",
+          "contentLength": 18593981,
           "operations": [
             {
               "opId": "projection-helpers-before-jlr",
-              "label": "projection helpers before Jlr v18 persistent unread flash",
+              "label": "projection helpers before Jlr v24 persistent unread flash",
               "type": "replace_exact",
-              "exact": "function Jlr(e){",
+              "exact": "function Jur(e){",
               "requireWithinRange": [],
-              "oldRangeSha256": "d614e140396ff66d30205c8694fd29c89ec288ed254e7f9ed3f4d59d48876973",
+              "oldRangeSha256": "451feec8709237157e22105946ecc02132f23c11f9f0a45ac43e227953d4b150",
               "oldRangeLength": 16,
               "replacement": {
                 "path": "payloads/01-projection-helpers-before-jlr.js",
-                "sha256": "a03b5257501f00e58836e708e23ead9094223a297739d93625f731ea4e420a97"
+                "sha256": "25b4a08d9c8dec5e99d3f87c0779f71cf6ab45022c55a8352c52b98a3dce0c17"
               },
               "knownBehaviorChange": "Adds timestamps, source labels, and broader hidden/model-visible attachment coverage to the Hidden Context Drawer projection."
             },
             {
               "opId": "uxl-refresh-bottom-overlay",
-              "label": "UXl refresh bottom overlay Hidden Context drawer v23 x-only header",
+              "label": "UXl refresh bottom overlay Hidden Context drawer v24 x-only header",
               "type": "replace_exact",
-              "exact": "function UXl(){let e=$Ye.c(2),t=yXl();if(!t)return null;let n;if(e[0]!==t)n=Xd.jsx(B,{position:\"absolute\",bottom:\"100%\",left:0,right:0,opaque:!0,children:t}),e[0]=t,e[1]=n;else n=e[1];return n}",
+              "exact": "function qnc(){let e=KJe.c(2),t=bnc();if(!t)return null;let n;if(e[0]!==t)n=zd.jsx(B,{position:\"absolute\",bottom:\"100%\",left:0,right:0,opaque:!0,children:t}),e[0]=t,e[1]=n;else n=e[1];return n}",
               "requireWithinRange": [],
-              "oldRangeSha256": "051a4a713a731ec51313ad5c2e18fca8867fe05a8cf68c3f6a7909113a6cc80e",
+              "oldRangeSha256": "3eafdd66eca35403a692efe10b5331cd3cb5b6f6ab13640096dbe06eedb5ff20",
               "oldRangeLength": 193,
               "replacement": {
                 "path": "payloads/15-uxl-refresh-bottom-overlay.js",
-                "sha256": "0457b090a592a6393c96dc2a7a29b0e144b8f14753286cac173a617228f11291"
+                "sha256": "8d77fc4b8934d403e597490621819f2037a452dc6212e4ea6b12dc09bebbd9f7"
               }
             },
             {
               "opId": "yt-projection-list-drawer-frame",
-              "label": "Yt projection-list drawer frame v13",
+              "label": "Yt projection-list drawer frame v24",
               "type": "replace_exact",
-              "exact": "let Yt=r||js()?Te:xg(Te,{includeFolded:!0}),Ee=nQl(Yt.filter((Rt)=>Rt.type!==\"progress\").filter((Rt)=>!Jlr(Rt)).filter((Rt)=>iQl(Rt,le)),ce)",
+              "exact": "let Jt=r||zs()?Se:Bg(Se,{includeFolded:!0}),be=src(Jt.filter((cr)=>cr.type!==\"progress\").filter((cr)=>!Jur(cr)).filter((cr)=>crc(cr,le)),ue)",
               "requireWithinRange": [],
-              "oldRangeSha256": "fea59700d872c0a9a53740083578bf14f6b3b6ba8af9e9690420cdd60566c835",
+              "oldRangeSha256": "ff0d6c0a0125ee5674faf58f487b2693a4c676e4fa265eca443df77855259511",
               "oldRangeLength": 140,
               "replacement": {
                 "path": "payloads/02-yt-projection-list-drawer-frame.js",
-                "sha256": "e0464d37c0db4fa84f5527ca17093dbadb4affefb880cf696cc88e4330580c83"
+                "sha256": "2fedfd5cd7528394a50b11151b99920eedbb182f762c32b95b97e91c1644c89a"
               }
             },
             {
               "opId": "exc-accept-hiddencontextframe-prop",
-              "label": "exc accept hiddenContextFrame prop v13",
+              "label": "exc accept hiddenContextFrame prop v24",
               "type": "replace_exact",
-              "exact": "onOpenTasksDialog:R}=e,w=c===void 0?l:c,k=p===void 0?!1:p,x=m===void 0?!0:m;Uwc();",
+              "exact": "onOpenTasksDialog:R}=e,x=c===void 0?l:c,k=p===void 0?!1:p,w=m===void 0?!0:m;QHc();",
               "requireWithinRange": [],
-              "oldRangeSha256": "5d4797fb8c6b463fe2cd6a41e5ae5a5b208d754100e1cb43676841eba39e4bdf",
+              "oldRangeSha256": "ba61ab382b8e8d68e72104eedb15e660e5aa94317a33ab4d1bd24c75baa30271",
               "oldRangeLength": 82,
               "replacement": {
                 "path": "payloads/07-exc-accept-hiddencontextframe-prop.js",
-                "sha256": "2a6be95c0a459e62de27acee8588f8ea1c1947c3a041ac813ccdec0fd067b6bb"
+                "sha256": "3e70af1469bae789ea176352343da1e59077f10c3d2c8c42ed4a83787457ca32"
               }
             },
             {
               "opId": "exc-pass-hiddencontextframe-to-bwf-cache",
-              "label": "exc pass hiddenContextFrame to bwf cache v13",
+              "label": "exc pass hiddenContextFrame to bwf cache v24",
               "type": "replace_exact",
-              "exact": "if(t[39]!==x||t[40]!==k||t[41]!==u||t[42]!==d||t[43]!==r||t[44]!==i||t[45]!==R||t[46]!==F||t[47]!==Te||t[48]!==fe||t[49]!==f||t[50]!==h||t[51]!==a)me=di.jsx(bwf,{mode:i,toolPermissionContext:a,showHint:Te,denseShowHint:fe,isInputEmpty:u,isLoading:d,isExternalLoading:k,betweenCalls:x,leftArrowDetachAvailable:r,tasksSelected:f,tmuxSelected:h,onOpenTasksDialog:R,prNeedsAuth:F}),t[39]=x,t[40]=k,t[41]=u,t[42]=d,t[43]=r,t[44]=i,t[45]=R,t[46]=F,t[47]=Te,t[48]=fe,t[49]=f,t[50]=h,t[51]=a,t[52]=me;else me=t[52];",
+              "exact": "if(t[39]!==w||t[40]!==k||t[41]!==u||t[42]!==d||t[43]!==r||t[44]!==i||t[45]!==R||t[46]!==M||t[47]!==Se||t[48]!==me||t[49]!==f||t[50]!==h||t[51]!==a)fe=pi.jsx(WPf,{mode:i,toolPermissionContext:a,showHint:Se,denseShowHint:me,isInputEmpty:u,isLoading:d,isExternalLoading:k,betweenCalls:w,leftArrowDetachAvailable:r,tasksSelected:f,tmuxSelected:h,onOpenTasksDialog:R,prNeedsAuth:M}),t[39]=w,t[40]=k,t[41]=u,t[42]=d,t[43]=r,t[44]=i,t[45]=R,t[46]=M,t[47]=Se,t[48]=me,t[49]=f,t[50]=h,t[51]=a,t[52]=fe;else fe=t[52];",
               "requireWithinRange": [],
-              "oldRangeSha256": "f1f2fa649921bbdc071c74814dd359c0c1b797be5ac41c3019ec4542a30a209a",
+              "oldRangeSha256": "89e56eb8be8e4a5d2fba8b28c9c878c06751ff68f52b6ed84b6625b91b9015f2",
               "oldRangeLength": 507,
               "replacement": {
                 "path": "payloads/08-exc-pass-hiddencontextframe-to-bwf-cache.js",
-                "sha256": "4b0fd6f530298c743b50b462ef95c3524bedbd8fc7ec20edfab76bc487b2dabd"
+                "sha256": "011ebaaec5ddcf21e8cbd40432e872d1655e3ce4463e20012e136a5b2e074dde"
               }
             },
             {
               "opId": "bwf-accept-hiddencontextframe-prop",
-              "label": "bwf accept hiddenContextFrame prop v13",
+              "label": "bwf accept hiddenContextFrame prop v24",
               "type": "replace_exact",
-              "exact": "function bwf({mode:e,toolPermissionContext:t,showHint:n,denseShowHint:r,isInputEmpty:o,isLoading:s,isExternalLoading:i,betweenCalls:a,leftArrowDetachAvailable:l,tasksSelected:c,tmuxSelected:u,onOpenTasksDialog:d,prNeedsAuth:p}){let{columns:m}=Sr();",
+              "exact": "function WPf({mode:e,toolPermissionContext:t,showHint:n,denseShowHint:r,isInputEmpty:o,isLoading:s,isExternalLoading:i,betweenCalls:a,leftArrowDetachAvailable:l,tasksSelected:c,tmuxSelected:u,onOpenTasksDialog:d,prNeedsAuth:p}){let{columns:m}=Er();",
               "requireWithinRange": [],
-              "oldRangeSha256": "4831e931415501ebc1368d5635efbca5db526e224675a808267e67f325676f7e",
+              "oldRangeSha256": "cb6ddfa3c0894336664047bf71d04ab575b99e595624f2e55cb158c10c30a2b5",
               "oldRangeLength": 248,
               "replacement": {
                 "path": "payloads/09-bwf-accept-hiddencontextframe-prop.js",
-                "sha256": "26392815a0c2506416394b747b630a3c708acf8366902ecdd975c5ef18b49db5"
+                "sha256": "85a4da13cf2e44d66dd7c5be2d3eb4610b589caede4dee18cb510f01c16d7231"
               }
             },
             {
               "opId": "footer-hidden-context-selected-hook",
-              "label": "footer Hidden Context selected hook v13",
+              "label": "footer Hidden Context selected hook v24",
               "type": "replace_exact",
-              "exact": "y=Tt((Ue)=>Ue.footerSelection===\"tasks\"&&Ue.coordinatorTaskIndex>=0||Ue.footerSelection===\"workflows\"),T=Tt((Ue)=>Ue.footerSelection!==null),S=Tt",
+              "exact": "y=Tt((Ne)=>Ne.footerSelection===\"tasks\"&&Ne.coordinatorTaskIndex>=0||Ne.footerSelection===\"workflows\"),T=Tt((Ne)=>Ne.footerSelection!==null),S=Tt",
               "requireWithinRange": [],
-              "oldRangeSha256": "8cdce2fd6234860b4abf6e18ad849cee61a1b28e0780f91c5e0bb6b61836d71b",
+              "oldRangeSha256": "ed88d0da5b6b6febaaa22d8c836c20ce79cd922bdd282af68367f227475df041",
               "oldRangeLength": 145,
               "replacement": {
                 "path": "payloads/11-footer-hidden-context-selected-hook.js",
-                "sha256": "854be9f14f575f421ea943d507c07e436de155669e77cf0c8725f67f3edc0459"
+                "sha256": "2c168824a2d9de76fac0afc128074a41becd270b53f9dd178bd8717d53e66e35"
               }
             },
             {
               "opId": "footer-availability-bar-hidden-context",
-              "label": "footer availability bar Hidden Context v18 unread flash",
+              "label": "footer availability bar Hidden Context v24 unread flash",
               "type": "replace_exact",
-              "exact": "xe=Hhe(g,_,E).length>0||E!==void 0&&Hee(g[E]),He=re?di.jsx(OXo,{tasksSelected:c,onOpenDialog:d}):null;if(le.length===0&&!He&&!ue&&!ae&&ce.length===0&&!Ae&&n){if(!z)le.push(di.jsx(v,{dimColor:!0,children:\"? for shortcuts\"},\"shortcuts-hint\"))}if(we)le.push(we);let Fe=Ot().copyOnSelect??!0,Ge=O&&(!Fe||vT());if(x&&D)le.push(di.jsx(ZJe,{},\"voice-warmup\"));else if(js()&&Ge){let Ue=Wt()===\"macos\",We=Ue&&(M()?.lastPressHadAlt??!1);le.push(di.jsx(v,{dimColor:!0,children:di.jsxs($n,{children:[!Fe&&di.jsx(wt,{chord:\"ctrl+c\",action:\"copy\"}),vT()&&(We?di.jsx(v,{children:\"set macOptionClickForcesSelection in VS Code settings\"}):di.jsxs(v,{children:[Ue?\"option+click\":\"shift+click\",\" to native select\"]}))]})},\"selection-copy\"))}else if(le.length>0&&n&&x&&I===\"idle\"&&pe.length===0&&K)le.push(di.jsxs(v,{dimColor:!0,children:[\"hold \",q,\" to speak\"]},\"voice-hint\"));if((He||xe)&&n&&!y)le.push(di.jsx(v,{dimColor:!0,children:c?di.jsx(wt,{chord:\"enter\",action:\"view tasks\"}):di.jsx(wt,{chord:\"down\",action:\"manage\"})},\"manage-tasks\"));if(le.length===0&&!He&&!ue&&!de&&!ae&&ce.length===0&&!Ae)return js()?di.jsx(v,{children:\" \"}):null;return di.jsxs(B,{height:1,overflow:\"hidden\",children:[ue&&di.jsxs(B,{flexShrink:0,children:[ue,(de||Ae||ae||ce.length>0||He||le.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),de&&di.jsxs(B,{flexShrink:0,children:[de,(Ae||ae||ce.length>0||He||le.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),Ae&&di.jsxs(B,{flexShrink:0,children:[Ae,(ae||ce.length>0||He||le.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ae&&di.jsxs(B,{flexShrink:0,children:[ae,(ce.length>0||He||le.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ce.length>0&&di.jsxs(B,{flexShrink:0,children:[di.jsx($n,{children:ce}),(He||le.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),He&&di.jsxs(B,{flexShrink:0,children:[He,le.length>0&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),le.length>0&&di.jsx(v,{wrap:\"truncate\",children:di.jsx($n,{children:le})})]})}",
+              "exact": "De=fte(g,_,A).length>0||A!==void 0&&mte(g[A]),we=ne?pi.jsx(ets,{tasksSelected:c,onOpenDialog:d}):null;if(le.length===0&&!we&&!ce&&!ie&&ue.length===0&&!Ce&&n){if(!Y)le.push(pi.jsx(v,{dimColor:!0,children:\"? for shortcuts\"},\"shortcuts-hint\"))}if(ve)le.push(ve);let Me=Pt().copyOnSelect??!0,Ge=O&&(!Me||MT());if(w&&D)le.push(pi.jsx(oQe,{},\"voice-warmup\"));else if(zs()&&Ge){let Ne=Wt()===\"macos\",Ye=Ne&&(L()?.lastPressHadAlt??!1);le.push(pi.jsx(v,{dimColor:!0,children:pi.jsxs(qn,{children:[!Me&&pi.jsx(Ct,{chord:\"ctrl+c\",action:\"copy\"}),MT()&&(Ye?pi.jsx(v,{children:\"set macOptionClickForcesSelection in VS Code settings\"}):pi.jsxs(v,{children:[Ne?\"option+click\":\"shift+click\",\" to native select\"]}))]})},\"selection-copy\"))}else if(le.length>0&&n&&w&&I===\"idle\"&&de.length===0&&V)le.push(pi.jsxs(v,{dimColor:!0,children:[\"hold \",$,\" to speak\"]},\"voice-hint\"));if((we||De)&&n&&!y)le.push(pi.jsx(v,{dimColor:!0,children:c?pi.jsx(Ct,{chord:\"enter\",action:\"view tasks\"}):pi.jsx(Ct,{chord:\"down\",action:\"manage\"})},\"manage-tasks\"));if(le.length===0&&!we&&!ce&&!pe&&!ie&&ue.length===0&&!Ce)return zs()?pi.jsx(v,{children:\" \"}):null;return pi.jsxs(B,{height:1,overflow:\"hidden\",children:[ce&&pi.jsxs(B,{flexShrink:0,children:[ce,(pe||Ce||ie||ue.length>0||we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),pe&&pi.jsxs(B,{flexShrink:0,children:[pe,(Ce||ie||ue.length>0||we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),Ce&&pi.jsxs(B,{flexShrink:0,children:[Ce,(ie||ue.length>0||we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ie&&pi.jsxs(B,{flexShrink:0,children:[ie,(ue.length>0||we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ue.length>0&&pi.jsxs(B,{flexShrink:0,children:[pi.jsx(qn,{children:ue}),(we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),we&&pi.jsxs(B,{flexShrink:0,children:[we,le.length>0&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),le.length>0&&pi.jsx(v,{wrap:\"truncate\",children:pi.jsx(qn,{children:le})})]})}",
               "requireWithinRange": [],
-              "oldRangeSha256": "bb4901abe88f762ea2c8ded03e0f63edf7e67477e742f875c74277a01fb910b1",
+              "oldRangeSha256": "d13a3884f9e6dbd6e3e2dfd515eec7b2a18a465bb7882f46a80509461e538828",
               "oldRangeLength": 1988,
               "replacement": {
                 "path": "payloads/16-footer-availability-bar-hidden-context.js",
-                "sha256": "6352dd331e15715160eadbe3e9110ee71af55c12cf2dae8098951e930c576d32"
+                "sha256": "398091a46f5afdcc3b8db8e11f7ab94b56f9479ab16c949d7ec517ee2e80a259"
               }
             },
             {
               "opId": "vwf-accept-hiddencontextframe-prop",
-              "label": "Vwf accept hiddenContextFrame prop v13",
+              "label": "Vwf accept hiddenContextFrame prop v24",
               "type": "replace_exact",
-              "exact": "messagesRef:F,lastAssistantMessageId:L,tokenUsage:W,isSearching:q,historyQuery:K,setHistoryQuery:V,historyFailedMatch:z,onOpenTasksDialog:J}=e,Q=",
+              "exact": "messagesRef:M,lastAssistantMessageId:F,tokenUsage:W,isSearching:$,historyQuery:V,setHistoryQuery:K,historyFailedMatch:Y,onOpenTasksDialog:J}=e,Q=",
               "requireWithinRange": [],
-              "oldRangeSha256": "3ff367c9ed7e997a65616d2b4846b026064cd4f1bfe8a4e64bdcd776d0122877",
+              "oldRangeSha256": "ea6cfd50e973af29bb205b577568105a2faad884a56a14a13bbf6c9378a49e8f",
               "oldRangeLength": 145,
               "replacement": {
                 "path": "payloads/05-vwf-accept-hiddencontextframe-prop.js",
-                "sha256": "b32601b94920f17d7ba33b7f7f282b4091e4e458fc66ea46501ff724576c6e22"
+                "sha256": "037e99216768f595ea82370643b839e8386fcff4ccf94fd1cfcaafa46cf6b0af"
               }
             },
             {
               "opId": "vwf-pass-hiddencontextframe-to-exc-cache",
-              "label": "Vwf pass hiddenContextFrame to exc cache v13",
+              "label": "Vwf pass hiddenContextFrame to exc cache v24",
               "type": "replace_exact",
-              "exact": "if(t[36]!==Z||t[37]!==o||t[38]!==z||t[39]!==K||t[40]!==Q||t[41]!==E||t[42]!==ne||t[43]!==q||t[44]!==s||t[45]!==a||t[46]!==J||t[47]!==xe||t[48]!==V||t[49]!==oe||t[50]!==Ue||t[51]!==Ge||t[52]!==ht||t[53]!==It||t[54]!==I||t[55]!==y||t[56]!==i)vt=gU.jsx(exc,{exitMessage:o,leftArrowDetachAvailable:s,vimMode:i,hideVimModeIndicator:ht,mode:a,toolPermissionContext:y,suppressHint:Ue,suppressHintExceptStatusline:Ge,isInputEmpty:It,isLoading:E,isExternalLoading:Q,betweenCalls:Z,tasksSelected:xe,tmuxSelected:I,isPasting:ne,showExpandPasteHint:oe,isSearching:q,historyQuery:K,setHistoryQuery:V,historyFailedMatch:z,onOpenTasksDialog:J}),t[36]=Z,t[37]=o,t[38]=z,t[39]=K,t[40]=Q,t[41]=E,t[42]=ne,t[43]=q,t[44]=s,t[45]=a,t[46]=J,t[47]=xe,t[48]=V,t[49]=oe,t[50]=Ue,t[51]=Ge,t[52]=ht,t[53]=It,t[54]=I,t[55]=y,t[56]=i,t[57]=vt;else vt=t[57];",
+              "exact": "if(t[36]!==Z||t[37]!==o||t[38]!==Y||t[39]!==V||t[40]!==Q||t[41]!==A||t[42]!==re||t[43]!==$||t[44]!==s||t[45]!==a||t[46]!==J||t[47]!==De||t[48]!==K||t[49]!==se||t[50]!==Ne||t[51]!==Ge||t[52]!==ft||t[53]!==wt||t[54]!==I||t[55]!==y||t[56]!==i)vt=FU.jsx(mDc,{exitMessage:o,leftArrowDetachAvailable:s,vimMode:i,hideVimModeIndicator:ft,mode:a,toolPermissionContext:y,suppressHint:Ne,suppressHintExceptStatusline:Ge,isInputEmpty:wt,isLoading:A,isExternalLoading:Q,betweenCalls:Z,tasksSelected:De,tmuxSelected:I,isPasting:re,showExpandPasteHint:se,isSearching:$,historyQuery:V,setHistoryQuery:K,historyFailedMatch:Y,onOpenTasksDialog:J}),t[36]=Z,t[37]=o,t[38]=Y,t[39]=V,t[40]=Q,t[41]=A,t[42]=re,t[43]=$,t[44]=s,t[45]=a,t[46]=J,t[47]=De,t[48]=K,t[49]=se,t[50]=Ne,t[51]=Ge,t[52]=ft,t[53]=wt,t[54]=I,t[55]=y,t[56]=i,t[57]=vt;else vt=t[57];",
               "requireWithinRange": [],
-              "oldRangeSha256": "7c6177afb3cea8b8ce0280091f04e30facca4736c9b66e88dfab97a37c8257d3",
+              "oldRangeSha256": "cac20b1499a525a59513c623636161f33496ff53db5b7e539e5c9187fc62e641",
               "oldRangeLength": 828,
               "replacement": {
                 "path": "payloads/06-vwf-pass-hiddencontextframe-to-exc-cache.js",
-                "sha256": "6a71337de369a9714b73d593ba50d1cb38a7f607b3881426d7389c35710b004f"
+                "sha256": "cd1b03d1a8c7e15e2df0858915ab6f4069a879919c2ce3afc5fe4a9af8f2b978"
               }
             },
             {
               "opId": "axf-messagesref-footer-target-frame",
-              "label": "Axf messagesRef footer target frame v13",
+              "label": "Axf messagesRef footer target frame v24",
               "type": "replace_exact",
-              "exact": "pi=Cs>0||Ds,Pr=Lr.length>0&&_===\"prompt\"&&!xe.show&&!ct,Fs=Ro.useMemo(()=>[pi&&\"tasks\",Pr&&\"workflows\",Yt&&\"tmux\",Ee&&\"bagel\",Xr&&\"bridge\",Re&&\"frame\"].filter(Boolean),[pi,Pr,Yt,Ee,Xr,Re]),oa=",
+              "exact": "Ys=Ro.useMemo(()=>_sn(At),[At]),Uo=oa>0||wr,ro=Ys.length>0&&_===\"prompt\"&&!De.show&&!gt,ji=Ro.useMemo(()=>[Uo&&\"tasks\",ro&&\"workflows\",Jt&&\"tmux\",be&&\"bagel\",Hr&&\"bridge\",Oe&&\"frame\"].filter(Boolean),[Uo,ro,Jt,be,Hr,Oe]),el=",
               "requireWithinRange": [],
-              "oldRangeSha256": "5da2c75dcabc08010f5e96810bcbb8f88a197f2227202a268ac32e0cc5cd6b9f",
-              "oldRangeLength": 192,
+              "oldRangeSha256": "92015d7fc839f6264050dab9adad60b0dd0cf0a0cac408ce0e81c5ea8a244a9a",
+              "oldRangeLength": 224,
               "replacement": {
                 "path": "payloads/03-axf-messagesref-footer-target-frame.js",
-                "sha256": "77739e84c30ac58643b9306915f4911cd9d06a0980e518456044b2ff6845a537"
+                "sha256": "adc0b0c2823680efc13f018dafc283d70be77db4fb726f2335c3caf81795002a"
               }
             },
             {
               "opId": "footer-hiddencontext-selection-flag",
-              "label": "footer hiddenContext selection flag v13",
+              "label": "footer hiddenContext selection flag v24",
               "type": "replace_exact",
-              "exact": "let cm=Ym===\"tasks\",jA=Ym===\"workflows\",ac=Ym===\"tmux\",id=Ym===\"bagel\",Q_=Ym===\"bridge\",qS=Ym===\"frame\";function Pc",
+              "exact": "let qb=Du===\"tasks\",Pu=Du===\"workflows\",Uf=Du===\"tmux\",eC=Du===\"bagel\",iy=Du===\"bridge\",Ap=Du===\"frame\";function Sf",
               "requireWithinRange": [],
-              "oldRangeSha256": "a4331bc1b4e4e44523021b5a2f54590077caa2f17a7e5cb33582ffd476b8edc4",
+              "oldRangeSha256": "8d6f3f80c2d3d48d6d911937d5c6bb273b463a26dfd40c3b13023aa1c2cc3c7a",
               "oldRangeLength": 115,
               "replacement": {
                 "path": "payloads/10-footer-hiddencontext-selection-flag.js",
-                "sha256": "012c9cc5e0d12a12ecc57094fbbc485d69a977b7fd16aa1d0fc244ed073bd957"
+                "sha256": "5738e7ef4da508c8a4972baf93c82b1262dbd89e8d805503d3cedca702b08197"
               }
             },
             {
               "opId": "footer-hiddencontext-up-down-scroll",
-              "label": "footer hiddenContext up/down scroll v18 clear unread flash",
+              "label": "footer hiddenContext up/down scroll v24 clear unread flash",
               "type": "replace_exact",
-              "exact": "function tI(){if(cm&&Cs>0&&Os>zn){ec((Bt)=>Bt-1);return}if(jA&&oa>0){Pu((Bt)=>Bt-1);return}Z_(-1,!0)}function CH(){if(cm&&Cs>0){if(Os<Cs-1){ec((Bt)=>Bt+1);return}Z_(1);return}if(cm){if(!Z_(1))D(!0),Pc(null);return}if(jA){if(oa<Lr.length-1){Pu((Bt)=>Bt+1);return}Z_(1);return}Z_(1)}function aae",
+              "exact": "function By(){if(qb&&oa>0&&xs>br){Bi((Bt)=>Bt-1);return}if(Pu&&el>0){jc((Bt)=>Bt-1);return}$u(-1,!0)}function Jk(){if(qb&&oa>0){if(xs<oa-1){Bi((Bt)=>Bt+1);return}$u(1);return}if(qb){if(!$u(1))D(!0),Sf(null);return}if(Pu){if(el<Ys.length-1){jc((Bt)=>Bt+1);return}$u(1);return}$u(1)}function SI",
               "requireWithinRange": [],
-              "oldRangeSha256": "13be452e9e1712d5138e58a95e50fc35a9cb5e3b200be6a2fb3b11b672c7e46f",
-              "oldRangeLength": 293,
+              "oldRangeSha256": "94b656d274d115f08724a2e5db3a8e0a918e349a49474c5bc4e21cf082c94ae3",
+              "oldRangeLength": 292,
               "replacement": {
                 "path": "payloads/12-footer-hiddencontext-up-down-scroll.js",
-                "sha256": "2d5c264f97135939cbac1cc8664984de88d85167762e444a39a683e3fc483487"
+                "sha256": "8c69468c6a4e03318221ebc64e9c04f3c9afb47e3ce8bd6d670413b80300e458"
               }
             },
             {
               "opId": "footer-clearselection-consumes-hiddencontext",
-              "label": "footer openSelected/clearSelection/close Hidden Context v23 x-only close",
+              "label": "footer openSelected/clearSelection/close Hidden Context v24 x-only close",
               "type": "replace_exact",
-              "exact": "case\"tmux\":break;case\"bagel\":break;case\"bridge\":$s(!0),Pc(null);break;case\"frame\":{let Bt=ht.getState(),nr=Object.entries(Bt.frameUrls),To=nr[Yhr(nr,Bt.frameNavPath)]?.[1]?.url;if(To)kc(To),Ie(\"frame_link_open\");It((ja)=>ja.frameExpanded?ja:{...ja,frameExpanded:!0});break}}},\"footer:clearSelection\":()=>{if(qS&&ht.getState().frameExpanded){It((Bt)=>!Bt.frameExpanded?Bt:{...Bt,frameExpanded:!1});return}Wee(),Pc(null)},\"footer:close\":()=>{if(cm&&Os>=1){",
+              "exact": "case\"tmux\":break;case\"bagel\":break;case\"bridge\":Ac(!0),Sf(null);break;case\"frame\":{let Bt=ft.getState(),zn=Object.entries(Bt.frameUrls),ho=zn[ryr(zn,Bt.frameNavPath)]?.[1]?.url;if(ho)Dc(ho),ke(\"frame_link_open\");wt((la)=>la.frameExpanded?la:{...la,frameExpanded:!0});break}}},\"footer:clearSelection\":()=>{if(Ap&&ft.getState().frameExpanded){wt((Bt)=>!Bt.frameExpanded?Bt:{...Bt,frameExpanded:!1});return}if(qb&&Za){let Bt=fte(At,qs,qt,!0);if(wt((zn)=>!zn.idleTeammatesExpanded?zn:{...zn,idleTeammatesExpanded:!1}),Wes(Bt,qt))return}Kk(),Sf(null)},\"footer:close\":()=>{if(qb&&xs>=1){",
               "requireWithinRange": [],
-              "oldRangeSha256": "4529810c5f3bca342ba1dc8e44e87743cd86a8f67a82b365b501af7e0a2941e8",
-              "oldRangeLength": 454,
+              "oldRangeSha256": "f3cdce1c993e1914a70db675e4f1bcdde9d2092773ba721c8b35e79252b037c5",
+              "oldRangeLength": 581,
               "replacement": {
                 "path": "payloads/13-footer-clearselection-consumes-hiddencontext.js",
-                "sha256": "329e6fb61e1fb87b2a5ffc1c101c6dca7510da051940a79ae4bd06978300a301"
+                "sha256": "3fd0ea77ece430458de58699f8e4fed6b6508a0cb7987a4656014dd0f905dfa7"
               },
               "knownBehaviorChange": "Opens Hidden Context with footer openSelected; clearSelection returns false for Hidden Context; closes only through footer:close (x)."
             },
             {
               "opId": "selected-only-bottom-overlay-hidden-context-globals",
-              "label": "selected-only bottom overlay Hidden Context globals v22 action-owned close",
+              "label": "selected-only bottom overlay Hidden Context globals v24 action-owned close",
               "type": "replace_exact",
-              "exact": "return Nd.jsxs(B,{flexDirection:\"column\",marginTop:jt||hae?0:1,children:[Ym&&!se&&Nd.jsx(B,{tabIndex:0,autoFocus:!0,onKeyDown:az}),!js()&&Nd.jsx(ogr,{}),J&&",
+              "exact": "return qd.jsxs(B,{flexDirection:\"column\",marginTop:Kt||Vz?0:1,children:[Du&&!oe&&qd.jsx(B,{tabIndex:0,autoFocus:!0,onKeyDown:I8}),!zs()&&qd.jsx(pyr,{}),J&&",
               "requireWithinRange": [],
-              "oldRangeSha256": "0156be0d6f9db675ac1f29c28d685e613511fdf9e3e5de59d91ea38d691a1700",
-              "oldRangeLength": 156,
+              "oldRangeSha256": "d46b78e0e58e66dd5b1cb49056480722e2f5261737a2dc15b2a3eed540887b41",
+              "oldRangeLength": 155,
               "replacement": {
                 "path": "payloads/14-selected-only-bottom-overlay-hidden-context-globals.js",
-                "sha256": "250766e5666b819c82658391180e03507f14b865aebe160cd1923e0ad3a9b2e5"
+                "sha256": "141aca3741e4de0dfbafd449a8bfe09b9af2a4edeee96a5983bce7bb5117d34e"
               }
             },
             {
               "opId": "axf-pass-hiddencontextframe-to-cxc",
-              "label": "Axf pass hiddenContextFrame to cxc v13",
+              "label": "Axf pass hiddenContextFrame to cxc v24",
               "type": "replace_exact",
-              "exact": "messagesRef:d,lastAssistantMessageId:f,tokenUsage:h,isSearching:be,historyQuery:Wn,setHistoryQuery:Nr,historyFailedMatch:yr,onOpenTasksDialog:js()?zee:void 0})",
+              "exact": "messagesRef:d,lastAssistantMessageId:f,tokenUsage:h,isSearching:Ee,historyQuery:gn,setHistoryQuery:Jr,historyFailedMatch:qo,onOpenTasksDialog:zs()?sN:void 0})",
               "requireWithinRange": [],
-              "oldRangeSha256": "409af89a10b74e8b5bca66eb553de03968c51b0ceaa428811645a3fafc8ec563",
-              "oldRangeLength": 159,
+              "oldRangeSha256": "5b39a03c617a3a2bfb6dde4f9286cb10ee505ebf9084e4ec9b2aca5c15dc3113",
+              "oldRangeLength": 158,
               "replacement": {
                 "path": "payloads/04-axf-pass-hiddencontextframe-to-cxc.js",
-                "sha256": "ae106126016aa9b1b5be871c336ad86e7381f125c5e6aa7ff2ee875ce425cb08"
+                "sha256": "35e7fd1ecc7dfe6c56753fed06d76d21e9688c123544610312c868a217b8f373"
               }
             }
           ]
@@ -239,17 +239,17 @@
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function Jlr(e){"
+          "value": "function Jur(e){"
         },
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function UXl(){let e=$Ye.c(2)"
+          "value": "function qnc(){let e=KJe.c(2)"
         },
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "x=iNn()?y-kjo:\"50%\""
+          "value": "ji=Ro.useMemo(()=>[Uo&&\"tasks\",ro&&\"workflows\",Jt&&\"tmux\",be&&\"bagel\",Hr&&\"bridge\",Oe&&\"frame\"].filter(Boolean)"
         }
       ],
       "postconditions": [
@@ -261,7 +261,7 @@
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function UXl(){let e=$Ye.c(12),[t,n]=p_.useState(0);Yc(()=>n(Date.now()),100)"
+          "value": "function qnc(){let e=KJe.c(12),[t,n]=S_.useState(0);Zc(()=>n(Date.now()),100)"
         },
         {
           "type": "module_must_contain",
@@ -277,11 +277,6 @@
           "type": "module_must_not_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
           "value": "position:\"absolute\",marginTop:-(hCh+1)"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "x=iNn()?y-kjo:\"50%\""
         },
         {
           "type": "module_must_contain",
@@ -361,7 +356,7 @@
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "\"footer:close\":()=>{if(hC){globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1,hCp(!1),Pc(null);return}if(cm&&Os>=1)"
+          "value": "\"footer:close\":()=>{if(hC){globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1,hCp(!1),Sf(null);return}if(qb&&xs>=1)"
         },
         {
           "type": "module_must_contain",

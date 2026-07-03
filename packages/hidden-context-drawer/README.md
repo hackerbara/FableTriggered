@@ -4,7 +4,7 @@ Projects hidden/otherwise-suppressed model-visible attachment context into an in
 
 This is a ClaudeMonkey V1.5 package targeting `/$bunfs/root/src/entrypoints/cli.js` with the graph-aware Bun repack engine. It does not patch request assembly, does not mutate transcript JSONL, and does not depend on the normal transcript renderer.
 
-The drawer uses the projection-list seam before Claude Code filters hidden attachment rows, adds a non-preemptive `hiddenContext` footer target, and renders the opened drawer through the existing `UXl` bottom overlay sibling above the composer/footer.
+The drawer uses the projection-list seam before Claude Code filters hidden attachment rows, adds a non-preemptive `hiddenContext` footer target, and renders the opened drawer through the existing bottom overlay sibling above the composer/footer (`qnc` in Claude Code 2.1.199; this was `UXl` in the prior target).
 
 Each drawer entry now includes:
 
@@ -31,11 +31,11 @@ PYTHONPATH=src python3 - <<'PY'
 from claude_monkey.cli import main
 raise SystemExit(main([
     "build",
-    "--source", "/Users/MAC/.local/share/claude/versions/2.1.198",
+    "--source", "/Users/MAC/.local/share/claude/versions/2.1.199",
     "--package", "hidden-context-drawer",
-    "--output-dir", "/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hidden-context-drawer",
-    "--source-version", "2.1.198",
-    "--source-version-output", "2.1.198 (Claude Code)",
+    "--output-dir", "/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hidden-context-drawer-2.1.199",
+    "--source-version", "2.1.199",
+    "--source-version-output", "2.1.199 (Claude Code)",
     "--platform", "darwin",
     "--arch", "arm64",
 ]))
@@ -45,11 +45,11 @@ PY
 The built binary will be:
 
 ```bash
-/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hidden-context-drawer/claude
+/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hidden-context-drawer-2.1.199/claude
 ```
 
 Run it for manual smoke:
 
 ```bash
-/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hidden-context-drawer/claude --dangerously-skip-permissions
+/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hidden-context-drawer-2.1.199/claude --dangerously-skip-permissions
 ```

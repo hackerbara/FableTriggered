@@ -1,1 +1,1 @@
-messagesRef:d,lastAssistantMessageId:f,tokenUsage:h,hiddenContextFrame:__codexHiddenContextFrame,isSearching:be,historyQuery:Wn,setHistoryQuery:Nr,historyFailedMatch:yr,onOpenTasksDialog:js()?zee:void 0})
+messagesRef:d,lastAssistantMessageId:f,tokenUsage:h,hiddenContextFrame:__codexHiddenContextFrame,isSearching:Ee,historyQuery:gn,setHistoryQuery:Jr,historyFailedMatch:qo,onOpenTasksDialog:zs()?sN:void 0})

@@ -1,1 +1,1 @@
-y=Tt((Ue)=>Ue.footerSelection==="tasks"&&Ue.coordinatorTaskIndex>=0||Ue.footerSelection==="workflows"),T=Tt((Ue)=>Ue.footerSelection!==null),hCsel=Tt((Ue)=>Ue.footerSelection==="hiddenContext"),S=Tt
+y=Tt((Ne)=>Ne.footerSelection==="tasks"&&Ne.coordinatorTaskIndex>=0||Ne.footerSelection==="workflows"),T=Tt((Ne)=>Ne.footerSelection!==null),hCsel=Tt((Ne)=>Ne.footerSelection==="hiddenContext"),S=Tt

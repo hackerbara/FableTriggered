@@ -100,7 +100,9 @@ Module: `src/claude_monkey/config.py`
   `installMode: str = "shim"`, `activePatchSet: str | None = None`,
   `officialClaudePath: str | None = None`.
 - **Profile schema**: `LaunchProfile` dataclass — `src/claude_monkey/config.py:8-12`:
-  `prompt: str | None = None`, `patches: list[str] = []`, `options: list[str] = []`.
+  `prompt: str | None = None`, `patches: list[str] = field(default_factory=list)`,
+  `options: list[str] = field(default_factory=list)` (both default to a fresh empty list per
+  instance via `dataclasses.field(default_factory=list)`, not a shared mutable default).
 - **IMPORTANT constraint**: only a single profile named `"default"` is currently supported.
   `load_config` raises `ValueError("only_default_profile_supported")` if
   `set(profiles.keys()) != {"default"}`, and `ValueError("active_profile_must_be_default")` if
@@ -216,16 +218,38 @@ Both subcommands go through the same dispatcher in `src/claude_monkey/cli.py`:
 - `list-options` handler: `cli.py:1242-1248`, calls `_list_payload(paths, config, PackageKind.OPTION)`.
 
 `_list_payload(paths: StatePaths, config, kind: PackageKind) -> dict[str, Any]` — `cli.py:609-615`:
-computes the v3 (phase-1) payload via `_list_kind_payload`, and **only for `PackageKind.PATCH`**,
-falls back to the legacy v2 payload `_list_patch_payload` if the v3 discovery found zero patches
-(`v3_payload if v3_payload["patches"] else _list_patch_payload(...)`). `PackageKind.OPTION` always
-returns the v3 payload directly — there is no legacy fallback for options (options did not exist
-pre-phase-1). This is why the `list-patches --json` run above returned the empty v3 shape
+computes the v3 (phase-1) payload via `_list_kind_payload`, then applies a **per-kind legacy
+fallback** — re-verified against the literal source at `cli.py:609-615`:
+
+```python
+def _list_payload(paths: StatePaths, config, kind: PackageKind) -> dict[str, Any]:
+    v3_payload = _list_kind_payload(paths, config, kind)
+    if kind is PackageKind.PATCH:
+        return v3_payload if v3_payload["patches"] else _list_patch_payload(paths, config)
+    if kind is PackageKind.PROMPT:
+        return v3_payload if v3_payload["prompts"] else _list_prompt_payload(paths, config)
+    return v3_payload
+```
+
+Both `PackageKind.PATCH` (`cli.py:611-612`) **and** `PackageKind.PROMPT` (`cli.py:613-614`) fall
+back to a legacy v2 payload when v3 discovery finds zero records for that kind: `PATCH` falls
+back to `_list_patch_payload(paths, config)` (`cli.py:441-481`, see below); `PROMPT` falls back to
+`_list_prompt_payload(paths, config)` (`cli.py:484-502`, which scans `paths.prompts_dir` for
+`*.json` and emits `{id, label, active, mode, sourcePath}` — also a different shape from the v3
+`_package_record` output). Only `PackageKind.OPTION` (`cli.py:615`, the unconditional `return
+v3_payload`) is guaranteed to always return the v3 shape — options did not exist pre-phase-1, so
+there is nothing to fall back to. **This means the brief's Q5 scope (list-patches/list-options)
+is asymmetric: `list-patches` can return either shape, `list-options` cannot; and note for
+completeness that `list-prompts` — not asked about in the brief, but sharing the same
+`_list_payload` function — has the identical dual-shape hazard as `list-patches`.**
+
+This is why the `list-patches --json` run above returned the empty v3 shape
 `{"patches": [], "schemaVersion": 1}` rather than the legacy shape (v3 path returned `[]`, which
 is falsy, so it *did* fall through — but `_list_patch_payload` also found nothing on disk and
-likewise returns `"patches": []`; the two empty shapes are indistinguishable here. **GUI code must
-not assume list-patches records always have the v3 field set — check for `"valid"`/`"errors"` vs.
-`"desiredEnabled"`/`"available"` to tell which shape you got.**)
+likewise returns `"patches": []`; the two empty shapes are indistinguishable here). **GUI code
+must not assume `list-patches` (or `list-prompts`) records always have the v3 field set — check
+for `"valid"`/`"errors"` vs. `"desiredEnabled"`/`"available"` (patches) or vs. `"active"`/`"mode"`
+(prompts) to tell which shape you got. `list-options` has no such ambiguity.**
 
 - **v3 record path**: `_list_kind_payload(paths: StatePaths, config, kind: PackageKind) -> dict[str, Any]`
   — `cli.py:592-606`.
@@ -247,7 +271,7 @@ not assume list-patches records always have the v3 field set — check for `"val
      string.
   6. Records sorted by `id` (`cli.py:600`); collection key is `"patches"`/`"prompts"`/`"options"`
      per `kind` (`cli.py:601-605`).
-- **Legacy patch-only fallback**: `_list_patch_payload(paths: StatePaths, config) -> dict[str, Any]`
+- **Legacy patch fallback** (`PackageKind.PATCH` only): `_list_patch_payload(paths: StatePaths, config) -> dict[str, Any]`
   — `cli.py:441-481`. Scans `_package_roots(paths)` (i.e. only `patches_dir`, see Q2 caution) for
   `*/patch.json` (old flat filename, not the v3 `load_package_manifest` glob-any-`*.json`
   convention), and emits a **different record shape**: `{id, label, desiredEnabled, activeEnabled,
@@ -256,6 +280,15 @@ not assume list-patches records always have the v3 field set — check for `"val
   are still being adopted; GUI code that renders `list-patches` output must handle both shapes
   (see the caution above) or only rely on fields common to both (`id`, `label`,
   `compatibilityStatus`).
+- **Legacy prompt fallback** (`PackageKind.PROMPT` only, triggered the same way):
+  `_list_prompt_payload(paths: StatePaths, config) -> dict[str, Any]` — `cli.py:484-502`. Scans
+  `paths.prompts_dir` for `*.json` and emits `{id, label, active, mode, sourcePath}` — again a
+  shape with no `valid`/`errors`/`riskLevel`/`enabled`/`kind` keys. Not asked about by the brief's
+  Q5 (which only names list-patches/list-options), but included here because it shares
+  `_list_payload` and has the identical dual-shape hazard as list-patches.
+- **`PackageKind.OPTION` has no fallback** (`cli.py:615`, `return v3_payload` unconditionally) —
+  `list-options --json` records are always the v3 shape from `_package_record`/
+  `_invalid_package_record`.
 
 ## Step 3: Test suite result
 

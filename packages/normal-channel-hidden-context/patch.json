@@ -1,147 +1,154 @@
 {
-  "schemaVersion": 2,
-  "id": "normal-channel-hidden-context",
-  "name": "Normal-channel hidden model-context projection",
   "description": "Projects selected model-visible hidden attachment context into the regular Claude Code transcript renderer as warning system rows.",
-  "packageVersion": "0.1.0",
-  "targets": [
-    {
-      "sourceIdentity": {
-        "arch": "arm64",
-        "claudeVersion": "2.1.198",
-        "platform": "darwin",
-        "sha256": "ab6f7ee109816ede414f7c285446633f805b623aa609f425609a64266451d61e",
-        "sizeBytes": 229328464,
-        "versionOutput": "2.1.198 (Claude Code)"
+  "id": "normal-channel-hidden-context",
+  "kind": "patch",
+  "label": "Normal-channel hidden model-context projection",
+  "patch": {
+    "engine": "bun_graph_repack",
+    "targets": [
+      {
+        "manualSmoke": {
+          "required": false
+        },
+        "modules": [
+          {
+            "contentLength": 18439743,
+            "contentSha256": "d8f9b3c079edf689031a16c35e5abd3c61cca8b70fc5b0e1f7da3398d52206f1",
+            "operations": [
+              {
+                "exact": "function Jlr(e){",
+                "label": "Insert hidden-context projection helpers before the hidden-attachment filter predicate",
+                "oldRangeLength": 16,
+                "oldRangeSha256": "d614e140396ff66d30205c8694fd29c89ec288ed254e7f9ed3f4d59d48876973",
+                "opId": "projection-helpers-before-jlr-2-1-198",
+                "replacement": {
+                  "path": "payloads/projection-helpers-before-jlr.js",
+                  "sha256": "b8a580ed0520a44e30739a53145b5cab0fa6e299529afc3b3f25d182102ad3d9"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "let Yt=r||js()?Te:xg(Te,{includeFolded:!0}),Ee=nQl(Yt.filter((Rt)=>Rt.type!==\"progress\").filter((Rt)=>!Jlr(Rt)).filter((Rt)=>iQl(Rt,le)),ce)",
+                "label": "Project hidden attachment rows before the transcript hides Jlr-filtered records",
+                "oldRangeLength": 140,
+                "oldRangeSha256": "fea59700d872c0a9a53740083578bf14f6b3b6ba8af9e9690420cdd60566c835",
+                "opId": "project-before-hidden-filter-2-1-198",
+                "replacement": {
+                  "path": "payloads/project-before-hidden-filter.js",
+                  "sha256": "0ad67ace90fc14b1671efe5fc6e254bfb9e8f07e8954f39f7ff8fbbc155fee51"
+                },
+                "requireWithinRange": [
+                  "filter((Rt)=>!Jlr(Rt))"
+                ],
+                "type": "replace_exact"
+              }
+            ],
+            "path": "/$bunfs/root/src/entrypoints/cli.js"
+          }
+        ],
+        "postconditions": [
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "function __codexNCHCProjectAttachment(e)"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "type:\"system\",subtype:\"codex_hidden_context\",level:\"warning\""
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "Yt=__codexNCHCProjectList(Yt)"
+          }
+        ],
+        "requiredBinaryFormat": "bun_standalone_macho64",
+        "requiredEngine": "bun_graph_repack",
+        "sourceIdentity": {
+          "arch": "arm64",
+          "claudeVersion": "2.1.198",
+          "platform": "darwin",
+          "sha256": "ab6f7ee109816ede414f7c285446633f805b623aa609f425609a64266451d61e",
+          "sizeBytes": 229328464,
+          "versionOutput": "2.1.198 (Claude Code)"
+        }
       },
-      "requiredEngine": "bun_graph_repack",
-      "requiredBinaryFormat": "bun_standalone_macho64",
-      "modules": [
-        {
-          "path": "/$bunfs/root/src/entrypoints/cli.js",
-          "contentSha256": "d8f9b3c079edf689031a16c35e5abd3c61cca8b70fc5b0e1f7da3398d52206f1",
-          "contentLength": 18439743,
-          "operations": [
-            {
-              "opId": "projection-helpers-before-jlr-2-1-198",
-              "label": "Insert hidden-context projection helpers before the hidden-attachment filter predicate",
-              "type": "replace_exact",
-              "exact": "function Jlr(e){",
-              "requireWithinRange": [],
-              "oldRangeSha256": "d614e140396ff66d30205c8694fd29c89ec288ed254e7f9ed3f4d59d48876973",
-              "oldRangeLength": 16,
-              "replacement": {
-                "path": "payloads/projection-helpers-before-jlr.js",
-                "sha256": "b8a580ed0520a44e30739a53145b5cab0fa6e299529afc3b3f25d182102ad3d9"
-              }
-            },
-            {
-              "opId": "project-before-hidden-filter-2-1-198",
-              "label": "Project hidden attachment rows before the transcript hides Jlr-filtered records",
-              "type": "replace_exact",
-              "exact": "let Yt=r||js()?Te:xg(Te,{includeFolded:!0}),Ee=nQl(Yt.filter((Rt)=>Rt.type!==\"progress\").filter((Rt)=>!Jlr(Rt)).filter((Rt)=>iQl(Rt,le)),ce)",
-              "requireWithinRange": [
-                "filter((Rt)=>!Jlr(Rt))"
-              ],
-              "oldRangeSha256": "fea59700d872c0a9a53740083578bf14f6b3b6ba8af9e9690420cdd60566c835",
-              "oldRangeLength": 140,
-              "replacement": {
-                "path": "payloads/project-before-hidden-filter.js",
-                "sha256": "0ad67ace90fc14b1671efe5fc6e254bfb9e8f07e8954f39f7ff8fbbc155fee51"
-              }
-            }
-          ]
-        }
-      ],
-      "postconditions": [
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function __codexNCHCProjectAttachment(e)"
+      {
+        "manualSmoke": {
+          "required": false
         },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "type:\"system\",subtype:\"codex_hidden_context\",level:\"warning\""
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "Yt=__codexNCHCProjectList(Yt)"
+        "modules": [
+          {
+            "contentLength": 18593981,
+            "contentSha256": "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55",
+            "operations": [
+              {
+                "exact": "function Jur(e){",
+                "label": "Insert hidden-context projection helpers before the hidden-attachment filter predicate",
+                "oldRangeLength": 16,
+                "oldRangeSha256": "451feec8709237157e22105946ecc02132f23c11f9f0a45ac43e227953d4b150",
+                "opId": "projection-helpers-before-jur-2-1-199",
+                "replacement": {
+                  "path": "payloads/projection-helpers-before-jur.js",
+                  "sha256": "392ad4e606b8298c87f253f0b1f6cdfe62b051e1a01cce6b67ff322de47f3576"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "let Jt=r||zs()?Se:Bg(Se,{includeFolded:!0}),be=src(Jt.filter((cr)=>cr.type!==\"progress\").filter((cr)=>!Jur(cr)).filter((cr)=>crc(cr,le)),ue)",
+                "label": "Project hidden attachment rows before the transcript hides Jur-filtered records",
+                "oldRangeLength": 140,
+                "oldRangeSha256": "ff0d6c0a0125ee5674faf58f487b2693a4c676e4fa265eca443df77855259511",
+                "opId": "project-before-hidden-filter-2-1-199",
+                "replacement": {
+                  "path": "payloads/project-before-hidden-filter-2.1.199.js",
+                  "sha256": "5b852f34a7ccb157a91dec7a53307c49be561c1c48d2bc35d75c22dcc5302ede"
+                },
+                "requireWithinRange": [
+                  "filter((cr)=>!Jur(cr))"
+                ],
+                "type": "replace_exact"
+              }
+            ],
+            "path": "/$bunfs/root/src/entrypoints/cli.js"
+          }
+        ],
+        "postconditions": [
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "function __codexNCHCProjectAttachment(e)"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "type:\"system\",subtype:\"codex_hidden_context\",level:\"warning\""
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "Jt=__codexNCHCProjectList(Jt)"
+          }
+        ],
+        "requiredBinaryFormat": "bun_standalone_macho64",
+        "requiredEngine": "bun_graph_repack",
+        "sourceIdentity": {
+          "arch": "arm64",
+          "claudeVersion": "2.1.199",
+          "platform": "darwin",
+          "sha256": "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0",
+          "sizeBytes": 232155536,
+          "versionOutput": "2.1.199 (Claude Code)"
         }
-      ],
-      "manualSmoke": {
-        "required": false
       }
-    },
-    {
-      "sourceIdentity": {
-        "arch": "arm64",
-        "claudeVersion": "2.1.199",
-        "platform": "darwin",
-        "sha256": "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0",
-        "sizeBytes": 232155536,
-        "versionOutput": "2.1.199 (Claude Code)"
-      },
-      "requiredEngine": "bun_graph_repack",
-      "requiredBinaryFormat": "bun_standalone_macho64",
-      "modules": [
-        {
-          "path": "/$bunfs/root/src/entrypoints/cli.js",
-          "contentSha256": "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55",
-          "contentLength": 18593981,
-          "operations": [
-            {
-              "opId": "projection-helpers-before-jur-2-1-199",
-              "label": "Insert hidden-context projection helpers before the hidden-attachment filter predicate",
-              "type": "replace_exact",
-              "exact": "function Jur(e){",
-              "requireWithinRange": [],
-              "oldRangeSha256": "451feec8709237157e22105946ecc02132f23c11f9f0a45ac43e227953d4b150",
-              "oldRangeLength": 16,
-              "replacement": {
-                "path": "payloads/projection-helpers-before-jur.js",
-                "sha256": "392ad4e606b8298c87f253f0b1f6cdfe62b051e1a01cce6b67ff322de47f3576"
-              }
-            },
-            {
-              "opId": "project-before-hidden-filter-2-1-199",
-              "label": "Project hidden attachment rows before the transcript hides Jur-filtered records",
-              "type": "replace_exact",
-              "exact": "let Jt=r||zs()?Se:Bg(Se,{includeFolded:!0}),be=src(Jt.filter((cr)=>cr.type!==\"progress\").filter((cr)=>!Jur(cr)).filter((cr)=>crc(cr,le)),ue)",
-              "requireWithinRange": [
-                "filter((cr)=>!Jur(cr))"
-              ],
-              "oldRangeSha256": "ff0d6c0a0125ee5674faf58f487b2693a4c676e4fa265eca443df77855259511",
-              "oldRangeLength": 140,
-              "replacement": {
-                "path": "payloads/project-before-hidden-filter-2.1.199.js",
-                "sha256": "5b852f34a7ccb157a91dec7a53307c49be561c1c48d2bc35d75c22dcc5302ede"
-              }
-            }
-          ]
-        }
-      ],
-      "postconditions": [
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function __codexNCHCProjectAttachment(e)"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "type:\"system\",subtype:\"codex_hidden_context\",level:\"warning\""
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "Jt=__codexNCHCProjectList(Jt)"
-        }
-      ],
-      "manualSmoke": {
-        "required": false
-      }
-    }
-  ]
+    ]
+  },
+  "risk": {
+    "level": "low"
+  },
+  "schemaVersion": 1,
+  "x-packageVersion": "0.1.0"
 }

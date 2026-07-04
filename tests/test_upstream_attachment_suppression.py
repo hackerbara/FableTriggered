@@ -8,9 +8,8 @@ from pathlib import Path
 import pytest
 
 from claude_monkey.bun_graph import parse_bun_section
-from claude_monkey.builder_v15 import ValidationRequestV15, validate_package
+from claude_monkey.builder_v15 import ValidationRequestV15, load_manifest_v2, validate_package
 from claude_monkey.macho import find_macho_layout
-from claude_monkey.manifest_v2 import load_manifest_v2_dict
 from claude_monkey.payloads import load_payload_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -88,7 +87,7 @@ def _target_module_text() -> str:
 
 
 def _payloads() -> tuple[str, str, str]:
-    manifest = load_manifest_v2_dict(json.loads((PACKAGE_DIR / "patch.json").read_text()))
+    manifest = load_manifest_v2(PACKAGE_DIR)
     target = manifest.targets[0]
     module = target.modules[0]
     payload_texts = []
@@ -155,7 +154,10 @@ def test_upstream_attachment_suppression_gates_before_compute_telemetry_and_li_w
 
 def test_upstream_attachment_suppression_manifest_targets_upstream_only():
     manifest_data = json.loads((PACKAGE_DIR / "patch.json").read_text())
-    manifest = load_manifest_v2_dict(manifest_data)
+    assert manifest_data["schemaVersion"] == 1
+    assert manifest_data["kind"] == "patch"
+    assert manifest_data["patch"]["engine"] == "bun_graph_repack"
+    manifest = load_manifest_v2(PACKAGE_DIR)
     assert manifest.id == "upstream-attachment-suppression"
     assert manifest.package_version == "1.0.0"
     assert len(manifest.targets) == 1

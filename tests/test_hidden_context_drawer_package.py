@@ -37,7 +37,9 @@ def test_hidden_context_drawer_does_not_touch_or_advertise_escape() -> None:
 def test_hidden_context_drawer_package_targets_current_2_1_199() -> None:
     """The drawer package should be pinned to the current 2.1.199 module anchors."""
     manifest = json.loads((PACKAGE / "patch.json").read_text(encoding="utf-8"))
-    target = manifest["targets"][0]
+    assert manifest["schemaVersion"] == 1
+    assert manifest["kind"] == "patch"
+    target = manifest["patch"]["targets"][0]
     identity = target["sourceIdentity"]
 
     assert identity["claudeVersion"] == "2.1.199"

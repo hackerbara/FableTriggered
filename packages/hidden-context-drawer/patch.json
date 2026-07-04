@@ -1,373 +1,380 @@
 {
-  "schemaVersion": 2,
-  "id": "hidden-context-drawer",
-  "name": "Hidden Context Drawer",
   "description": "Projects model-visible hidden attachment context into an integrated footer Hidden Context drawer.",
-  "packageVersion": "0.1.12",
-  "targets": [
-    {
-      "sourceIdentity": {
-        "claudeVersion": "2.1.199",
-        "versionOutput": "2.1.199 (Claude Code)",
-        "sha256": "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0",
-        "sizeBytes": 232155536,
-        "platform": "darwin",
-        "arch": "arm64"
-      },
-      "requiredEngine": "bun_graph_repack",
-      "requiredBinaryFormat": "bun_standalone_macho64",
-      "modules": [
-        {
-          "path": "/$bunfs/root/src/entrypoints/cli.js",
-          "contentSha256": "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55",
-          "contentLength": 18593981,
-          "operations": [
-            {
-              "opId": "projection-helpers-before-jlr",
-              "label": "projection helpers before Jlr v24 persistent unread flash",
-              "type": "replace_exact",
-              "exact": "function Jur(e){",
-              "requireWithinRange": [],
-              "oldRangeSha256": "451feec8709237157e22105946ecc02132f23c11f9f0a45ac43e227953d4b150",
-              "oldRangeLength": 16,
-              "replacement": {
-                "path": "payloads/01-projection-helpers-before-jlr.js",
-                "sha256": "25b4a08d9c8dec5e99d3f87c0779f71cf6ab45022c55a8352c52b98a3dce0c17"
+  "id": "hidden-context-drawer",
+  "kind": "patch",
+  "label": "Hidden Context Drawer",
+  "patch": {
+    "engine": "bun_graph_repack",
+    "targets": [
+      {
+        "manualSmoke": {
+          "reason": "TUI footer/drawer layout and keyboard navigation require an interactive Claude Code session.",
+          "required": true
+        },
+        "modules": [
+          {
+            "contentLength": 18593981,
+            "contentSha256": "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55",
+            "operations": [
+              {
+                "exact": "function Jur(e){",
+                "knownBehaviorChange": "Adds timestamps, source labels, and broader hidden/model-visible attachment coverage to the Hidden Context Drawer projection.",
+                "label": "projection helpers before Jlr v24 persistent unread flash",
+                "oldRangeLength": 16,
+                "oldRangeSha256": "451feec8709237157e22105946ecc02132f23c11f9f0a45ac43e227953d4b150",
+                "opId": "projection-helpers-before-jlr",
+                "replacement": {
+                  "path": "payloads/01-projection-helpers-before-jlr.js",
+                  "sha256": "25b4a08d9c8dec5e99d3f87c0779f71cf6ab45022c55a8352c52b98a3dce0c17"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
               },
-              "knownBehaviorChange": "Adds timestamps, source labels, and broader hidden/model-visible attachment coverage to the Hidden Context Drawer projection."
-            },
-            {
-              "opId": "uxl-refresh-bottom-overlay",
-              "label": "UXl refresh bottom overlay Hidden Context drawer v24 x-only header",
-              "type": "replace_exact",
-              "exact": "function qnc(){let e=KJe.c(2),t=bnc();if(!t)return null;let n;if(e[0]!==t)n=zd.jsx(B,{position:\"absolute\",bottom:\"100%\",left:0,right:0,opaque:!0,children:t}),e[0]=t,e[1]=n;else n=e[1];return n}",
-              "requireWithinRange": [],
-              "oldRangeSha256": "3eafdd66eca35403a692efe10b5331cd3cb5b6f6ab13640096dbe06eedb5ff20",
-              "oldRangeLength": 193,
-              "replacement": {
-                "path": "payloads/15-uxl-refresh-bottom-overlay.js",
-                "sha256": "8d77fc4b8934d403e597490621819f2037a452dc6212e4ea6b12dc09bebbd9f7"
-              }
-            },
-            {
-              "opId": "yt-projection-list-drawer-frame",
-              "label": "Yt projection-list drawer frame v24",
-              "type": "replace_exact",
-              "exact": "let Jt=r||zs()?Se:Bg(Se,{includeFolded:!0}),be=src(Jt.filter((cr)=>cr.type!==\"progress\").filter((cr)=>!Jur(cr)).filter((cr)=>crc(cr,le)),ue)",
-              "requireWithinRange": [],
-              "oldRangeSha256": "ff0d6c0a0125ee5674faf58f487b2693a4c676e4fa265eca443df77855259511",
-              "oldRangeLength": 140,
-              "replacement": {
-                "path": "payloads/02-yt-projection-list-drawer-frame.js",
-                "sha256": "2fedfd5cd7528394a50b11151b99920eedbb182f762c32b95b97e91c1644c89a"
-              }
-            },
-            {
-              "opId": "exc-accept-hiddencontextframe-prop",
-              "label": "exc accept hiddenContextFrame prop v24",
-              "type": "replace_exact",
-              "exact": "onOpenTasksDialog:R}=e,x=c===void 0?l:c,k=p===void 0?!1:p,w=m===void 0?!0:m;QHc();",
-              "requireWithinRange": [],
-              "oldRangeSha256": "ba61ab382b8e8d68e72104eedb15e660e5aa94317a33ab4d1bd24c75baa30271",
-              "oldRangeLength": 82,
-              "replacement": {
-                "path": "payloads/07-exc-accept-hiddencontextframe-prop.js",
-                "sha256": "3e70af1469bae789ea176352343da1e59077f10c3d2c8c42ed4a83787457ca32"
-              }
-            },
-            {
-              "opId": "exc-pass-hiddencontextframe-to-bwf-cache",
-              "label": "exc pass hiddenContextFrame to bwf cache v24",
-              "type": "replace_exact",
-              "exact": "if(t[39]!==w||t[40]!==k||t[41]!==u||t[42]!==d||t[43]!==r||t[44]!==i||t[45]!==R||t[46]!==M||t[47]!==Se||t[48]!==me||t[49]!==f||t[50]!==h||t[51]!==a)fe=pi.jsx(WPf,{mode:i,toolPermissionContext:a,showHint:Se,denseShowHint:me,isInputEmpty:u,isLoading:d,isExternalLoading:k,betweenCalls:w,leftArrowDetachAvailable:r,tasksSelected:f,tmuxSelected:h,onOpenTasksDialog:R,prNeedsAuth:M}),t[39]=w,t[40]=k,t[41]=u,t[42]=d,t[43]=r,t[44]=i,t[45]=R,t[46]=M,t[47]=Se,t[48]=me,t[49]=f,t[50]=h,t[51]=a,t[52]=fe;else fe=t[52];",
-              "requireWithinRange": [],
-              "oldRangeSha256": "89e56eb8be8e4a5d2fba8b28c9c878c06751ff68f52b6ed84b6625b91b9015f2",
-              "oldRangeLength": 507,
-              "replacement": {
-                "path": "payloads/08-exc-pass-hiddencontextframe-to-bwf-cache.js",
-                "sha256": "011ebaaec5ddcf21e8cbd40432e872d1655e3ce4463e20012e136a5b2e074dde"
-              }
-            },
-            {
-              "opId": "bwf-accept-hiddencontextframe-prop",
-              "label": "bwf accept hiddenContextFrame prop v24",
-              "type": "replace_exact",
-              "exact": "function WPf({mode:e,toolPermissionContext:t,showHint:n,denseShowHint:r,isInputEmpty:o,isLoading:s,isExternalLoading:i,betweenCalls:a,leftArrowDetachAvailable:l,tasksSelected:c,tmuxSelected:u,onOpenTasksDialog:d,prNeedsAuth:p}){let{columns:m}=Er();",
-              "requireWithinRange": [],
-              "oldRangeSha256": "cb6ddfa3c0894336664047bf71d04ab575b99e595624f2e55cb158c10c30a2b5",
-              "oldRangeLength": 248,
-              "replacement": {
-                "path": "payloads/09-bwf-accept-hiddencontextframe-prop.js",
-                "sha256": "85a4da13cf2e44d66dd7c5be2d3eb4610b589caede4dee18cb510f01c16d7231"
-              }
-            },
-            {
-              "opId": "footer-hidden-context-selected-hook",
-              "label": "footer Hidden Context selected hook v24",
-              "type": "replace_exact",
-              "exact": "y=Tt((Ne)=>Ne.footerSelection===\"tasks\"&&Ne.coordinatorTaskIndex>=0||Ne.footerSelection===\"workflows\"),T=Tt((Ne)=>Ne.footerSelection!==null),S=Tt",
-              "requireWithinRange": [],
-              "oldRangeSha256": "ed88d0da5b6b6febaaa22d8c836c20ce79cd922bdd282af68367f227475df041",
-              "oldRangeLength": 145,
-              "replacement": {
-                "path": "payloads/11-footer-hidden-context-selected-hook.js",
-                "sha256": "2c168824a2d9de76fac0afc128074a41becd270b53f9dd178bd8717d53e66e35"
-              }
-            },
-            {
-              "opId": "footer-availability-bar-hidden-context",
-              "label": "footer availability bar Hidden Context v24 unread flash",
-              "type": "replace_exact",
-              "exact": "De=fte(g,_,A).length>0||A!==void 0&&mte(g[A]),we=ne?pi.jsx(ets,{tasksSelected:c,onOpenDialog:d}):null;if(le.length===0&&!we&&!ce&&!ie&&ue.length===0&&!Ce&&n){if(!Y)le.push(pi.jsx(v,{dimColor:!0,children:\"? for shortcuts\"},\"shortcuts-hint\"))}if(ve)le.push(ve);let Me=Pt().copyOnSelect??!0,Ge=O&&(!Me||MT());if(w&&D)le.push(pi.jsx(oQe,{},\"voice-warmup\"));else if(zs()&&Ge){let Ne=Wt()===\"macos\",Ye=Ne&&(L()?.lastPressHadAlt??!1);le.push(pi.jsx(v,{dimColor:!0,children:pi.jsxs(qn,{children:[!Me&&pi.jsx(Ct,{chord:\"ctrl+c\",action:\"copy\"}),MT()&&(Ye?pi.jsx(v,{children:\"set macOptionClickForcesSelection in VS Code settings\"}):pi.jsxs(v,{children:[Ne?\"option+click\":\"shift+click\",\" to native select\"]}))]})},\"selection-copy\"))}else if(le.length>0&&n&&w&&I===\"idle\"&&de.length===0&&V)le.push(pi.jsxs(v,{dimColor:!0,children:[\"hold \",$,\" to speak\"]},\"voice-hint\"));if((we||De)&&n&&!y)le.push(pi.jsx(v,{dimColor:!0,children:c?pi.jsx(Ct,{chord:\"enter\",action:\"view tasks\"}):pi.jsx(Ct,{chord:\"down\",action:\"manage\"})},\"manage-tasks\"));if(le.length===0&&!we&&!ce&&!pe&&!ie&&ue.length===0&&!Ce)return zs()?pi.jsx(v,{children:\" \"}):null;return pi.jsxs(B,{height:1,overflow:\"hidden\",children:[ce&&pi.jsxs(B,{flexShrink:0,children:[ce,(pe||Ce||ie||ue.length>0||we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),pe&&pi.jsxs(B,{flexShrink:0,children:[pe,(Ce||ie||ue.length>0||we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),Ce&&pi.jsxs(B,{flexShrink:0,children:[Ce,(ie||ue.length>0||we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ie&&pi.jsxs(B,{flexShrink:0,children:[ie,(ue.length>0||we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ue.length>0&&pi.jsxs(B,{flexShrink:0,children:[pi.jsx(qn,{children:ue}),(we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),we&&pi.jsxs(B,{flexShrink:0,children:[we,le.length>0&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),le.length>0&&pi.jsx(v,{wrap:\"truncate\",children:pi.jsx(qn,{children:le})})]})}",
-              "requireWithinRange": [],
-              "oldRangeSha256": "d13a3884f9e6dbd6e3e2dfd515eec7b2a18a465bb7882f46a80509461e538828",
-              "oldRangeLength": 1988,
-              "replacement": {
-                "path": "payloads/16-footer-availability-bar-hidden-context.js",
-                "sha256": "398091a46f5afdcc3b8db8e11f7ab94b56f9479ab16c949d7ec517ee2e80a259"
-              }
-            },
-            {
-              "opId": "vwf-accept-hiddencontextframe-prop",
-              "label": "Vwf accept hiddenContextFrame prop v24",
-              "type": "replace_exact",
-              "exact": "messagesRef:M,lastAssistantMessageId:F,tokenUsage:W,isSearching:$,historyQuery:V,setHistoryQuery:K,historyFailedMatch:Y,onOpenTasksDialog:J}=e,Q=",
-              "requireWithinRange": [],
-              "oldRangeSha256": "ea6cfd50e973af29bb205b577568105a2faad884a56a14a13bbf6c9378a49e8f",
-              "oldRangeLength": 145,
-              "replacement": {
-                "path": "payloads/05-vwf-accept-hiddencontextframe-prop.js",
-                "sha256": "037e99216768f595ea82370643b839e8386fcff4ccf94fd1cfcaafa46cf6b0af"
-              }
-            },
-            {
-              "opId": "vwf-pass-hiddencontextframe-to-exc-cache",
-              "label": "Vwf pass hiddenContextFrame to exc cache v24",
-              "type": "replace_exact",
-              "exact": "if(t[36]!==Z||t[37]!==o||t[38]!==Y||t[39]!==V||t[40]!==Q||t[41]!==A||t[42]!==re||t[43]!==$||t[44]!==s||t[45]!==a||t[46]!==J||t[47]!==De||t[48]!==K||t[49]!==se||t[50]!==Ne||t[51]!==Ge||t[52]!==ft||t[53]!==wt||t[54]!==I||t[55]!==y||t[56]!==i)vt=FU.jsx(mDc,{exitMessage:o,leftArrowDetachAvailable:s,vimMode:i,hideVimModeIndicator:ft,mode:a,toolPermissionContext:y,suppressHint:Ne,suppressHintExceptStatusline:Ge,isInputEmpty:wt,isLoading:A,isExternalLoading:Q,betweenCalls:Z,tasksSelected:De,tmuxSelected:I,isPasting:re,showExpandPasteHint:se,isSearching:$,historyQuery:V,setHistoryQuery:K,historyFailedMatch:Y,onOpenTasksDialog:J}),t[36]=Z,t[37]=o,t[38]=Y,t[39]=V,t[40]=Q,t[41]=A,t[42]=re,t[43]=$,t[44]=s,t[45]=a,t[46]=J,t[47]=De,t[48]=K,t[49]=se,t[50]=Ne,t[51]=Ge,t[52]=ft,t[53]=wt,t[54]=I,t[55]=y,t[56]=i,t[57]=vt;else vt=t[57];",
-              "requireWithinRange": [],
-              "oldRangeSha256": "cac20b1499a525a59513c623636161f33496ff53db5b7e539e5c9187fc62e641",
-              "oldRangeLength": 828,
-              "replacement": {
-                "path": "payloads/06-vwf-pass-hiddencontextframe-to-exc-cache.js",
-                "sha256": "cd1b03d1a8c7e15e2df0858915ab6f4069a879919c2ce3afc5fe4a9af8f2b978"
-              }
-            },
-            {
-              "opId": "axf-messagesref-footer-target-frame",
-              "label": "Axf messagesRef footer target frame v24",
-              "type": "replace_exact",
-              "exact": "Ys=Ro.useMemo(()=>_sn(At),[At]),Uo=oa>0||wr,ro=Ys.length>0&&_===\"prompt\"&&!De.show&&!gt,ji=Ro.useMemo(()=>[Uo&&\"tasks\",ro&&\"workflows\",Jt&&\"tmux\",be&&\"bagel\",Hr&&\"bridge\",Oe&&\"frame\"].filter(Boolean),[Uo,ro,Jt,be,Hr,Oe]),el=",
-              "requireWithinRange": [],
-              "oldRangeSha256": "92015d7fc839f6264050dab9adad60b0dd0cf0a0cac408ce0e81c5ea8a244a9a",
-              "oldRangeLength": 224,
-              "replacement": {
-                "path": "payloads/03-axf-messagesref-footer-target-frame.js",
-                "sha256": "adc0b0c2823680efc13f018dafc283d70be77db4fb726f2335c3caf81795002a"
-              }
-            },
-            {
-              "opId": "footer-hiddencontext-selection-flag",
-              "label": "footer hiddenContext selection flag v24",
-              "type": "replace_exact",
-              "exact": "let qb=Du===\"tasks\",Pu=Du===\"workflows\",Uf=Du===\"tmux\",eC=Du===\"bagel\",iy=Du===\"bridge\",Ap=Du===\"frame\";function Sf",
-              "requireWithinRange": [],
-              "oldRangeSha256": "8d6f3f80c2d3d48d6d911937d5c6bb273b463a26dfd40c3b13023aa1c2cc3c7a",
-              "oldRangeLength": 115,
-              "replacement": {
-                "path": "payloads/10-footer-hiddencontext-selection-flag.js",
-                "sha256": "5738e7ef4da508c8a4972baf93c82b1262dbd89e8d805503d3cedca702b08197"
-              }
-            },
-            {
-              "opId": "footer-hiddencontext-up-down-scroll",
-              "label": "footer hiddenContext up/down scroll v24 clear unread flash",
-              "type": "replace_exact",
-              "exact": "function By(){if(qb&&oa>0&&xs>br){Bi((Bt)=>Bt-1);return}if(Pu&&el>0){jc((Bt)=>Bt-1);return}$u(-1,!0)}function Jk(){if(qb&&oa>0){if(xs<oa-1){Bi((Bt)=>Bt+1);return}$u(1);return}if(qb){if(!$u(1))D(!0),Sf(null);return}if(Pu){if(el<Ys.length-1){jc((Bt)=>Bt+1);return}$u(1);return}$u(1)}function SI",
-              "requireWithinRange": [],
-              "oldRangeSha256": "94b656d274d115f08724a2e5db3a8e0a918e349a49474c5bc4e21cf082c94ae3",
-              "oldRangeLength": 292,
-              "replacement": {
-                "path": "payloads/12-footer-hiddencontext-up-down-scroll.js",
-                "sha256": "8c69468c6a4e03318221ebc64e9c04f3c9afb47e3ce8bd6d670413b80300e458"
-              }
-            },
-            {
-              "opId": "footer-clearselection-consumes-hiddencontext",
-              "label": "footer openSelected/clearSelection/close Hidden Context v24 x-only close",
-              "type": "replace_exact",
-              "exact": "case\"tmux\":break;case\"bagel\":break;case\"bridge\":Ac(!0),Sf(null);break;case\"frame\":{let Bt=ft.getState(),zn=Object.entries(Bt.frameUrls),ho=zn[ryr(zn,Bt.frameNavPath)]?.[1]?.url;if(ho)Dc(ho),ke(\"frame_link_open\");wt((la)=>la.frameExpanded?la:{...la,frameExpanded:!0});break}}},\"footer:clearSelection\":()=>{if(Ap&&ft.getState().frameExpanded){wt((Bt)=>!Bt.frameExpanded?Bt:{...Bt,frameExpanded:!1});return}if(qb&&Za){let Bt=fte(At,qs,qt,!0);if(wt((zn)=>!zn.idleTeammatesExpanded?zn:{...zn,idleTeammatesExpanded:!1}),Wes(Bt,qt))return}Kk(),Sf(null)},\"footer:close\":()=>{if(qb&&xs>=1){",
-              "requireWithinRange": [],
-              "oldRangeSha256": "f3cdce1c993e1914a70db675e4f1bcdde9d2092773ba721c8b35e79252b037c5",
-              "oldRangeLength": 581,
-              "replacement": {
-                "path": "payloads/13-footer-clearselection-consumes-hiddencontext.js",
-                "sha256": "3fd0ea77ece430458de58699f8e4fed6b6508a0cb7987a4656014dd0f905dfa7"
+              {
+                "exact": "function qnc(){let e=KJe.c(2),t=bnc();if(!t)return null;let n;if(e[0]!==t)n=zd.jsx(B,{position:\"absolute\",bottom:\"100%\",left:0,right:0,opaque:!0,children:t}),e[0]=t,e[1]=n;else n=e[1];return n}",
+                "label": "UXl refresh bottom overlay Hidden Context drawer v24 x-only header",
+                "oldRangeLength": 193,
+                "oldRangeSha256": "3eafdd66eca35403a692efe10b5331cd3cb5b6f6ab13640096dbe06eedb5ff20",
+                "opId": "uxl-refresh-bottom-overlay",
+                "replacement": {
+                  "path": "payloads/15-uxl-refresh-bottom-overlay.js",
+                  "sha256": "8d77fc4b8934d403e597490621819f2037a452dc6212e4ea6b12dc09bebbd9f7"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
               },
-              "knownBehaviorChange": "Opens Hidden Context with footer openSelected; clearSelection returns false for Hidden Context; closes only through footer:close (x)."
-            },
-            {
-              "opId": "selected-only-bottom-overlay-hidden-context-globals",
-              "label": "selected-only bottom overlay Hidden Context globals v24 action-owned close",
-              "type": "replace_exact",
-              "exact": "return qd.jsxs(B,{flexDirection:\"column\",marginTop:Kt||Vz?0:1,children:[Du&&!oe&&qd.jsx(B,{tabIndex:0,autoFocus:!0,onKeyDown:I8}),!zs()&&qd.jsx(pyr,{}),J&&",
-              "requireWithinRange": [],
-              "oldRangeSha256": "d46b78e0e58e66dd5b1cb49056480722e2f5261737a2dc15b2a3eed540887b41",
-              "oldRangeLength": 155,
-              "replacement": {
-                "path": "payloads/14-selected-only-bottom-overlay-hidden-context-globals.js",
-                "sha256": "141aca3741e4de0dfbafd449a8bfe09b9af2a4edeee96a5983bce7bb5117d34e"
+              {
+                "exact": "let Jt=r||zs()?Se:Bg(Se,{includeFolded:!0}),be=src(Jt.filter((cr)=>cr.type!==\"progress\").filter((cr)=>!Jur(cr)).filter((cr)=>crc(cr,le)),ue)",
+                "label": "Yt projection-list drawer frame v24",
+                "oldRangeLength": 140,
+                "oldRangeSha256": "ff0d6c0a0125ee5674faf58f487b2693a4c676e4fa265eca443df77855259511",
+                "opId": "yt-projection-list-drawer-frame",
+                "replacement": {
+                  "path": "payloads/02-yt-projection-list-drawer-frame.js",
+                  "sha256": "2fedfd5cd7528394a50b11151b99920eedbb182f762c32b95b97e91c1644c89a"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "onOpenTasksDialog:R}=e,x=c===void 0?l:c,k=p===void 0?!1:p,w=m===void 0?!0:m;QHc();",
+                "label": "exc accept hiddenContextFrame prop v24",
+                "oldRangeLength": 82,
+                "oldRangeSha256": "ba61ab382b8e8d68e72104eedb15e660e5aa94317a33ab4d1bd24c75baa30271",
+                "opId": "exc-accept-hiddencontextframe-prop",
+                "replacement": {
+                  "path": "payloads/07-exc-accept-hiddencontextframe-prop.js",
+                  "sha256": "3e70af1469bae789ea176352343da1e59077f10c3d2c8c42ed4a83787457ca32"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "if(t[39]!==w||t[40]!==k||t[41]!==u||t[42]!==d||t[43]!==r||t[44]!==i||t[45]!==R||t[46]!==M||t[47]!==Se||t[48]!==me||t[49]!==f||t[50]!==h||t[51]!==a)fe=pi.jsx(WPf,{mode:i,toolPermissionContext:a,showHint:Se,denseShowHint:me,isInputEmpty:u,isLoading:d,isExternalLoading:k,betweenCalls:w,leftArrowDetachAvailable:r,tasksSelected:f,tmuxSelected:h,onOpenTasksDialog:R,prNeedsAuth:M}),t[39]=w,t[40]=k,t[41]=u,t[42]=d,t[43]=r,t[44]=i,t[45]=R,t[46]=M,t[47]=Se,t[48]=me,t[49]=f,t[50]=h,t[51]=a,t[52]=fe;else fe=t[52];",
+                "label": "exc pass hiddenContextFrame to bwf cache v24",
+                "oldRangeLength": 507,
+                "oldRangeSha256": "89e56eb8be8e4a5d2fba8b28c9c878c06751ff68f52b6ed84b6625b91b9015f2",
+                "opId": "exc-pass-hiddencontextframe-to-bwf-cache",
+                "replacement": {
+                  "path": "payloads/08-exc-pass-hiddencontextframe-to-bwf-cache.js",
+                  "sha256": "011ebaaec5ddcf21e8cbd40432e872d1655e3ce4463e20012e136a5b2e074dde"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "function WPf({mode:e,toolPermissionContext:t,showHint:n,denseShowHint:r,isInputEmpty:o,isLoading:s,isExternalLoading:i,betweenCalls:a,leftArrowDetachAvailable:l,tasksSelected:c,tmuxSelected:u,onOpenTasksDialog:d,prNeedsAuth:p}){let{columns:m}=Er();",
+                "label": "bwf accept hiddenContextFrame prop v24",
+                "oldRangeLength": 248,
+                "oldRangeSha256": "cb6ddfa3c0894336664047bf71d04ab575b99e595624f2e55cb158c10c30a2b5",
+                "opId": "bwf-accept-hiddencontextframe-prop",
+                "replacement": {
+                  "path": "payloads/09-bwf-accept-hiddencontextframe-prop.js",
+                  "sha256": "85a4da13cf2e44d66dd7c5be2d3eb4610b589caede4dee18cb510f01c16d7231"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "y=Tt((Ne)=>Ne.footerSelection===\"tasks\"&&Ne.coordinatorTaskIndex>=0||Ne.footerSelection===\"workflows\"),T=Tt((Ne)=>Ne.footerSelection!==null),S=Tt",
+                "label": "footer Hidden Context selected hook v24",
+                "oldRangeLength": 145,
+                "oldRangeSha256": "ed88d0da5b6b6febaaa22d8c836c20ce79cd922bdd282af68367f227475df041",
+                "opId": "footer-hidden-context-selected-hook",
+                "replacement": {
+                  "path": "payloads/11-footer-hidden-context-selected-hook.js",
+                  "sha256": "2c168824a2d9de76fac0afc128074a41becd270b53f9dd178bd8717d53e66e35"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "De=fte(g,_,A).length>0||A!==void 0&&mte(g[A]),we=ne?pi.jsx(ets,{tasksSelected:c,onOpenDialog:d}):null;if(le.length===0&&!we&&!ce&&!ie&&ue.length===0&&!Ce&&n){if(!Y)le.push(pi.jsx(v,{dimColor:!0,children:\"? for shortcuts\"},\"shortcuts-hint\"))}if(ve)le.push(ve);let Me=Pt().copyOnSelect??!0,Ge=O&&(!Me||MT());if(w&&D)le.push(pi.jsx(oQe,{},\"voice-warmup\"));else if(zs()&&Ge){let Ne=Wt()===\"macos\",Ye=Ne&&(L()?.lastPressHadAlt??!1);le.push(pi.jsx(v,{dimColor:!0,children:pi.jsxs(qn,{children:[!Me&&pi.jsx(Ct,{chord:\"ctrl+c\",action:\"copy\"}),MT()&&(Ye?pi.jsx(v,{children:\"set macOptionClickForcesSelection in VS Code settings\"}):pi.jsxs(v,{children:[Ne?\"option+click\":\"shift+click\",\" to native select\"]}))]})},\"selection-copy\"))}else if(le.length>0&&n&&w&&I===\"idle\"&&de.length===0&&V)le.push(pi.jsxs(v,{dimColor:!0,children:[\"hold \",$,\" to speak\"]},\"voice-hint\"));if((we||De)&&n&&!y)le.push(pi.jsx(v,{dimColor:!0,children:c?pi.jsx(Ct,{chord:\"enter\",action:\"view tasks\"}):pi.jsx(Ct,{chord:\"down\",action:\"manage\"})},\"manage-tasks\"));if(le.length===0&&!we&&!ce&&!pe&&!ie&&ue.length===0&&!Ce)return zs()?pi.jsx(v,{children:\" \"}):null;return pi.jsxs(B,{height:1,overflow:\"hidden\",children:[ce&&pi.jsxs(B,{flexShrink:0,children:[ce,(pe||Ce||ie||ue.length>0||we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),pe&&pi.jsxs(B,{flexShrink:0,children:[pe,(Ce||ie||ue.length>0||we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),Ce&&pi.jsxs(B,{flexShrink:0,children:[Ce,(ie||ue.length>0||we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ie&&pi.jsxs(B,{flexShrink:0,children:[ie,(ue.length>0||we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ue.length>0&&pi.jsxs(B,{flexShrink:0,children:[pi.jsx(qn,{children:ue}),(we||le.length>0)&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),we&&pi.jsxs(B,{flexShrink:0,children:[we,le.length>0&&pi.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),le.length>0&&pi.jsx(v,{wrap:\"truncate\",children:pi.jsx(qn,{children:le})})]})}",
+                "label": "footer availability bar Hidden Context v24 unread flash",
+                "oldRangeLength": 1988,
+                "oldRangeSha256": "d13a3884f9e6dbd6e3e2dfd515eec7b2a18a465bb7882f46a80509461e538828",
+                "opId": "footer-availability-bar-hidden-context",
+                "replacement": {
+                  "path": "payloads/16-footer-availability-bar-hidden-context.js",
+                  "sha256": "398091a46f5afdcc3b8db8e11f7ab94b56f9479ab16c949d7ec517ee2e80a259"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "messagesRef:M,lastAssistantMessageId:F,tokenUsage:W,isSearching:$,historyQuery:V,setHistoryQuery:K,historyFailedMatch:Y,onOpenTasksDialog:J}=e,Q=",
+                "label": "Vwf accept hiddenContextFrame prop v24",
+                "oldRangeLength": 145,
+                "oldRangeSha256": "ea6cfd50e973af29bb205b577568105a2faad884a56a14a13bbf6c9378a49e8f",
+                "opId": "vwf-accept-hiddencontextframe-prop",
+                "replacement": {
+                  "path": "payloads/05-vwf-accept-hiddencontextframe-prop.js",
+                  "sha256": "037e99216768f595ea82370643b839e8386fcff4ccf94fd1cfcaafa46cf6b0af"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "if(t[36]!==Z||t[37]!==o||t[38]!==Y||t[39]!==V||t[40]!==Q||t[41]!==A||t[42]!==re||t[43]!==$||t[44]!==s||t[45]!==a||t[46]!==J||t[47]!==De||t[48]!==K||t[49]!==se||t[50]!==Ne||t[51]!==Ge||t[52]!==ft||t[53]!==wt||t[54]!==I||t[55]!==y||t[56]!==i)vt=FU.jsx(mDc,{exitMessage:o,leftArrowDetachAvailable:s,vimMode:i,hideVimModeIndicator:ft,mode:a,toolPermissionContext:y,suppressHint:Ne,suppressHintExceptStatusline:Ge,isInputEmpty:wt,isLoading:A,isExternalLoading:Q,betweenCalls:Z,tasksSelected:De,tmuxSelected:I,isPasting:re,showExpandPasteHint:se,isSearching:$,historyQuery:V,setHistoryQuery:K,historyFailedMatch:Y,onOpenTasksDialog:J}),t[36]=Z,t[37]=o,t[38]=Y,t[39]=V,t[40]=Q,t[41]=A,t[42]=re,t[43]=$,t[44]=s,t[45]=a,t[46]=J,t[47]=De,t[48]=K,t[49]=se,t[50]=Ne,t[51]=Ge,t[52]=ft,t[53]=wt,t[54]=I,t[55]=y,t[56]=i,t[57]=vt;else vt=t[57];",
+                "label": "Vwf pass hiddenContextFrame to exc cache v24",
+                "oldRangeLength": 828,
+                "oldRangeSha256": "cac20b1499a525a59513c623636161f33496ff53db5b7e539e5c9187fc62e641",
+                "opId": "vwf-pass-hiddencontextframe-to-exc-cache",
+                "replacement": {
+                  "path": "payloads/06-vwf-pass-hiddencontextframe-to-exc-cache.js",
+                  "sha256": "cd1b03d1a8c7e15e2df0858915ab6f4069a879919c2ce3afc5fe4a9af8f2b978"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "Ys=Ro.useMemo(()=>_sn(At),[At]),Uo=oa>0||wr,ro=Ys.length>0&&_===\"prompt\"&&!De.show&&!gt,ji=Ro.useMemo(()=>[Uo&&\"tasks\",ro&&\"workflows\",Jt&&\"tmux\",be&&\"bagel\",Hr&&\"bridge\",Oe&&\"frame\"].filter(Boolean),[Uo,ro,Jt,be,Hr,Oe]),el=",
+                "label": "Axf messagesRef footer target frame v24",
+                "oldRangeLength": 224,
+                "oldRangeSha256": "92015d7fc839f6264050dab9adad60b0dd0cf0a0cac408ce0e81c5ea8a244a9a",
+                "opId": "axf-messagesref-footer-target-frame",
+                "replacement": {
+                  "path": "payloads/03-axf-messagesref-footer-target-frame.js",
+                  "sha256": "adc0b0c2823680efc13f018dafc283d70be77db4fb726f2335c3caf81795002a"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "let qb=Du===\"tasks\",Pu=Du===\"workflows\",Uf=Du===\"tmux\",eC=Du===\"bagel\",iy=Du===\"bridge\",Ap=Du===\"frame\";function Sf",
+                "label": "footer hiddenContext selection flag v24",
+                "oldRangeLength": 115,
+                "oldRangeSha256": "8d6f3f80c2d3d48d6d911937d5c6bb273b463a26dfd40c3b13023aa1c2cc3c7a",
+                "opId": "footer-hiddencontext-selection-flag",
+                "replacement": {
+                  "path": "payloads/10-footer-hiddencontext-selection-flag.js",
+                  "sha256": "5738e7ef4da508c8a4972baf93c82b1262dbd89e8d805503d3cedca702b08197"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "function By(){if(qb&&oa>0&&xs>br){Bi((Bt)=>Bt-1);return}if(Pu&&el>0){jc((Bt)=>Bt-1);return}$u(-1,!0)}function Jk(){if(qb&&oa>0){if(xs<oa-1){Bi((Bt)=>Bt+1);return}$u(1);return}if(qb){if(!$u(1))D(!0),Sf(null);return}if(Pu){if(el<Ys.length-1){jc((Bt)=>Bt+1);return}$u(1);return}$u(1)}function SI",
+                "label": "footer hiddenContext up/down scroll v24 clear unread flash",
+                "oldRangeLength": 292,
+                "oldRangeSha256": "94b656d274d115f08724a2e5db3a8e0a918e349a49474c5bc4e21cf082c94ae3",
+                "opId": "footer-hiddencontext-up-down-scroll",
+                "replacement": {
+                  "path": "payloads/12-footer-hiddencontext-up-down-scroll.js",
+                  "sha256": "8c69468c6a4e03318221ebc64e9c04f3c9afb47e3ce8bd6d670413b80300e458"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "case\"tmux\":break;case\"bagel\":break;case\"bridge\":Ac(!0),Sf(null);break;case\"frame\":{let Bt=ft.getState(),zn=Object.entries(Bt.frameUrls),ho=zn[ryr(zn,Bt.frameNavPath)]?.[1]?.url;if(ho)Dc(ho),ke(\"frame_link_open\");wt((la)=>la.frameExpanded?la:{...la,frameExpanded:!0});break}}},\"footer:clearSelection\":()=>{if(Ap&&ft.getState().frameExpanded){wt((Bt)=>!Bt.frameExpanded?Bt:{...Bt,frameExpanded:!1});return}if(qb&&Za){let Bt=fte(At,qs,qt,!0);if(wt((zn)=>!zn.idleTeammatesExpanded?zn:{...zn,idleTeammatesExpanded:!1}),Wes(Bt,qt))return}Kk(),Sf(null)},\"footer:close\":()=>{if(qb&&xs>=1){",
+                "knownBehaviorChange": "Opens Hidden Context with footer openSelected; clearSelection returns false for Hidden Context; closes only through footer:close (x).",
+                "label": "footer openSelected/clearSelection/close Hidden Context v24 x-only close",
+                "oldRangeLength": 581,
+                "oldRangeSha256": "f3cdce1c993e1914a70db675e4f1bcdde9d2092773ba721c8b35e79252b037c5",
+                "opId": "footer-clearselection-consumes-hiddencontext",
+                "replacement": {
+                  "path": "payloads/13-footer-clearselection-consumes-hiddencontext.js",
+                  "sha256": "3fd0ea77ece430458de58699f8e4fed6b6508a0cb7987a4656014dd0f905dfa7"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "return qd.jsxs(B,{flexDirection:\"column\",marginTop:Kt||Vz?0:1,children:[Du&&!oe&&qd.jsx(B,{tabIndex:0,autoFocus:!0,onKeyDown:I8}),!zs()&&qd.jsx(pyr,{}),J&&",
+                "label": "selected-only bottom overlay Hidden Context globals v24 action-owned close",
+                "oldRangeLength": 155,
+                "oldRangeSha256": "d46b78e0e58e66dd5b1cb49056480722e2f5261737a2dc15b2a3eed540887b41",
+                "opId": "selected-only-bottom-overlay-hidden-context-globals",
+                "replacement": {
+                  "path": "payloads/14-selected-only-bottom-overlay-hidden-context-globals.js",
+                  "sha256": "141aca3741e4de0dfbafd449a8bfe09b9af2a4edeee96a5983bce7bb5117d34e"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
+              },
+              {
+                "exact": "messagesRef:d,lastAssistantMessageId:f,tokenUsage:h,isSearching:Ee,historyQuery:gn,setHistoryQuery:Jr,historyFailedMatch:qo,onOpenTasksDialog:zs()?sN:void 0})",
+                "label": "Axf pass hiddenContextFrame to cxc v24",
+                "oldRangeLength": 158,
+                "oldRangeSha256": "5b39a03c617a3a2bfb6dde4f9286cb10ee505ebf9084e4ec9b2aca5c15dc3113",
+                "opId": "axf-pass-hiddencontextframe-to-cxc",
+                "replacement": {
+                  "path": "payloads/04-axf-pass-hiddencontextframe-to-cxc.js",
+                  "sha256": "35e7fd1ecc7dfe6c56753fed06d76d21e9688c123544610312c868a217b8f373"
+                },
+                "requireWithinRange": [],
+                "type": "replace_exact"
               }
-            },
-            {
-              "opId": "axf-pass-hiddencontextframe-to-cxc",
-              "label": "Axf pass hiddenContextFrame to cxc v24",
-              "type": "replace_exact",
-              "exact": "messagesRef:d,lastAssistantMessageId:f,tokenUsage:h,isSearching:Ee,historyQuery:gn,setHistoryQuery:Jr,historyFailedMatch:qo,onOpenTasksDialog:zs()?sN:void 0})",
-              "requireWithinRange": [],
-              "oldRangeSha256": "5b39a03c617a3a2bfb6dde4f9286cb10ee505ebf9084e4ec9b2aca5c15dc3113",
-              "oldRangeLength": 158,
-              "replacement": {
-                "path": "payloads/04-axf-pass-hiddencontextframe-to-cxc.js",
-                "sha256": "35e7fd1ecc7dfe6c56753fed06d76d21e9688c123544610312c868a217b8f373"
-              }
-            }
-          ]
+            ],
+            "path": "/$bunfs/root/src/entrypoints/cli.js"
+          }
+        ],
+        "postconditions": [
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "__CODEX_HIDDEN_CONTEXT_DRAWER_FRAME_V13__"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "function qnc(){let e=KJe.c(12),[t,n]=S_.useState(0);Zc(()=>n(Date.now()),100)"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "bottom:\"100%\""
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "borderText:{content:` Hidden Context "
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_not_contain",
+            "value": "position:\"absolute\",marginTop:-(hCh+1)"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "sourceLabel"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "borderColor:\"warning\""
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "color:s?.lineKinds?.[c+p]===\"header\"?\"warning\":void 0"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "lineKinds"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "Bt+3"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "Bt-3"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "Number.MAX_SAFE_INTEGER"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "hCflash=!hCsel&&Date.now()<(hCf?.flashUntil??0)"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "backgroundColor:\"blue\""
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "color:\"white\""
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "flashUntil=0"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "case\"hiddenContext\""
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!0"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "hCp(!0)"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "\"footer:close\":()=>{if(hC){globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1,hCp(!1),Sf(null);return}if(qb&&xs>=1)"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "x closes"
+          }
+        ],
+        "preconditions": [
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "function Jur(e){"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "function qnc(){let e=KJe.c(2)"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "ji=Ro.useMemo(()=>[Uo&&\"tasks\",ro&&\"workflows\",Jt&&\"tmux\",be&&\"bagel\",Hr&&\"bridge\",Oe&&\"frame\"].filter(Boolean)"
+          }
+        ],
+        "requiredBinaryFormat": "bun_standalone_macho64",
+        "requiredEngine": "bun_graph_repack",
+        "sourceIdentity": {
+          "arch": "arm64",
+          "claudeVersion": "2.1.199",
+          "platform": "darwin",
+          "sha256": "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0",
+          "sizeBytes": 232155536,
+          "versionOutput": "2.1.199 (Claude Code)"
         }
-      ],
-      "preconditions": [
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function Jur(e){"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function qnc(){let e=KJe.c(2)"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "ji=Ro.useMemo(()=>[Uo&&\"tasks\",ro&&\"workflows\",Jt&&\"tmux\",be&&\"bagel\",Hr&&\"bridge\",Oe&&\"frame\"].filter(Boolean)"
-        }
-      ],
-      "postconditions": [
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "__CODEX_HIDDEN_CONTEXT_DRAWER_FRAME_V13__"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function qnc(){let e=KJe.c(12),[t,n]=S_.useState(0);Zc(()=>n(Date.now()),100)"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "bottom:\"100%\""
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "borderText:{content:` Hidden Context "
-        },
-        {
-          "type": "module_must_not_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "position:\"absolute\",marginTop:-(hCh+1)"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "sourceLabel"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "borderColor:\"warning\""
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "color:s?.lineKinds?.[c+p]===\"header\"?\"warning\":void 0"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "lineKinds"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "Bt+3"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "Bt-3"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "Number.MAX_SAFE_INTEGER"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "hCflash=!hCsel&&Date.now()<(hCf?.flashUntil??0)"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "backgroundColor:\"blue\""
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "color:\"white\""
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "flashUntil=0"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "case\"hiddenContext\""
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!0"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "hCp(!0)"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "\"footer:close\":()=>{if(hC){globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1,hCp(!1),Sf(null);return}if(qb&&xs>=1)"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "x closes"
-        }
-      ],
-      "manualSmoke": {
-        "required": true,
-        "reason": "TUI footer/drawer layout and keyboard navigation require an interactive Claude Code session."
       }
-    }
-  ]
+    ]
+  },
+  "risk": {
+    "level": "low"
+  },
+  "schemaVersion": 1,
+  "x-packageVersion": "0.1.12"
 }

@@ -22,6 +22,7 @@ In scope:
 - Deterministic same-offset rendering.
 - Structured conflict codes for overlaps and insertion-order conflicts.
 - Extended `operationsApplied` / `operationsResolved` evidence.
+- Explicit report schema compatibility: keep `BuildReportV2.schemaVersion == 3` and treat operation-entry fields as additive while preserving existing keys.
 - Diagnostic-only retarget analysis for `validate-package --json` on identity mismatch.
 - Top-level package relationship metadata and bridge support for package-envelope manifests.
 - Tests for the above.
@@ -66,6 +67,7 @@ Do not modify in this plan:
 
 **Files:**
 - Modify: `/Users/MAC/Documents/Claude-patch/tests/test_manifest_v2.py`
+- Modify: `/Users/MAC/Documents/Claude-patch/tests/test_module_patch.py`
 - Modify: `/Users/MAC/Documents/Claude-patch/src/claude_monkey/manifest_v2.py`
 
 - [ ] **Step 1: Add failing manifest tests for structured operations**
@@ -149,6 +151,67 @@ def test_manifest_v2_rejects_insert_without_insert_order():
     )
 
     with pytest.raises(ManifestV2Error, match="insertOrder"):
+        load_manifest_v2_dict(data)
+
+
+def test_manifest_v2_accepts_insert_before_operation_fields():
+    data = valid_v2_manifest()
+    op = data["targets"][0]["modules"][0]["operations"][0]
+    op.clear()
+    op.update(
+        {
+            "opId": "insert-before-footer-target",
+            "label": "Insert before footer target",
+            "type": "insert_before",
+            "anchor": "Oe&&\"frame\"",
+            "expectedAnchorCount": 1,
+            "insertOrder": 100,
+            "replacement": {"inline": "\"hiddenContext\","},
+        }
+    )
+
+    manifest = load_manifest_v2_dict(data)
+    parsed = manifest.targets[0].modules[0].operations[0]
+
+    assert parsed.type == "insert_before"
+    assert parsed.anchor == "Oe&&\"frame\""
+    assert parsed.insert_order == 100
+
+
+def test_manifest_v2_rejects_non_unique_structured_locator_expectations():
+    data = valid_v2_manifest()
+    op = data["targets"][0]["modules"][0]["operations"][0]
+    op.clear()
+    op.update(
+        {
+            "opId": "insert-multiple-anchors",
+            "label": "Insert multiple anchors",
+            "type": "insert_after",
+            "anchor": "OLD_RENDER",
+            "expectedAnchorCount": 2,
+            "insertOrder": 100,
+            "replacement": {"inline": "NEW"},
+        }
+    )
+
+    with pytest.raises(ManifestV2Error, match="expectedAnchorCount must be 1"):
+        load_manifest_v2_dict(data)
+
+    op.clear()
+    op.update(
+        {
+            "opId": "replace-multiple-subspans",
+            "label": "Replace multiple subspans",
+            "type": "replace_substring_within",
+            "startMarker": "function render(){",
+            "endMarker": "function after(){",
+            "subExact": "OLD_RENDER",
+            "expectedSubExactCount": 2,
+            "replacement": {"inline": "NEW"},
+        }
+    )
+
+    with pytest.raises(ManifestV2Error, match="expectedSubExactCount must be 1"):
         load_manifest_v2_dict(data)
 ```
 
@@ -240,6 +303,8 @@ def _validate_operation_shape(op: dict[str, Any], op_type: str) -> None:
             raise ManifestV2Error("anchor is required for insert operations")
         if "insertOrder" not in op:
             raise ManifestV2Error("insertOrder is required for insert operations")
+        if op.get("expectedAnchorCount", 1) != 1:
+            raise ManifestV2Error("expectedAnchorCount must be 1 for insert operations")
     if _operation_requires_sub_exact(op_type):
         if not isinstance(op.get("subExact"), str) or op.get("subExact") == "":
             raise ManifestV2Error("subExact is required for replace_substring_within")
@@ -247,6 +312,10 @@ def _validate_operation_shape(op: dict[str, Any], op_type: str) -> None:
             raise ManifestV2Error("startMarker is required for replace_substring_within")
         if not isinstance(op.get("endMarker"), str) or op.get("endMarker") == "":
             raise ManifestV2Error("endMarker is required for replace_substring_within")
+        if op.get("expectedSubExactCount", 1) != 1:
+            raise ManifestV2Error(
+                "expectedSubExactCount must be 1 for replace_substring_within"
+            )
 ```
 
 - [ ] **Step 5: Update `parse_operation()`**
@@ -275,26 +344,52 @@ Then update the `ModuleOperationV2(...)` call to include the new fields:
 
 Keep the existing fields and existing defaults unchanged.
 
-- [ ] **Step 6: Run manifest tests and verify pass**
+- [ ] **Step 6: Keep existing module-patch tests compatible with new dataclass fields**
+
+In `/Users/MAC/Documents/Claude-patch/tests/test_module_patch.py`, update the existing `op()` helper's `ModuleOperationV2(...)` constructor to include the new fields before `expected_start_marker_count`:
+
+```python
+        anchor=None,
+        sub_exact=None,
+```
+
+and include these fields before `require_within_range`:
+
+```python
+        expected_anchor_count=1,
+        expected_sub_exact_count=1,
+        insert_order=None,
+```
+
+and include these fields before `replacement`:
+
+```python
+        context_sha256=None,
+        seam_hint=None,
+```
+
+This keeps the broader test suite importable between Task 1 and Task 2.
+
+- [ ] **Step 7: Run manifest tests and existing module-patch tests**
 
 Run:
 
 ```bash
-.venv/bin/python -m pytest tests/test_manifest_v2.py -q
+.venv/bin/python -m pytest tests/test_manifest_v2.py tests/test_module_patch.py -q
 ```
 
 Expected result: PASS.
 
-- [ ] **Step 7: Commit Task 1**
+- [ ] **Step 8: Commit Task 1**
 
 Run:
 
 ```bash
-git add src/claude_monkey/manifest_v2.py tests/test_manifest_v2.py
+git add src/claude_monkey/manifest_v2.py tests/test_manifest_v2.py tests/test_module_patch.py
 git commit -m "Add structured splice manifest fields"
 ```
 
-Expected result: commit created with only those two files.
+Expected result: commit created with only those three files.
 
 ## Task 2: Implement structured module operation planning
 
@@ -302,9 +397,9 @@ Expected result: commit created with only those two files.
 - Modify: `/Users/MAC/Documents/Claude-patch/tests/test_module_patch.py`
 - Modify: `/Users/MAC/Documents/Claude-patch/src/claude_monkey/module_patch.py`
 
-- [ ] **Step 1: Replace test helper with override-friendly helper**
+- [ ] **Step 1: Replace the compatibility test helper with an override-friendly helper**
 
-In `/Users/MAC/Documents/Claude-patch/tests/test_module_patch.py`, replace the `op()` helper with:
+In `/Users/MAC/Documents/Claude-patch/tests/test_module_patch.py`, replace the `op()` helper updated in Task 1 with:
 
 ```python
 def op(replacement: bytes, **overrides) -> ModuleOperationV2:
@@ -441,6 +536,156 @@ def test_replace_substring_within_claims_only_subspan():
     )
 
 
+def test_insert_before_renders_before_anchor():
+    module = b"items=[\"frame\"]\n"
+    operation = op(
+        b"\"hiddenContext\",",
+        op_id="insert-hidden-before-frame",
+        type="insert_before",
+        start_marker=None,
+        end_marker=None,
+        anchor="\"frame\"",
+        insert_order=100,
+        require_within_range=(),
+        old_range_sha256=None,
+        old_range_length=None,
+    )
+
+    planned = plan_module_operations(
+        "pkg", "cli.js", module, [(operation, b"\"hiddenContext\",")]
+    )
+    changed = render_changed_module(module, planned)
+
+    assert changed == b"items=[\"hiddenContext\",\"frame\"]\n"
+    assert planned[0].module_start == module.index(b'"frame"')
+    assert planned[0].module_end == planned[0].module_start
+
+
+def test_insert_rejects_ambiguous_anchor_even_if_expected_count_is_two():
+    module = b"items=[\"frame\",\"frame\"]\n"
+    operation = op(
+        b",\"reminders\"",
+        op_id="insert-ambiguous-anchor",
+        type="insert_after",
+        start_marker=None,
+        end_marker=None,
+        anchor="\"frame\"",
+        expected_anchor_count=2,
+        insert_order=200,
+        require_within_range=(),
+        old_range_sha256=None,
+        old_range_length=None,
+    )
+
+    with pytest.raises(ModulePatchError, match="anchor count 2 != 1"):
+        plan_module_operations("pkg", "cli.js", module, [(operation, b",\"reminders\"")])
+
+
+def test_replace_substring_within_rejects_ambiguous_subspan_even_if_expected_count_is_two():
+    module = b'let x=Du==="frame",y=Du==="frame";function Sf(){}\n'
+    operation = op(
+        b'y=Du==="hiddenContext"',
+        op_id="replace-ambiguous-subspan",
+        type="replace_substring_within",
+        start_marker="let x=",
+        end_marker=";function Sf",
+        sub_exact='Du==="frame"',
+        expected_sub_exact_count=2,
+        require_within_range=(),
+        old_range_sha256=None,
+        old_range_length=None,
+    )
+
+    with pytest.raises(ModulePatchError, match="subExact count 2 != 1"):
+        plan_module_operations("pkg", "cli.js", module, [(operation, b'y=Du==="hiddenContext"')])
+
+
+def test_replace_between_without_markers_still_fails_closed():
+    operation = op(
+        b"replacement",
+        start_marker=None,
+        end_marker=None,
+        require_within_range=(),
+        old_range_sha256=None,
+        old_range_length=None,
+    )
+
+    with pytest.raises(
+        ModulePatchError, match="replace_between requires startMarker and endMarker"
+    ):
+        plan_module_operations("pkg", "cli.js", MODULE, [(operation, b"replacement")])
+
+
+def test_insertion_inside_nonzero_claimed_range_is_rejected():
+    replacement = op(b"function render(){NEW}\n")
+    insertion = op(
+        b"_INSERT",
+        op_id="insert-inside",
+        type="insert_after",
+        start_marker=None,
+        end_marker=None,
+        anchor="OLD_RENDER",
+        insert_order=100,
+        require_within_range=(),
+        old_range_sha256=None,
+        old_range_length=None,
+    )
+
+    with pytest.raises(ModulePatchError, match="insert_inside_claimed_range"):
+        plan_module_operations(
+            "pkg",
+            "cli.js",
+            MODULE,
+            [(replacement, b"function render(){NEW}\n"), (insertion, b"_INSERT")],
+        )
+
+
+def test_insertion_at_nonzero_claimed_range_boundary_is_allowed():
+    replacement = op(b"function render(){NEW}\n")
+    insertion = op(
+        b"/*before*/",
+        op_id="insert-at-start-boundary",
+        type="insert_before",
+        start_marker=None,
+        end_marker=None,
+        anchor="function render(){",
+        insert_order=100,
+        require_within_range=(),
+        old_range_sha256=None,
+        old_range_length=None,
+    )
+
+    planned = plan_module_operations(
+        "pkg",
+        "cli.js",
+        MODULE,
+        [(replacement, b"function render(){NEW}\n"), (insertion, b"/*before*/")],
+    )
+
+    assert render_changed_module(MODULE, planned).startswith(b"/*before*/function render(){NEW}")
+
+
+def test_nonzero_overlap_still_fails_closed_at_module_level():
+    first = op(b"function render(){NEW}\n")
+    second = op(
+        b"OLD",
+        op_id="overlap",
+        start_marker="OLD",
+        end_marker="after",
+        require_within_range=(),
+        old_range_sha256=None,
+        old_range_length=None,
+    )
+
+    with pytest.raises(ModulePatchError, match="range_overlap"):
+        plan_module_operations(
+            "pkg",
+            "cli.js",
+            MODULE,
+            [(first, b"function render(){NEW}\n"), (second, b"OLD")],
+        )
+
+
 def test_context_sha_mismatch_fails_build_planning():
     module = b'let qb=Du==="tasks",Ap=Du==="frame";function Sf(){}\n'
     operation = op(
@@ -473,7 +718,7 @@ Run:
 .venv/bin/python -m pytest tests/test_module_patch.py -q
 ```
 
-Expected result: FAIL because `PlannedModuleOperation` lacks `kind`, insert operations are unsupported, and same-offset rendering is not ordered by `insertOrder`.
+Expected result: FAIL because `PlannedModuleOperation` lacks `kind`, insert operations are unsupported, structured locator uniqueness is not enforced, `replace_between` without markers may not fail correctly after helper refactoring, and graph-safety checks do not yet understand insertion boundaries.
 
 - [ ] **Step 4: Extend `PlannedModuleOperation`**
 
@@ -567,6 +812,10 @@ def _range_for_operation(
     module: bytes, operation: ModuleOperationV2, *, enforce_context_sha: bool = True
 ) -> tuple[int, int, int | None, int | None, str]:
     if operation.type == "replace_between":
+        if operation.start_marker is None or operation.end_marker is None:
+            raise ModulePatchError(
+                f"{operation.op_id}: replace_between requires startMarker and endMarker"
+            )
         start, end = _resolve_context(module, operation)
         if enforce_context_sha:
             _enforce_context_sha(module, operation, start, end)
@@ -593,11 +842,8 @@ def _range_for_operation(
             _enforce_context_sha(module, operation, context_start, context_end)
         anchor = _b(operation.anchor)
         anchor_count = _count_in_range(module, anchor, context_start, context_end)
-        if anchor_count != operation.expected_anchor_count:
-            raise ModulePatchError(
-                f"{operation.op_id}: anchor count {anchor_count} "
-                f"!= {operation.expected_anchor_count}"
-            )
+        if anchor_count != 1:
+            raise ModulePatchError(f"{operation.op_id}: anchor count {anchor_count} != 1")
         anchor_start = _find_in_range(module, anchor, context_start, context_end)
         point = anchor_start if operation.type == "insert_before" else anchor_start + len(anchor)
         return point, point, context_start, context_end, "insertion"
@@ -610,11 +856,8 @@ def _range_for_operation(
         context = module[context_start:context_end]
         sub = _b(operation.sub_exact)
         sub_count = _count(context, sub)
-        if sub_count != operation.expected_sub_exact_count:
-            raise ModulePatchError(
-                f"{operation.op_id}: subExact count {sub_count} "
-                f"!= {operation.expected_sub_exact_count}"
-            )
+        if sub_count != 1:
+            raise ModulePatchError(f"{operation.op_id}: subExact count {sub_count} != 1")
         start = _find_in_range(module, sub, context_start, context_end)
         return start, start + len(sub), context_start, context_end, "subspan_replacement"
     raise ModulePatchError(f"{operation.op_id}: unsupported operation type {operation.type}")
@@ -817,11 +1060,28 @@ def test_build_patchset_v15_composes_same_anchor_insertions_by_order(tmp_path):
 
     assert report.failureReason is None
     assert report.automatedStatus == "passed"
+    assert report.schemaVersion == 3
     ops = [
         (item["packageId"], item["opId"], item["insertOrder"])
         for item in report.operationsApplied
     ]
     assert ops == [("first", "insert-_A", 100), ("second", "insert-_B", 200)]
+    first_op = report.operationsApplied[0]
+    for key in [
+        "packageId",
+        "opId",
+        "label",
+        "modulePath",
+        "moduleStart",
+        "moduleEnd",
+        "oldLen",
+        "newLen",
+        "delta",
+        "oldSha256",
+    ]:
+        assert key in first_op
+    assert first_op["type"] == "insert_after"
+    assert first_op["kind"] == "insertion"
 
 
 def test_build_patchset_v15_rejects_duplicate_insert_order_across_packages(tmp_path):
@@ -848,6 +1108,68 @@ def test_build_patchset_v15_rejects_duplicate_insert_order_across_packages(tmp_p
     assert report.status == "failed"
     assert report.failureReason is not None
     assert "patch_conflict:insert_order_duplicate" in report.failureReason
+
+
+def test_build_patchset_v15_rejects_insertion_inside_claimed_replacement_range(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    owner = tmp_path / "owner"
+    inserter = tmp_path / "inserter"
+    write_fixture_package(owner, source)
+    data = json.loads((owner / "patch.json").read_text())
+    data["id"] = "owner"
+    data["targets"][0]["modules"][0]["operations"][0]["opId"] = "owner-replace"
+    (owner / "patch.json").write_text(json.dumps(data))
+    write_insert_fixture_package(inserter, source, "inserter", 100, "_INSIDE")
+
+    report = build_patchset_v15(
+        BuildRequestV15(
+            source_path=source,
+            output_dir=tmp_path / "out",
+            package_dirs=[owner, inserter],
+            source_version="fixture",
+            source_version_output="fixture (Claude Code)",
+            platform="darwin",
+            arch="arm64",
+            command_runner=successful_runner,
+        )
+    )
+
+    assert report.status == "failed"
+    assert report.failureReason is not None
+    assert "patch_conflict:insert_inside_claimed_range" in report.failureReason
+
+
+def test_build_patchset_v15_rejects_cross_package_nonzero_overlap(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    write_fixture_package(first, source)
+    write_fixture_package(second, source)
+    for package, package_id in [(first, "first-owner"), (second, "second-owner")]:
+        data = json.loads((package / "patch.json").read_text())
+        data["id"] = package_id
+        op = data["targets"][0]["modules"][0]["operations"][0]
+        op["opId"] = f"{package_id}-replace"
+        (package / "patch.json").write_text(json.dumps(data))
+
+    report = build_patchset_v15(
+        BuildRequestV15(
+            source_path=source,
+            output_dir=tmp_path / "out",
+            package_dirs=[first, second],
+            source_version="fixture",
+            source_version_output="fixture (Claude Code)",
+            platform="darwin",
+            arch="arm64",
+            command_runner=successful_runner,
+        )
+    )
+
+    assert report.status == "failed"
+    assert report.failureReason is not None
+    assert "patch_conflict:range_overlap" in report.failureReason
 ```
 
 - [ ] **Step 3: Run builder tests and verify failure**
@@ -858,7 +1180,7 @@ Run:
 .venv/bin/python -m pytest tests/test_builder_v15.py -q
 ```
 
-Expected result: FAIL because `_check_overlaps()` in `builder_v15.py` does not know insertion groups and `operationsApplied` does not include `insertOrder`.
+Expected result: FAIL. The shared insertion test should fail because `operationsApplied` does not yet include additive structured fields. The duplicate-order test may incorrectly pass because cross-package duplicate insert-order validation does not exist yet. The insertion-inside-range and non-zero overlap tests protect the graph-safety invariants while `_check_overlaps()` is replaced.
 
 - [ ] **Step 4: Replace builder cross-package overlap check**
 
@@ -1178,6 +1500,94 @@ def test_diagnose_module_operation_distinguishes_missing_and_ambiguous_anchor():
     assert missing_diagnostic["anchorCount"] == 0
     assert ambiguous_diagnostic["status"] == "anchor_ambiguous"
     assert ambiguous_diagnostic["anchorCount"] == 2
+
+
+def test_diagnose_replace_substring_within_reports_context_and_subspan_failures():
+    missing_context = op(
+        b"NEW",
+        op_id="missing-context",
+        type="replace_substring_within",
+        start_marker="missing-start",
+        end_marker="end",
+        sub_exact="needle",
+        require_within_range=(),
+        old_range_sha256=None,
+        old_range_length=None,
+    )
+    ambiguous_context = op(
+        b"NEW",
+        op_id="ambiguous-context",
+        type="replace_substring_within",
+        start_marker="start",
+        end_marker="end",
+        sub_exact="needle",
+        require_within_range=(),
+        old_range_sha256=None,
+        old_range_length=None,
+    )
+    missing_sub = op(
+        b"NEW",
+        op_id="missing-sub",
+        type="replace_substring_within",
+        start_marker="start",
+        end_marker="end",
+        sub_exact="missing",
+        require_within_range=(),
+        old_range_sha256=None,
+        old_range_length=None,
+    )
+    ambiguous_sub = op(
+        b"NEW",
+        op_id="ambiguous-sub",
+        type="replace_substring_within",
+        start_marker="start",
+        end_marker="end",
+        sub_exact="needle",
+        require_within_range=(),
+        old_range_sha256=None,
+        old_range_length=None,
+    )
+
+    assert (
+        diagnose_module_operation(b"prefix needle end", missing_context)["status"]
+        == "context_missing"
+    )
+    assert (
+        diagnose_module_operation(b"start needle end start needle end", ambiguous_context)[
+            "status"
+        ]
+        == "context_ambiguous"
+    )
+    assert (
+        diagnose_module_operation(b"start needle end", missing_sub)["status"]
+        == "sub_exact_missing"
+    )
+    assert (
+        diagnose_module_operation(b"start needle needle end", ambiguous_sub)["status"]
+        == "sub_exact_ambiguous"
+    )
+
+
+def test_diagnose_replace_substring_within_reports_old_range_evidence():
+    module = b"start needle end"
+    operation = op(
+        b"NEW",
+        op_id="changed-old-range",
+        type="replace_substring_within",
+        start_marker="start",
+        end_marker="end",
+        sub_exact="needle",
+        require_within_range=(),
+        old_range_sha256="0" * 64,
+        old_range_length=99,
+    )
+
+    diagnostic = diagnose_module_operation(module, operation)
+
+    assert diagnostic["status"] == "candidate_found_old_range_changed"
+    assert diagnostic["subExactCount"] == 1
+    assert diagnostic["oldRangeLengthMatched"] is False
+    assert diagnostic["oldRangeSha256Matched"] is False
 ```
 
 - [ ] **Step 2: Implement `diagnose_module_operation()`**
@@ -1185,69 +1595,154 @@ def test_diagnose_module_operation_distinguishes_missing_and_ambiguous_anchor():
 In `/Users/MAC/Documents/Claude-patch/src/claude_monkey/module_patch.py`, add these helpers after `render_changed_module()`:
 
 ```python
-def _unresolved_diagnostic_status(operation: ModuleOperationV2, anchor_count: int | None) -> str:
-    if anchor_count is None:
-        return "not_resolved"
-    if anchor_count == 0:
-        return "anchor_missing"
-    if anchor_count != operation.expected_anchor_count:
-        return "anchor_ambiguous"
-    return "not_resolved"
+def _diagnose_context_range(
+    module_content: bytes, operation: ModuleOperationV2, result: dict[str, object]
+) -> tuple[int, int] | None:
+    if operation.start_marker is None and operation.end_marker is None:
+        result["contextStatus"] = "whole_module"
+        result["contextStart"] = 0
+        result["contextEnd"] = len(module_content)
+        return 0, len(module_content)
+    if operation.start_marker is None or operation.end_marker is None:
+        result["contextStatus"] = "invalid"
+        result["status"] = "context_invalid"
+        return None
+    start_marker = _b(operation.start_marker)
+    end_marker = _b(operation.end_marker)
+    start_count = _count(module_content, start_marker)
+    result["startMarkerCount"] = start_count
+    if start_count == 0:
+        result["contextStatus"] = "missing"
+        result["status"] = "context_missing"
+        return None
+    if start_count != operation.expected_start_marker_count or start_count != 1:
+        result["contextStatus"] = "ambiguous"
+        result["status"] = "context_ambiguous"
+        return None
+    start = module_content.find(start_marker)
+    tail_start = start + len(start_marker)
+    tail = module_content[tail_start:]
+    end_count = _count(tail, end_marker)
+    result["endMarkerCount"] = end_count
+    if end_count == 0:
+        result["contextStatus"] = "missing"
+        result["status"] = "context_missing"
+        return None
+    if end_count != operation.expected_end_marker_count or end_count != 1:
+        result["contextStatus"] = "ambiguous"
+        result["status"] = "context_ambiguous"
+        return None
+    end = module_content.find(end_marker, tail_start)
+    result["contextStatus"] = "resolved"
+    result["contextStart"] = start
+    result["contextEnd"] = end
+    return start, end
+
+
+def _record_old_range_evidence(
+    module_content: bytes,
+    operation: ModuleOperationV2,
+    result: dict[str, object],
+    start: int,
+    end: int,
+) -> None:
+    old = module_content[start:end]
+    old_changed = False
+    if operation.old_range_length is not None:
+        matched = operation.old_range_length == len(old)
+        result["oldRangeLengthMatched"] = matched
+        old_changed = old_changed or not matched
+    if operation.old_range_sha256 is not None:
+        old_sha = hashlib.sha256(old).hexdigest()
+        matched = operation.old_range_sha256 == old_sha
+        result["oldRangeSha256Matched"] = matched
+        old_changed = old_changed or not matched
+    if old_changed and result.get("status") == "candidate_found":
+        result["status"] = "candidate_found_old_range_changed"
 
 
 def diagnose_module_operation(
     module_content: bytes, operation: ModuleOperationV2
 ) -> dict[str, object]:
     result: dict[str, object] = {"opId": operation.op_id, "ok": False, "status": "not_checked"}
-    try:
-        start, end, context_start, context_end, kind = _range_for_operation(
-            module_content, operation, enforce_context_sha=False
-        )
-    except ModulePatchError as exc:
-        anchor_count: int | None = None
-        result["error"] = str(exc)
-        if operation.anchor is not None:
-            anchor_count = _count(module_content, _b(operation.anchor))
-            result["anchorCount"] = anchor_count
-        if operation.sub_exact is not None:
-            sub = _b(operation.sub_exact)
-            result["subExactCount"] = _count(module_content, sub)
-        result["status"] = _unresolved_diagnostic_status(operation, anchor_count)
+    context_range = _diagnose_context_range(module_content, operation, result)
+    if context_range is None:
         return result
-    result.update(
-        {
-            "status": "candidate_found",
-            "kind": kind,
-            "candidateModuleStart": start,
-            "candidateModuleEnd": end,
-        }
-    )
-    if context_start is not None:
-        result["contextStart"] = context_start
-    if context_end is not None:
-        result["contextEnd"] = context_end
-    if operation.anchor is not None:
-        context_start_for_anchor = context_start if context_start is not None else 0
-        context_end_for_anchor = context_end if context_end is not None else len(module_content)
-        result["anchorCount"] = _count_in_range(
-            module_content,
-            _b(operation.anchor),
-            context_start_for_anchor,
-            context_end_for_anchor,
-        )
-    if operation.sub_exact is not None:
-        result["subExactCount"] = _count(module_content[start:end], _b(operation.sub_exact))
-    if (
-        operation.context_sha256 is not None
-        and context_start is not None
-        and context_end is not None
-    ):
+    context_start, context_end = context_range
+    if operation.context_sha256 is not None:
         context_sha_matches = _context_sha_matches(
             module_content, operation, context_start, context_end
         )
         result["contextSha256Matched"] = context_sha_matches
-        if not context_sha_matches:
-            result["status"] = "candidate_found_context_hash_changed"
+    if operation.type in {"insert_before", "insert_after"}:
+        if operation.anchor is None:
+            result["status"] = "anchor_missing"
+            result["anchorCount"] = 0
+            return result
+        anchor = _b(operation.anchor)
+        anchor_count = _count_in_range(module_content, anchor, context_start, context_end)
+        result["anchorCount"] = anchor_count
+        if anchor_count == 0:
+            result["status"] = "anchor_missing"
+            return result
+        if anchor_count != 1:
+            result["status"] = "anchor_ambiguous"
+            return result
+        anchor_start = _find_in_range(module_content, anchor, context_start, context_end)
+        point = anchor_start if operation.type == "insert_before" else anchor_start + len(anchor)
+        result.update(
+            {
+                "status": "candidate_found",
+                "kind": "insertion",
+                "candidateModuleStart": point,
+                "candidateModuleEnd": point,
+            }
+        )
+    elif operation.type == "replace_substring_within":
+        if operation.sub_exact is None:
+            result["status"] = "sub_exact_missing"
+            result["subExactCount"] = 0
+            return result
+        sub = _b(operation.sub_exact)
+        sub_count = _count_in_range(module_content, sub, context_start, context_end)
+        result["subExactCount"] = sub_count
+        if sub_count == 0:
+            result["status"] = "sub_exact_missing"
+            return result
+        if sub_count != 1:
+            result["status"] = "sub_exact_ambiguous"
+            return result
+        start = _find_in_range(module_content, sub, context_start, context_end)
+        end = start + len(sub)
+        result.update(
+            {
+                "status": "candidate_found",
+                "kind": "subspan_replacement",
+                "candidateModuleStart": start,
+                "candidateModuleEnd": end,
+            }
+        )
+        _record_old_range_evidence(module_content, operation, result, start, end)
+    else:
+        try:
+            start, end, _, _, kind = _range_for_operation(
+                module_content, operation, enforce_context_sha=False
+            )
+        except ModulePatchError as exc:
+            result["status"] = "not_resolved"
+            result["error"] = str(exc)
+            return result
+        result.update(
+            {
+                "status": "candidate_found",
+                "kind": kind,
+                "candidateModuleStart": start,
+                "candidateModuleEnd": end,
+            }
+        )
+        _record_old_range_evidence(module_content, operation, result, start, end)
+    if result.get("contextSha256Matched") is False:
+        result["status"] = "candidate_found_context_hash_changed"
     return result
 ```
 
@@ -1256,7 +1751,7 @@ def diagnose_module_operation(
 Run:
 
 ```bash
-.venv/bin/python -m pytest tests/test_module_patch.py::test_diagnose_module_operation_reports_unique_candidate_without_accepting tests/test_module_patch.py::test_diagnose_module_operation_distinguishes_missing_and_ambiguous_anchor -q
+.venv/bin/python -m pytest tests/test_module_patch.py::test_diagnose_module_operation_reports_unique_candidate_without_accepting tests/test_module_patch.py::test_diagnose_module_operation_distinguishes_missing_and_ambiguous_anchor tests/test_module_patch.py::test_diagnose_replace_substring_within_reports_context_and_subspan_failures tests/test_module_patch.py::test_diagnose_replace_substring_within_reports_old_range_evidence -q
 ```
 
 Expected result: PASS.
@@ -1349,6 +1844,45 @@ def test_validate_package_identity_mismatch_stops_on_ambiguous_diagnostic_target
     assert payload["diagnosticErrors"] == ["diagnostic_target_ambiguous"]
 
 
+def test_validate_package_identity_mismatch_ignores_targets_for_missing_module_path(
+    tmp_path, capsys
+):
+    from tests.fixtures_bun import build_macho_fixture
+    from tests.test_builder_v15 import write_insert_fixture_package
+
+    binary = tmp_path / "claude"
+    binary.write_bytes(build_macho_fixture()[0])
+    package = tmp_path / "pkg"
+    write_insert_fixture_package(package, binary, "fixture-insert", 100, "_A")
+    data = json.loads((package / "patch.json").read_text())
+    second_target = json.loads(json.dumps(data["targets"][0]))
+    second_target["sourceIdentity"]["claudeVersion"] = "other-fixture"
+    second_target["modules"][0]["path"] = "/$bunfs/root/src/missing.js"
+    data["targets"].append(second_target)
+    (package / "patch.json").write_text(json.dumps(data))
+
+    assert (
+        main(
+            [
+                "validate-package",
+                "--source",
+                str(binary),
+                "--package",
+                str(package),
+                "--source-version",
+                "new-version",
+                "--source-version-output",
+                "new-version (Claude Code)",
+                "--json",
+            ]
+        )
+        == 1
+    )
+    payload = read_json(capsys)
+    assert payload["diagnosticTargetSelected"] is True
+    assert payload["operationDiagnostics"][0]["opId"] == "insert-_A"
+
+
 def test_validate_package_module_identity_mismatch_reports_operation_diagnostics(
     tmp_path, capsys
 ):
@@ -1418,12 +1952,32 @@ def _current_source_identity_dict(
     }
 
 
-def _diagnostic_targets(manifest: ManifestV2, request: ValidationRequestV15) -> list[TargetV2]:
+def _source_module_paths(source: bytes) -> set[str] | None:
+    try:
+        layout = find_macho_layout(source)
+        graph = parse_bun_section(
+            source[layout.bun_section.offset : layout.bun_section.offset + layout.bun_section.size]
+        )
+    except (MachOError, BunGraphError):
+        return None
+    if graph.validation_errors:
+        return None
+    return {module.path for module in graph.modules}
+
+
+def _diagnostic_targets(
+    manifest: ManifestV2, request: ValidationRequestV15, source: bytes
+) -> list[TargetV2]:
+    module_paths = _source_module_paths(source)
     return [
         target
         for target in manifest.targets
         if target.source_identity.platform == request.platform
         and target.source_identity.arch == request.arch
+        and (
+            module_paths is None
+            or any(module.path in module_paths for module in target.modules)
+        )
     ]
 
 
@@ -1461,7 +2015,7 @@ In `validate_package()`, replace the `if len(matching_targets) != 1:` return blo
 
 ```python
         if len(matching_targets) != 1:
-            diagnostic_targets = _diagnostic_targets(manifest, request)
+            diagnostic_targets = _diagnostic_targets(manifest, request, source)
             diagnostic_payload: dict[str, Any] = {
                 "schemaVersion": 1,
                 "ok": False,
@@ -1510,7 +2064,7 @@ In the module identity check inside `validate_package()`, replace the `return` b
 Run:
 
 ```bash
-.venv/bin/python -m pytest tests/test_module_patch.py::test_diagnose_module_operation_reports_unique_candidate_without_accepting tests/test_module_patch.py::test_diagnose_module_operation_distinguishes_missing_and_ambiguous_anchor tests/test_cli_v15.py::test_validate_package_identity_mismatch_reports_diagnostic_candidates tests/test_cli_v15.py::test_validate_package_identity_mismatch_stops_on_ambiguous_diagnostic_target tests/test_cli_v15.py::test_validate_package_module_identity_mismatch_reports_operation_diagnostics -q
+.venv/bin/python -m pytest tests/test_module_patch.py::test_diagnose_module_operation_reports_unique_candidate_without_accepting tests/test_module_patch.py::test_diagnose_module_operation_distinguishes_missing_and_ambiguous_anchor tests/test_module_patch.py::test_diagnose_replace_substring_within_reports_context_and_subspan_failures tests/test_module_patch.py::test_diagnose_replace_substring_within_reports_old_range_evidence tests/test_cli_v15.py::test_validate_package_identity_mismatch_reports_diagnostic_candidates tests/test_cli_v15.py::test_validate_package_identity_mismatch_stops_on_ambiguous_diagnostic_target tests/test_cli_v15.py::test_validate_package_identity_mismatch_ignores_targets_for_missing_module_path tests/test_cli_v15.py::test_validate_package_module_identity_mismatch_reports_operation_diagnostics -q
 ```
 
 Expected result: PASS.
@@ -1610,6 +2164,19 @@ def test_patch_package_relationship_fields_are_preserved(tmp_path):
     assert loaded.patch.conflicts_with_packages == ("upstream-attachment-suppression",)
     assert loaded.patch.provides == ("footer-drawer:hiddenContext",)
     assert loaded.patch.consumes == ("footer-drawers:v1",)
+
+
+def test_patch_package_relationship_fields_reject_empty_strings(tmp_path):
+    package_dir = tmp_path / "badrel"
+    package_dir.mkdir()
+    payload = patch_manifest("badrel")
+    payload["requiresPackages"] = [""]
+    write_json(package_dir / "badrel.json", payload)
+
+    with pytest.raises(
+        PackageValidationError, match="requiresPackages_must_be_non_empty_string_list"
+    ):
+        load_package_manifest(package_dir, PackageKind.PATCH)
 ```
 
 - [ ] **Step 4: Implement package-envelope relationship fields**
@@ -1632,6 +2199,18 @@ Extend `PatchPackage` with:
     consumes: tuple[str, ...] = ()
 ```
 
+Add this helper after `_require_string_list()` so package-envelope relationship metadata has the same non-empty-string invariant as direct schema-v2 manifests:
+
+```python
+def _require_non_empty_string_list(obj: dict[str, Any], field: str) -> tuple[str, ...]:
+    value = obj.get(field, [])
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item for item in value
+    ):
+        _fail(f"{field}_must_be_non_empty_string_list")
+    return tuple(value)
+```
+
 Change `_parse_patch()` to accept the top-level manifest mapping and read relationship fields from that top level:
 
 ```python
@@ -1647,10 +2226,10 @@ def _parse_patch(value: Any, package_dir: Path, top: dict[str, Any]) -> PatchPac
     return PatchPackage(
         engine=engine,
         targets=tuple(targets),
-        requires_packages=_require_string_list(top, "requiresPackages"),
-        conflicts_with_packages=_require_string_list(top, "conflictsWithPackages"),
-        provides=_require_string_list(top, "provides"),
-        consumes=_require_string_list(top, "consumes"),
+        requires_packages=_require_non_empty_string_list(top, "requiresPackages"),
+        conflicts_with_packages=_require_non_empty_string_list(top, "conflictsWithPackages"),
+        provides=_require_non_empty_string_list(top, "provides"),
+        consumes=_require_non_empty_string_list(top, "consumes"),
     )
 ```
 
@@ -1771,7 +2350,7 @@ In `build_patchset_v15()`, after `_select_packages()` succeeds and before creati
 Run:
 
 ```bash
-.venv/bin/python -m pytest tests/test_manifest_v2.py::test_manifest_v2_accepts_package_relationship_fields tests/test_package_model_v3.py::test_patch_package_relationship_fields_are_preserved tests/test_builder_v15.py::test_build_patchset_v15_fails_missing_required_package tests/test_builder_v15.py::test_build_patchset_v15_fails_explicit_package_conflict -q
+.venv/bin/python -m pytest tests/test_manifest_v2.py::test_manifest_v2_accepts_package_relationship_fields tests/test_package_model_v3.py::test_patch_package_relationship_fields_are_preserved tests/test_package_model_v3.py::test_patch_package_relationship_fields_reject_empty_strings tests/test_builder_v15.py::test_build_patchset_v15_fails_missing_required_package tests/test_builder_v15.py::test_build_patchset_v15_fails_explicit_package_conflict -q
 ```
 
 Expected result: PASS.
@@ -1850,11 +2429,14 @@ The implementation is complete when all of these are true:
 - `insert_before` and `insert_after` parse, plan, report, and render as zero-width operations.
 - Same-offset insertions render deterministically by `insertOrder`, independent of package CLI order.
 - Duplicate same-point `insertOrder` fails closed.
+- Structured `anchor` and `subExact` locators are unique-only; expected counts greater than `1` are rejected.
+- `replace_between` without both markers still fails closed and never becomes whole-module replacement.
 - `replace_substring_within` claims only its subspan and hard-fails on supplied `contextSha256` mismatch during build planning.
 - Cross-package non-zero overlaps still fail closed.
 - `operationsApplied` and `operationsResolved` include structured operation evidence.
+- `BuildReportV2.schemaVersion` remains `3` with additive operation-entry fields and preserved existing keys.
 - `validate-package --json` can emit diagnostic-only candidates on identity mismatch while still returning `ok: false`.
-- Retarget diagnostics distinguish missing anchors, ambiguous anchors, and unique candidates whose context hash changed.
+- Retarget diagnostics distinguish missing anchors, ambiguous anchors, missing/ambiguous context, missing/ambiguous subspans, changed old-range evidence, and unique candidates whose context hash changed.
 - Module identity mismatch can report operation-level diagnostics without accepting the candidate.
 - Package relationship metadata works for direct schema-v2 `patch.json` and package-envelope manifests.
 - Missing required packages and explicit conflicts fail before operation planning.

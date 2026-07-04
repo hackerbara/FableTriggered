@@ -462,6 +462,52 @@ def test_toggle_option_tray_disabling_high_risk_skips_confirm(controller_parts):
 
 
 # ---------------------------------------------------------------------------
+# Quick-op busy-render push (reviewer re-review finding 2)
+# ---------------------------------------------------------------------------
+#
+# `_run_quick` used to set `self._busy_command` and fire `run_background`
+# without ever re-rendering -- window/tray were never told "we're busy" for
+# the actual duration of a quick op, so the busy gating from 082d601 was
+# only ever exercised if the user manually clicked Refresh mid-flight. The
+# real click-race (click a quick-op button, then immediately click
+# something else before it finishes) was completely unprotected.
+
+
+def test_quick_op_pushes_busy_render_before_command_finishes(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+    controller.refresh()  # populate self._state so `_run_quick` has something to render
+    window.rendered.clear()
+    window.busy_commands.clear()
+    tray.rendered.clear()
+
+    controller.on_action("toggle_patch", {"patch_id": "p1", "enabled": False})
+
+    # Busy render pushed synchronously, before the background command
+    # completes -- to BOTH window and tray.
+    assert window.busy_commands == ["toggle_patch"]
+    assert len(tray.rendered) == 1
+    assert tray.rendered[0].mutating_enabled is False
+
+    bridge.command_finished.emit("toggle_patch", _envelope(ok=True))
+
+    # And the next render, once the command completes, is non-busy again.
+    assert window.busy_commands == ["toggle_patch", None]
+    assert tray.rendered[-1].mutating_enabled is True
+
+
+def test_quick_op_skips_busy_render_when_no_state_cached_yet(controller_parts):
+    # Before any `refresh()` has ever run, there's no cached `MenuState` to
+    # render busy with -- `_run_quick` must skip the push entirely rather
+    # than rendering a bogus `None` state as busy.
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("toggle_patch", {"patch_id": "p1", "enabled": False})
+
+    assert window.rendered == []
+    assert tray.rendered == []
+
+
+# ---------------------------------------------------------------------------
 # refresh / quit / open_path / add & remove package routing
 # ---------------------------------------------------------------------------
 

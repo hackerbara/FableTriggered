@@ -60,6 +60,7 @@ class InstallPage(QWidget):
         super().__init__()
         self._state: MenuState | None = None
         self._selection = InstallTargetSelection()
+        self._mutating_enabled: bool = True
 
         layout = QVBoxLayout(self)
         self.banner = Banner()
@@ -89,6 +90,7 @@ class InstallPage(QWidget):
 
     def render(self, state: MenuState | None, *, mutating_enabled: bool = True) -> None:
         self._state = state
+        self._mutating_enabled = mutating_enabled
         if state is None:
             self.target_combo.blockSignals(True)
             self.target_combo.clear()
@@ -146,7 +148,7 @@ class InstallPage(QWidget):
             return
         self._selection.select(target)
         self.action.emit("set_install_target", {"path": str(target)})
-        self.render(self._state)
+        self.render(self._state, mutating_enabled=self._mutating_enabled)
 
     def _on_browse(self) -> None:
         # Deferred import to avoid a circular import with `gui/app.py` (see
@@ -156,9 +158,10 @@ class InstallPage(QWidget):
         activate_app_for_window()
         path, _selected_filter = QFileDialog.getSaveFileName(self, "Choose Install Target")
         if not path:
-            self.render(self._state)  # revert the combo off the transient "Browse…" row
+            # revert the combo off the transient "Browse…" row
+            self.render(self._state, mutating_enabled=self._mutating_enabled)
             return
         target = Path(path).expanduser()
         self._selection.select(target)
         self.action.emit("set_install_target", {"path": str(target)})
-        self.render(self._state)
+        self.render(self._state, mutating_enabled=self._mutating_enabled)

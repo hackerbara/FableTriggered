@@ -542,6 +542,18 @@ class Controller:
             return
         self._busy_command = name
         self._pending_quick_pages[name] = page
+        # Push a synchronous busy re-render to window/tray *before* the
+        # background command is fired -- this is the actual click-race the
+        # busy gating exists to protect (click a quick-op button, then
+        # immediately click something else before it finishes). Reuse the
+        # already-cached `self._state` from the last `refresh()` rather than
+        # firing a fresh CLI status fetch; if nothing has been fetched yet
+        # (e.g. the very first action before any refresh ever ran), there is
+        # no state to protect a render with, so skip the push rather than
+        # rendering a bogus `None` state as busy.
+        if self._state is not None:
+            self.window.render(self._state, self._busy_command)
+            self._render_notice()
         self.runner.run_background(name, argv, mutating=True)
 
     # -- long ops ---------------------------------------------------------

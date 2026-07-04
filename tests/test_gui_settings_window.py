@@ -1059,6 +1059,49 @@ def test_navigation_and_logs_controls_stay_enabled_while_busy(qtbot, fake_state)
     assert window.logs_page.open_state_folder_button.isEnabled() is True
 
 
+def test_install_page_combo_change_while_busy_keeps_install_disabled(qtbot, tmp_path):
+    # Regression (reviewer re-review finding 1): `InstallPage` never cached
+    # `mutating_enabled` and its internal self-render call sites
+    # (`_on_combo_index_changed`/`_on_browse`) called `self.render(self._state)`
+    # with no argument, silently defaulting to `mutating_enabled=True` --
+    # changing the target combo mid-flight re-enabled the Install button,
+    # defeating the busy gating shipped in 082d601.
+    detected = tmp_path / "detected" / "claude"
+    state = _state(tmp_path, shim_installed=False, detected_claude_command_path=detected)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state, "install_shim")
+    assert window.install_page.install_button.isEnabled() is False
+
+    combo = window.install_page.target_combo
+    managed_target = combo.itemData(0)
+    assert managed_target != detected  # index 0 is a real, different selection
+
+    combo.setCurrentIndex(0)  # simulate a combo change mid-flight
+
+    assert window.install_page.install_button.isEnabled() is False
+
+
+def test_install_page_combo_change_after_busy_clears_reenables(qtbot, tmp_path):
+    detected = tmp_path / "detected" / "claude"
+    state = _state(tmp_path, shim_installed=False, detected_claude_command_path=detected)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state, "install_shim")
+    window.render(state, None)  # busy command cleared
+    assert window.install_page.install_button.isEnabled() is True
+
+    combo = window.install_page.target_combo
+    managed_target = combo.itemData(0)
+    assert managed_target != detected
+
+    combo.setCurrentIndex(0)
+
+    assert window.install_page.install_button.isEnabled() is True
+
+
 def test_render_busy_command_defaults_to_not_busy(qtbot, fake_state):
     # Every pre-existing `window.render(state)` call (no `busy_command` arg)
     # must keep behaving exactly as before this fix -- fully enabled.

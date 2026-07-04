@@ -8,10 +8,12 @@ formatting for status/version/prompt/patches -- already lives in
 those view-models and pushes strings into widgets; it never re-derives
 them.
 
-Only the Overview and Logs & Reports pages have real content in this task.
-Patches, Prompts, Options, and Install are empty placeholders wired into
-the sidebar/stack now so later tasks (17: Patches/Prompts/Options, 18:
-Install) can fill them in without touching the window skeleton.
+Overview, Logs & Reports, Patches, Prompts, and Options have real content;
+Install remains an empty placeholder wired into the sidebar/stack now so a
+later task (18) can fill it in without touching the window skeleton.
+Patches/Prompts/Options pages live in `gui/pages/` (moved out of this file
+once real content pushed it past the ~500-line split threshold noted in
+the GUI plan); this module re-exports them for convenience.
 
 Closing the window never quits the app -- it only hides, per the plan's
 "tray keeps running" requirement; the singleton window is re-shown by the
@@ -37,8 +39,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from claude_monkey.gui.pages.common import Banner as _Banner
+from claude_monkey.gui.pages.options_page import OptionsPage
+from claude_monkey.gui.pages.patches_page import PatchesPage
+from claude_monkey.gui.pages.prompts_page import PromptsPage
 from claude_monkey.gui.window_model import build_tray_model
 from claude_monkey.menubar_state import MenuState
+
+__all__ = [
+    "SettingsWindow",
+    "OverviewPage",
+    "LogsPage",
+    "PatchesPage",
+    "PromptsPage",
+    "OptionsPage",
+]
 
 MAX_LOG_TAIL_LINES = 200
 LOG_FILE_NAME = "menubar.log"  # historical name, kept for continuity -- see design doc.
@@ -70,29 +85,8 @@ def _tail_lines(path: Path, max_lines: int = MAX_LOG_TAIL_LINES) -> str:
     return "\n".join(lines[-max_lines:])
 
 
-class _Banner(QWidget):
-    """Dismissible inline error banner, one per settings page."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        self.label = QLabel("")
-        self.label.setWordWrap(True)
-        self.label.setStyleSheet("color: #a00; font-weight: bold;")
-        layout.addWidget(self.label, 1)
-        self.dismiss_button = QPushButton("Dismiss")
-        self.dismiss_button.clicked.connect(self.hide)
-        layout.addWidget(self.dismiss_button)
-        self.hide()
-
-    def show_message(self, message: str) -> None:
-        self.label.setText(message)
-        self.show()
-
-
 class _PlaceholderPage(QWidget):
-    """Empty page for Patches/Prompts/Options/Install, filled in later."""
+    """Empty page for Install, filled in later (Task 18)."""
 
     def __init__(self, title: str) -> None:
         super().__init__()
@@ -246,9 +240,12 @@ class SettingsWindow(QMainWindow):
         action(str, dict): a user-triggered command intent, using the same
             action-id vocabulary as the tray, plus window-only ids
             ("uninstall_shim", "add_package", "remove_package",
-            "add_prompt_file", "set_install_target", "open_path"). This
-            task only ever emits "rebuild" and "open_path" -- the rest are
-            wired up by later tasks (17/18) once their pages exist.
+            "add_prompt_file", "set_install_target", "open_path"). Overview
+            emits "rebuild"/"open_path"; Logs & Reports emits "open_path";
+            Patches/Prompts/Options (their own page-local `action` signals,
+            bubbled through this one) emit "toggle_patch"/"toggle_option"/
+            "set_prompt"/"add_package"/"add_prompt_file"/"remove_package".
+            Install is wired up by a later task (18) once its page exists.
         refresh_requested(): emitted by the disconnected-state Retry button.
     """
 
@@ -285,9 +282,9 @@ class SettingsWindow(QMainWindow):
         body.addWidget(self.sidebar)
 
         self.overview_page = OverviewPage()
-        self.patches_page = _PlaceholderPage("Patches")
-        self.prompts_page = _PlaceholderPage("Prompts")
-        self.options_page = _PlaceholderPage("Options")
+        self.patches_page = PatchesPage()
+        self.prompts_page = PromptsPage()
+        self.options_page = OptionsPage()
         self.install_page = _PlaceholderPage("Install")
         self.logs_page = LogsPage()
 
@@ -317,6 +314,12 @@ class SettingsWindow(QMainWindow):
         self.logs_page.open_report_button.clicked.connect(self._open_logs_report)
         self.logs_page.open_logs_folder_button.clicked.connect(self._open_logs_folder)
         self.logs_page.open_state_folder_button.clicked.connect(self._open_state_folder)
+
+        # Patches/Prompts/Options each own a small `action` signal; bubble
+        # every emission straight through this window's `action` signal.
+        self.patches_page.action.connect(self.action.emit)
+        self.prompts_page.action.connect(self.action.emit)
+        self.options_page.action.connect(self.action.emit)
 
     def render(self, state: MenuState | None) -> None:
         """Repopulate every page from `state`; `None` shows a disconnected banner."""

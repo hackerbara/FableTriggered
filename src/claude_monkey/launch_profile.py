@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
 from claude_monkey.config import ClaudeMonkeyConfig
+from claude_monkey.install import resolve_cached_source
 from claude_monkey.package_model import (
     PROMPT_FLAGS,
     PackageKind,
@@ -167,6 +169,27 @@ def _which_from_env(process_env: dict[str, str]):
     return which
 
 
+def _install_record_source(paths: StatePaths) -> LaunchTarget | None:
+    record_path = paths.state_dir / "install-record.json"
+    try:
+        record = json.loads(record_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(record, dict) or record.get("owner") != "ClaudeMonkey managed shim":
+        return None
+
+    # Shared with install.py's clean_source_from_install_record: sha proves
+    # internal consistency, not provenance, so containment to the state
+    # directory's own sources cache is required too (see
+    # resolve_cached_source's docstring for the full rationale).
+    cache_path = resolve_cached_source(record, paths.state_dir)
+    if cache_path is None:
+        return None
+    if is_managed_launcher_path(cache_path, paths):
+        return None
+    return LaunchTarget(path=cache_path, kind="install_record_source")
+
+
 def select_launch_target(
     paths: StatePaths,
     config: ClaudeMonkeyConfig,
@@ -197,6 +220,10 @@ def select_launch_target(
         official = discover_official_claude(config, paths, process_env, which)
     if official is not None:
         return LaunchTarget(path=official, kind="official_fallback")
+
+    install_record_source = _install_record_source(paths)
+    if install_record_source is not None:
+        return install_record_source
     return None
 
 

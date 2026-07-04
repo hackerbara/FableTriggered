@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -25,6 +27,13 @@ from claude_monkey.package_model import (
     PromptSource,
 )
 from claude_monkey.paths import StatePaths
+
+
+def executable(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/bin/sh\necho claude\n")
+    path.chmod(0o755)
+    return path
 
 
 def manifest(
@@ -437,3 +446,56 @@ def test_duplicate_option_argv_checks_explicit_user_argv(tmp_path):
 
     assert result.argv == ["--debug"]
     assert result.skipped == [{"kind": "option_argv", "id": "debug", "reason": "duplicate_argv"}]
+
+
+def test_select_launch_target_uses_cached_previous_source_when_shim_hides_path_source(tmp_path):
+    paths = StatePaths(state_dir=tmp_path / ".claude-monkey")
+    shim_target = executable(tmp_path / "bin" / "claude")
+    cached = executable(paths.state_dir / "sources" / "abc" / "claude")
+    paths.state_dir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "owner": "ClaudeMonkey managed shim",
+        "targetPath": str(shim_target),
+        "stateDir": str(paths.state_dir),
+        "installedShimSha256": "not-checked-here",
+        "previousSourceCachePath": str(cached),
+        "previousSourceSha256": hashlib.sha256(cached.read_bytes()).hexdigest(),
+    }
+    (paths.state_dir / "install-record.json").write_text(json.dumps(record))
+    config = ClaudeMonkeyConfig(activeProfile="default", profiles={"default": LaunchProfile()})
+
+    target = select_launch_target(paths, config, {"PATH": str(shim_target.parent)})
+
+    assert target is not None
+    assert target.kind == "install_record_source"
+    assert target.path == cached.resolve()
+
+
+def test_select_launch_target_prefers_official_over_install_record_cache_when_both_available(
+    tmp_path,
+):
+    paths = StatePaths(state_dir=tmp_path / ".claude-monkey")
+    official = executable(tmp_path / "official" / "claude")
+    shim_target = executable(tmp_path / "bin" / "claude")
+    cached = executable(paths.state_dir / "sources" / "abc" / "claude")
+    paths.state_dir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "owner": "ClaudeMonkey managed shim",
+        "targetPath": str(shim_target),
+        "stateDir": str(paths.state_dir),
+        "installedShimSha256": "not-checked-here",
+        "previousSourceCachePath": str(cached),
+        "previousSourceSha256": hashlib.sha256(cached.read_bytes()).hexdigest(),
+    }
+    (paths.state_dir / "install-record.json").write_text(json.dumps(record))
+    config = ClaudeMonkeyConfig(
+        activeProfile="default",
+        profiles={"default": LaunchProfile()},
+        officialClaudePath=str(official),
+    )
+
+    target = select_launch_target(paths, config, {"PATH": str(shim_target.parent)})
+
+    assert target is not None
+    assert target.kind == "official_fallback"
+    assert target.path == official.resolve()

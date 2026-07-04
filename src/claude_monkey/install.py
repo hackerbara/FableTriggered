@@ -97,23 +97,50 @@ def _cache_previous_source(target_path: Path, state_dir: Path) -> dict:
     }
 
 
+def resolve_cached_source(record: dict, state_dir: Path) -> Path | None:
+    """Verify and return an install record's cached previous-source path.
+
+    The sha256 check only proves internal consistency -- that the cached
+    bytes match what was recorded -- it says nothing about *provenance*. A
+    hand-edited (or otherwise tampered) record could point
+    previousSourceCachePath at an arbitrary file that happens to match a
+    likewise hand-edited sha. Containing the resolved path to `state_dir /
+    "sources"` -- the only location `_cache_previous_source` ever writes to
+    -- keeps such a record from redirecting launch/cleanup at paths outside
+    what ClaudeMonkey itself manages. This mirrors the same
+    same-trust-domain judgment `select_launch_target` already applies to the
+    "patched" branch via its `versions_dir` containment check.
+    """
+    cache_raw = record.get("previousSourceCachePath")
+    expected_sha = record.get("previousSourceSha256")
+    if not isinstance(cache_raw, str) or not isinstance(expected_sha, str):
+        return None
+    try:
+        cache_path = Path(cache_raw).expanduser().resolve(strict=True)
+    except OSError:
+        return None
+    sources_root = (state_dir / "sources").resolve(strict=False)
+    if not cache_path.is_relative_to(sources_root):
+        return None
+    try:
+        if not (
+            cache_path.is_file()
+            and os.access(cache_path, os.X_OK)
+            and sha256_bytes(cache_path.read_bytes()) == expected_sha
+        ):
+            return None
+    except OSError:
+        return None
+    return cache_path
+
+
 def clean_source_from_install_record(target_path: Path, record_path: Path) -> Path | None:
     record = _existing_managed_record(record_path, target_path)
     if record is None:
         return None
-    cache_raw = record.get("previousSourceCachePath")
-    expected_sha = record.get("previousSourceSha256")
-    if isinstance(cache_raw, str) and isinstance(expected_sha, str):
-        cache_path = Path(cache_raw)
-        try:
-            if (
-                cache_path.is_file()
-                and os.access(cache_path, os.X_OK)
-                and sha256_bytes(cache_path.read_bytes()) == expected_sha
-            ):
-                return cache_path
-        except OSError:
-            pass
+    cache_path = resolve_cached_source(record, record_path.parent)
+    if cache_path is not None:
+        return cache_path
     previous_target = record.get("previousTarget")
     if isinstance(previous_target, str):
         try:

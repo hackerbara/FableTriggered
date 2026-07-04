@@ -340,3 +340,41 @@ def test_insertion_at_replacement_end_boundary_with_outside_anchor_is_allowed():
     changed = render_changed_module(MODULE, planned)
     assert b"function after(){return 1}/*T*/" in changed
     assert b"function render(){NEW}" in changed
+
+
+
+from claude_monkey.module_patch import verify_insertions
+
+
+def test_render_orders_same_point_insertions_by_insert_order_not_list_order():
+    a = make_op(op_id="a", insert_order=300, replacement=PayloadRefV2(inline=",LAST"))
+    b = make_op(op_id="b", insert_order=100, replacement=PayloadRefV2(inline=",FIRST"))
+    c = make_op(op_id="c", insert_order=200, replacement=PayloadRefV2(inline=",MID"))
+    planned = _plan([(a, b",LAST"), (b, b",FIRST"), (c, b",MID")])
+    changed = render_changed_module(MODULE, planned)
+    assert b"OLD_RENDER,FIRST,MID,LAST" in changed
+    # determinism: shuffled input order produces identical bytes
+    planned_shuffled = _plan([(c, b",MID"), (a, b",LAST"), (b, b",FIRST")])
+    assert render_changed_module(MODULE, planned_shuffled) == changed
+
+
+def test_verify_insertions_reports_final_offsets():
+    a = make_op(op_id="a", insert_order=100, replacement=PayloadRefV2(inline=",FIRST"))
+    b = make_op(op_id="b", insert_order=200, replacement=PayloadRefV2(inline=",SECOND"))
+    planned = _plan([(a, b",FIRST"), (b, b",SECOND")])
+    rendered = render_changed_module(MODULE, planned)
+    results = verify_insertions(rendered, planned)
+    assert len(results) == 2
+    assert all(item["insertionVerified"] for item in results)
+    by_op = {item["opId"]: item for item in results}
+    point = MODULE.index(b"OLD_RENDER") + len(b"OLD_RENDER")
+    assert by_op["a"]["finalOffset"] == point
+    assert by_op["b"]["finalOffset"] == point + len(b",FIRST")
+
+
+def test_verify_insertions_detects_corrupt_render():
+    planned = _plan([(make_op(op_id="a"), b",ENTRY")])
+    rendered = render_changed_module(MODULE, planned)
+    corrupted = rendered.replace(b",ENTRY", b",WRONGX")
+    results = verify_insertions(corrupted, planned)
+    assert results[0]["insertionVerified"] is False

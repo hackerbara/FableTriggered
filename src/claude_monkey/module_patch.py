@@ -285,9 +285,30 @@ def check_planned_conflicts(planned: list[PlannedModuleOperation]) -> None:
 def render_changed_module(module_content: bytes, planned: list[PlannedModuleOperation]) -> bytes:
     output = bytearray()
     cursor = 0
-    for item in sorted(planned, key=lambda op: op.module_start):
+    for item in sorted(planned, key=_render_order):
         output.extend(module_content[cursor : item.module_start])
         output.extend(item.replacement)
         cursor = item.module_end
     output.extend(module_content[cursor:])
     return bytes(output)
+
+
+def verify_insertions(
+    rendered: bytes, planned: list[PlannedModuleOperation]
+) -> list[dict]:
+    results: list[dict] = []
+    delta = 0
+    for item in sorted(planned, key=_render_order):
+        final_start = item.module_start + delta
+        if item.kind == "insertion":
+            verified = rendered[final_start : final_start + item.new_len] == item.replacement
+            results.append(
+                {
+                    "packageId": item.package_id,
+                    "opId": item.op_id,
+                    "finalOffset": final_start,
+                    "insertionVerified": verified,
+                }
+            )
+        delta += item.delta
+    return results

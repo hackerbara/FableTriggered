@@ -2,8 +2,8 @@
   "schemaVersion": 2,
   "id": "reminders-manager",
   "name": "Reminders Manager",
-  "description": "Runtime reminder/accounting suppression plus Footer Drawers registration for Claude Code 2.1.201.",
-  "packageVersion": "2.1.201-framework.1",
+  "description": "Runtime reminder/accounting suppression plus panel for real footer target wiring in Claude Code 2.1.201.",
+  "packageVersion": "2.1.201-real-target.1",
   "requiresPackages": [
     "footer-drawers"
   ],
@@ -40,9 +40,9 @@
               "oldRangeLength": 602,
               "replacement": {
                 "path": "payloads/rm-attachment-wrapper-deny-2.1.201.js",
-                "sha256": "66c9928dad7cc23cf0e6ecafecb4faa2616708e8fcf5ff987f2e9fec531e203a"
+                "sha256": "c4476007c7a14f53dc477b172eb99da09fd2c039842390ecf53e32a826730b2e"
               },
-              "knownBehaviorChange": "Suppresses selected reminder/accounting attachment families before attachment generation."
+              "knownBehaviorChange": "Suppresses selected reminder/accounting attachment families and provides the spike-shaped real-target action wrapper."
             },
             {
               "opId": "rm-xye-runtime-filter",
@@ -61,17 +61,17 @@
               "knownBehaviorChange": "Filters selected reminder/accounting attachment objects before telemetry and transcript construction."
             },
             {
-              "opId": "rm-register-footer-drawer",
-              "label": "Register Reminders drawer with Footer Drawers framework",
+              "opId": "rm-panel-real-target",
+              "label": "Provide Reminders panel for the real footer target overlay",
               "type": "insert_before",
               "anchor": "var MXe,A_,Xd,GKo=2,pmr;",
               "expectedAnchorCount": 1,
               "insertOrder": 300,
               "replacement": {
-                "path": "payloads/rm-register-footer-drawer-2.1.201.js",
-                "sha256": "6d5377ba7fa635ea8191fba1c363d027b9aaa019eb3611bff6ce7103200ed51e"
+                "path": "payloads/rm-panel-real-target-2.1.201.js",
+                "sha256": "1fd642726e348512cf609c7a52d95477a59ecbf86b30fe3356f7b6a6378d1361"
               },
-              "knownBehaviorChange": "Registers Reminders as an always-available framework drawer with row cursor/toggle handling."
+              "knownBehaviorChange": "Renders Reminders only when the real reminders target is selected and its local UI state is open."
             }
           ]
         }
@@ -97,12 +97,12 @@
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function __codexRMRegisterFooterDrawer("
+          "value": "function __codexRMWrapActions("
         },
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "id:\"reminders\""
+          "value": "function __codexRMPanel("
         }
       ],
       "manualSmoke": {

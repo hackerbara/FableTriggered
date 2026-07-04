@@ -25,20 +25,18 @@ EXPECTED_MODULE_SHA = "46db617a7b13c062fb31595f6244819b11f7cdc6e6fed8e2c3f74a27f
 EXPECTED_MODULE_LENGTH = 18700756
 
 FRAMEWORK_OP_IDS = {
-    "fd-bootstrap-and-overlay",
-    "fd-footer-render-tick-state",
-    "fd-footer-render-tick-effect",
-    "fd-footer-target-drawers",
-    "fd-footer-target-deps",
-    "fd-footer-selection-flag",
-    "fd-footer-action-wrap-open",
-    "fd-footer-action-wrap-close",
+    "fd-real-target-helpers-and-overlay",
+    "fd-footer-hiddencontext-state",
+    "fd-real-drawer-targets",
+    "fd-real-drawer-selection-flags",
+    "fd-real-target-action-wrap-open",
+    "fd-real-target-action-wrap-close",
     "fd-footer-space-binding",
-    "fd-footer-bar-var",
-    "fd-footer-bar-shortcuts-condition",
-    "fd-footer-bar-null-condition",
-    "fd-footer-bar-render",
-    "fd-footer-bar-selection-state",
+    "fd-status-real-drawer-selection-hooks",
+    "fd-status-real-drawer-bars",
+    "fd-status-shortcuts-condition",
+    "fd-status-null-condition",
+    "fd-status-render-real-drawer-bars",
 }
 
 MOVED_THINKING_OP_IDS = {
@@ -112,33 +110,29 @@ def test_footer_drawers_payloads_are_ascii_safe_and_hashes_match() -> None:
                     assert offenders == [], f"non-ascii payload text in {path}: {offenders[:3]}"
 
 
-def test_footer_drawers_payload_defines_registry_lifecycle_contract() -> None:
-    text = (FOOTER_DRAWERS / "payloads" / "01-bootstrap-and-overlay.js").read_text(encoding="utf-8")
-    required = [
+def test_footer_drawers_payloads_have_no_registry_or_descriptor_contract() -> None:
+    text = "\n".join(path.read_text(encoding="utf-8") for path in sorted((FOOTER_DRAWERS / "payloads").glob("*.js")))
+    for needle in [
+        "__CODEX_FOOTER_DRAWERS_V1__",
         "__codexFDDrawers",
         "__codexFDRegister",
-        "__codexFDBump",
-        "__codexFDAvailable",
-        "__codexFDOpen",
-        "__codexFDClose",
-        "__codexFDWrapActions",
-        "__codexFDDrawerPanel",
         "hoverId",
         "openId",
-        "onOpen",
-        "onClose",
-        "badge",
-        "flash",
-    ]
-    for needle in required:
-        assert needle in text
-    assert "footer:clearSelection" in text
-    clear_handler = text.split('r["footer:clearSelection"]=', 1)[1].split(';return r}', 1)[0]
-    assert 'if(a){if(__codexFDSafe(()=>a.onKey?.("clearSelection")' in clear_handler
-    assert 'l();return}return e["footer:clearSelection"]?.()' in clear_handler
-    assert "__codexFDClose(\"escape\")" not in text
-    assert "__codexFDClose(\"x\")" in text
-
+        "__codexFDLand",
+        "__codexFDMove",
+        '"drawers"',
+        'footerSelection==="drawers"',
+        "available:",
+        "onOpen:",
+        "onClose:",
+        "onKey:",
+        "renderPanel:",
+    ]:
+        assert needle not in text
+    assert "function __codexFDWrapRealTargetActions" in text
+    assert 't==="reminders"&&typeof __codexRMWrapActions==="function"' in text
+    assert '__codexHiddenContextFrame?.visible&&"hiddenContext"' in text
+    assert "FDdrawerBars=[FDhBar,FDtBar,FDrBar].filter(Boolean)" in text
 
 def _run_footer_drawers_payload_js(body: str) -> dict:
     bootstrap = FOOTER_DRAWERS / "payloads" / "01-bootstrap-and-overlay.js"
@@ -160,108 +154,34 @@ eval(fs.readFileSync({str(bootstrap)!r}, "utf8"));
     return json.loads(result.stdout)
 
 
-def test_footer_drawers_bar_consumes_active_selection_and_renders_per_entry_hints() -> None:
-    bar_payload = (FOOTER_DRAWERS / "payloads" / "10-footer-bar-var.js").read_text(encoding="utf-8")
-    selection_payload = (FOOTER_DRAWERS / "payloads" / "14-footer-bar-selection-state.js").read_text(encoding="utf-8")
-    bootstrap_payload = (FOOTER_DRAWERS / "payloads" / "01-bootstrap-and-overlay.js").read_text(encoding="utf-8")
-    assert "FDsel=Tt((Me)=>Me.footerSelection===\"drawers\")" in selection_payload
-    assert "Tt((Me)=>Me.footerSelection" not in bar_payload
-    assert "__codexFDBar(FDsel)" in bar_payload
-    assert "__codexFDBar(FDs)" not in bar_payload
-    assert "children:__codexFDBarText()" not in bar_payload
-    assert "Xd.jsx(O1f,{selected:o.selected" in bootstrap_payload
-    assert 'color:o.selected?"background"' not in bootstrap_payload
+def test_footer_drawers_status_bar_uses_explicit_real_target_segments() -> None:
+    text = "\n".join(path.read_text(encoding="utf-8") for path in sorted((FOOTER_DRAWERS / "payloads").glob("*.js")))
+    assert 'footerSelection==="hiddenContext"' in text
+    assert 'footerSelection==="thinking"' in text
+    assert 'footerSelection==="reminders"' in text
+    assert '"Hidden Context "' in text
+    assert '"Thinking"' in text
+    assert '"Reminders"' in text
+    assert '" (enter)"' in text
+    assert '" \\u2192"' in text
+    assert "FDbar" not in text
+    assert "__codexFDBar" not in text
 
-    data = _run_footer_drawers_payload_js(
-        """
-__codexFDDrawers().entries = [];
-__codexFDRegister({id:"hidden",order:100,available:()=>true,label:()=>"Hidden",badge:()=>"2"});
-__codexFDRegister({id:"thinking",order:200,available:()=>true,label:()=>"Thinking"});
-__codexFDRegister({id:"reminders",order:300,available:()=>true,label:()=>"Reminders",flash:()=>true});
-__codexFDAvailable();
-__codexFDDrawers().hoverId = "thinking";
-console.log(JSON.stringify({
-  active: __codexFDBarItems(true),
-  inactive: __codexFDBarItems(false)
-}));
-"""
-    )
+def test_footer_drawers_target_list_has_real_drawer_targets_before_stock_targets() -> None:
+    text = (FOOTER_DRAWERS / "payloads" / "03-real-drawer-targets.js").read_text(encoding="utf-8")
+    assert text.index('__codexHiddenContextFrame?.visible&&"hiddenContext"') < text.index('typeof __codexTTDEnsure==="function"&&"thinking"') < text.index('typeof __codexRMState==="function"&&"reminders"') < text.index('Ui&&"tasks"')
+    assert '"drawers"' not in text
 
-    assert [item["id"] for item in data["active"]] == ["hidden", "thinking", "reminders"]
-    assert [item["hintKind"] for item in data["active"]] == ["arrow", "enter", "arrow"]
-    assert [item["selected"] for item in data["active"]] == [False, True, False]
-    assert [item["hintKind"] for item in data["inactive"]] == ["arrow", "arrow", "arrow"]
-    assert [item["selected"] for item in data["inactive"]] == [False, False, False]
-
-
-
-def test_footer_drawers_landing_resets_hover_only_when_toolbar_becomes_active() -> None:
-    data = _run_footer_drawers_payload_js(
-        """
-__codexFDDrawers().entries = [];
-__codexFDRegister({id:"hidden",order:100,available:()=>true,label:()=>"Hidden"});
-__codexFDRegister({id:"thinking",order:200,available:()=>true,label:()=>"Thinking"});
-__codexFDRegister({id:"reminders",order:300,available:()=>true,label:()=>"Reminders"});
-let state = __codexFDDrawers();
-let inactiveItems = __codexFDBarItems(false);
-let hoverBefore = state.hoverId;
-__codexFDSetActive(true);
-let afterLanding = {hoverId: state.hoverId, items: __codexFDBarItems(true)};
-__codexFDMove(1);
-let afterRight = {hoverId: state.hoverId, items: __codexFDBarItems(true)};
-__codexFDSetActive(false);
-__codexFDSetActive(true);
-let afterReenter = {hoverId: state.hoverId, items: __codexFDBarItems(true)};
-console.log(JSON.stringify({hoverBefore, inactiveItems, afterLanding, afterRight, afterReenter}));
-"""
-    )
-
-    assert data["hoverBefore"] is None
-    assert [item["selected"] for item in data["inactiveItems"]] == [False, False, False]
-    assert data["afterLanding"]["hoverId"] == "hidden"
-    assert [item["hintKind"] for item in data["afterLanding"]["items"]] == ["enter", "arrow", "arrow"]
-    assert data["afterRight"]["hoverId"] == "thinking"
-    assert [item["hintKind"] for item in data["afterRight"]["items"]] == ["arrow", "enter", "arrow"]
-    assert data["afterReenter"]["hoverId"] == "hidden"
-    assert [item["hintKind"] for item in data["afterReenter"]["items"]] == ["enter", "arrow", "arrow"]
-
-def test_footer_drawers_open_clear_selection_delegates_without_closing_and_x_keeps_drawers_selected() -> None:
-    data = _run_footer_drawers_payload_js(
-        """
-__codexFDDrawers().entries = [];
-let stockClear = 0;
-let closedReason = null;
-let selected = [];
-__codexFDRegister({
-  id:"hidden",
-  order:100,
-  available:()=>true,
-  label:()=>"Hidden",
-  onKey:(key)=>false,
-  onClose:(reason)=>{ closedReason = reason; }
-});
-__codexFDOpen("hidden");
-let actions = __codexFDWrapActions({
-  "footer:clearSelection":()=>{ stockClear += 1; },
-  "footer:close":()=>{ closedReason = "stock"; }
-}, "drawers", (value)=>{ selected.push(value); });
-actions["footer:clearSelection"]();
-let afterClear = {openId: __codexFDDrawers().openId, stockClear, selected: selected.slice()};
-actions["footer:close"]();
-console.log(JSON.stringify({
-  afterClear,
-  afterClose: {openId: __codexFDDrawers().openId, closedReason, selected}
-}));
-"""
-    )
-
-    assert data["afterClear"] == {"openId": "hidden", "stockClear": 0, "selected": ["drawers"]}
-    assert data["afterClose"] == {
-        "openId": None,
-        "closedReason": "x",
-        "selected": ["drawers", "drawers"],
-    }
-
+def test_footer_drawers_action_wrapper_routes_by_real_selected_target() -> None:
+    text = (FOOTER_DRAWERS / "payloads" / "01-real-target-helpers-and-overlay.js").read_text(encoding="utf-8")
+    assert 'function __codexFDWrapRealTargetActions(e,t,n,r)' in text
+    assert 't==="hiddenContext"' in text
+    assert 't==="thinking"' in text
+    assert 't==="reminders"&&typeof __codexRMWrapActions==="function"' in text
+    assert 'footer:clearSelection' in text
+    assert 'footer:close' in text
+    assert 'openId' not in text
+    assert 'hoverId' not in text
 
 def test_footer_drawers_operations_resolve_once_in_2_1_201_module_dump() -> None:
     source = _module_dump_or_skip()
@@ -298,7 +218,8 @@ def test_thinking_direct_footer_ops_are_removed_after_migration() -> None:
     manifest = load_manifest_v2(THINKING)
     op_ids = {op.op_id for target in manifest.targets for module in target.modules for op in module.operations}
     assert op_ids.isdisjoint(MOVED_THINKING_OP_IDS)
-    assert "thinking-register-footer-drawer" in op_ids
+    assert "thinking-register-footer-drawer" not in op_ids
+    assert "thinking-panel-real-target" in op_ids
     assert {
         "thinking-helpers-before-ypr",
         "thinking-message-start-turn-collector",
@@ -310,7 +231,7 @@ def test_thinking_direct_footer_ops_are_removed_after_migration() -> None:
         "thinking-cancel-salvage-collector",
     }.issubset(op_ids)
 
-
+@pytest.mark.local_real_smoke
 def test_build_framework_alone_reaches_manual_smoke_pending(tmp_path) -> None:
     source = _source_or_skip()
     report = build_patchset_v15(
@@ -421,6 +342,7 @@ def _build_packages(tmp_path: Path, name: str, packages: list[Path]):
         ("framework-all", [FOOTER_DRAWERS, HC, THINKING, REMINDERS]),
     ],
 )
+@pytest.mark.local_real_smoke
 def test_footer_drawers_successful_composition_matrix(tmp_path, name, packages) -> None:
     report = _build_packages(tmp_path, name, packages)
     assert report.automatedStatus == "passed", report.failureReason
@@ -428,19 +350,19 @@ def test_footer_drawers_successful_composition_matrix(tmp_path, name, packages) 
     assert report.activationEligible is False
     assert report.enabledPatches == [p.name for p in packages]
     if name == "framework-all":
-        registrations = [
+        panels = [
             (op["packageId"], op["opId"], op["insertOrder"], op.get("insertionVerified"))
             for op in report.operationsApplied
             if op["opId"] in {
-                "hidden-context-register-footer-drawer",
-                "thinking-register-footer-drawer",
-                "rm-register-footer-drawer",
+                "hidden-context-panel-real-target",
+                "thinking-panel-real-target",
+                "rm-panel-real-target",
             }
         ]
-        assert registrations == [
-            ("hidden-context-drawer", "hidden-context-register-footer-drawer", 100, True),
-            ("thinking-text-drawer", "thinking-register-footer-drawer", 200, True),
-            ("reminders-manager", "rm-register-footer-drawer", 300, True),
+        assert panels == [
+            ("hidden-context-drawer", "hidden-context-panel-real-target", 100, True),
+            ("thinking-text-drawer", "thinking-panel-real-target", 200, True),
+            ("reminders-manager", "rm-panel-real-target", 300, True),
         ]
 
 

@@ -55,3 +55,7 @@ UI half: registered with `packages/footer-drawers`. The framework owns the foote
 - Requires `footer-drawers`.
 - Conflicts with `upstream-attachment-suppression`; both own the reminder attachment deny/filter seam family.
 - Can ship with `hidden-context-drawer` and `thinking-text-drawer` through the framework.
+
+## Real-target footer contract
+
+Reminders uses the spike-shaped __codexRMWrapActions(actions, selectedTarget) path and activates only when selectedTarget is reminders.

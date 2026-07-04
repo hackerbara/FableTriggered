@@ -23,22 +23,22 @@
           "contentLength": 18700756,
           "operations": [
             {
-              "opId": "fd-bootstrap-and-overlay",
-              "label": "Footer Drawers registry bootstrap and shared bottom overlay renderer",
+              "opId": "fd-real-target-helpers-and-overlay",
+              "label": "Real-target helpers and shared bottom overlay renderer",
               "type": "replace_exact",
               "exact": "function Ilc(){let e=MXe.c(2),t=clc();if(!t)return null;let n;if(e[0]!==t)n=Xd.jsx(B,{position:\"absolute\",bottom:\"100%\",left:0,right:0,opaque:!0,children:t}),e[0]=t,e[1]=n;else n=e[1];return n}",
               "requireWithinRange": [],
               "oldRangeSha256": "9ff773cbc33face8625d9e4883d33b5e36aeae2e87349921b9f3402fc7d12526",
               "oldRangeLength": 193,
               "replacement": {
-                "path": "payloads/01-bootstrap-and-overlay.js",
-                "sha256": "a0886c13e31fabb825f8b57392626ff1fd3b539e42ec8e313dc51bf1049a6346"
+                "path": "payloads/01-real-target-helpers-and-overlay.js",
+                "sha256": "c791ef1830e0359aaa463448bb917f9878762b62c0e5958187e2b02e43a91d04"
               },
-              "knownBehaviorChange": "Adds shared drawer registry helpers and renders the active registered drawer in the bottom overlay sibling."
+              "knownBehaviorChange": "Adds pure real-target drawer helper functions and composes drawer panels into the stock bottom overlay without a runtime registry."
             },
             {
-              "opId": "fd-footer-render-tick-state",
-              "label": "Add Footer Drawers render tick state",
+              "opId": "fd-footer-hiddencontext-state",
+              "label": "Add Hidden Context local footer state",
               "type": "replace_substring_within",
               "startMarker": "let[Ss,Ms]=wo.useState(!1),[go,Zo]=wo.useState(!1)",
               "endMarker": "Ar=wo.useRef(null);",
@@ -49,101 +49,66 @@
               "oldRangeSha256": "dcdbec91858c991ae8fbbb19fc61c129fe0c717d5187210cd46eb982235fd9f8",
               "oldRangeLength": 16,
               "replacement": {
-                "path": "payloads/02-footer-render-tick-state.js",
-                "sha256": "867c8f9ccab5075c21442feb5e393e001f483c92a4a1fcf849fdf8a3c0c5f81b"
+                "path": "payloads/02-footer-hiddencontext-state.js",
+                "sha256": "c123d6b0563a4d8fdab80576b940358d142f756925bb325e453a19d63bc4700f"
               },
-              "knownBehaviorChange": "Adds local footer render tick state driven by the shared registry version."
+              "knownBehaviorChange": "Adds local scroll/open state for Hidden Context in the footer component."
             },
             {
-              "opId": "fd-footer-render-tick-effect",
-              "label": "Poll Footer Drawers registry version in footer render path",
-              "type": "insert_after",
-              "anchor": "wo.useEffect(()=>()=>{if(Ar.current)Ar.current(),Ar.current=null},[]);",
-              "expectedAnchorCount": 1,
-              "insertOrder": 100,
-              "replacement": {
-                "path": "payloads/03-footer-render-tick-effect.js",
-                "sha256": "b72cca3174c80d18386d3b4b5dc61fbb72ffdf651dbda0c06e9bbf4fca4ef5ee"
-              },
-              "knownBehaviorChange": "Polls the registry version so drawer availability, badge, flash, and open state refresh the footer."
-            },
-            {
-              "opId": "fd-footer-target-drawers",
-              "label": "Add synthetic drawers footer target before tasks",
-              "type": "replace_substring_within",
-              "startMarker": "ss=wo.useMemo(()=>[Ui&&\"tasks\"",
-              "endMarker": "]),yi=Tt((jt)=>jt.workflowFooterIndex)",
-              "expectedStartMarkerCount": 1,
-              "expectedEndMarkerCount": 1,
-              "subExact": "[Ui&&\"tasks\"",
-              "expectedSubExactCount": 1,
-              "oldRangeSha256": "5d2f0b7ca7619f1ea08440d6e396a15801b5f35af361776d87543931221022bc",
-              "oldRangeLength": 12,
-              "replacement": {
-                "path": "payloads/04-footer-target-drawers.js",
-                "sha256": "8a53037bf54833913bbae54c2c2ae8f7f7fb4f1126f79884d959fe6ab00a14e3"
-              },
-              "knownBehaviorChange": "Adds one synthetic drawers target when any registered drawer is available."
-            },
-            {
-              "opId": "fd-footer-target-deps",
-              "label": "Include Footer Drawers render tick in target deps",
-              "type": "replace_substring_within",
-              "startMarker": "ss=wo.useMemo(()=>[Ui&&\"tasks\"",
-              "endMarker": "]),yi=Tt((jt)=>jt.workflowFooterIndex)",
-              "expectedStartMarkerCount": 1,
-              "expectedEndMarkerCount": 1,
-              "subExact": "[Ui,po,Fn,_e,Tr,Ne]",
-              "expectedSubExactCount": 1,
-              "oldRangeSha256": "480781c98ed9bfd1b47fdc834f9494ab340d87c55290c5b627d9156648c4a26e",
-              "oldRangeLength": 19,
-              "replacement": {
-                "path": "payloads/05-footer-target-deps.js",
-                "sha256": "f99090f41166293f59668ffbe67e65a069393b339e71c22a9a0443f96221be16"
-              },
-              "knownBehaviorChange": "Makes the footer target useMemo recompute when registry version changes."
-            },
-            {
-              "opId": "fd-footer-selection-flag",
-              "label": "Add drawers selected flag",
+              "opId": "fd-real-drawer-targets",
+              "label": "Insert real drawer footer targets",
               "type": "replace_exact",
-              "exact": "Mm=Lm===\"frame\"",
+              "exact": "Ui=Aa>0||Di,po=no.length>0&&_===\"prompt\"&&!Oe.show&&!Wn,ss=wo.useMemo(()=>[Ui&&\"tasks\",po&&\"workflows\",Fn&&\"tmux\",_e&&\"bagel\",Tr&&\"bridge\",Ne&&\"frame\"].filter(Boolean),[Ui,po,Fn,_e,Tr,Ne])",
               "requireWithinRange": [],
-              "oldRangeSha256": "90923267051a535608d3b260e5f807decf7c3868fc7accaf668172df95040e86",
-              "oldRangeLength": 15,
+              "oldRangeSha256": "88477e3a477230ffe1a371c4f83b905cc2000018f6786a8ea75c4c80d8e9ccce",
+              "oldRangeLength": 188,
               "replacement": {
-                "path": "payloads/06-footer-selection-flag.js",
-                "sha256": "637756361d37f513009affae31e27d19b07f23f559ae4b13709f3cdf9068123b"
+                "path": "payloads/03-real-drawer-targets.js",
+                "sha256": "400487724286c65789ee5f27da2e2300abf33f0fe4ccb40aa8a44f003f89f9d0"
               },
-              "knownBehaviorChange": "Adds a local selected flag for the synthetic drawers footer target."
+              "knownBehaviorChange": "Computes Hidden Context frame same-render and inserts hiddenContext/thinking/reminders as real footer targets before stock targets."
             },
             {
-              "opId": "fd-footer-action-wrap-open",
-              "label": "Wrap footer action object with Footer Drawers router open",
+              "opId": "fd-real-drawer-selection-flags",
+              "label": "Add real drawer selection flags",
+              "type": "replace_exact",
+              "exact": "let lm=Lm===\"tasks\",ZE=Lm===\"workflows\",Hd=Lm===\"tmux\",Zp=Lm===\"bagel\",AT=Lm===\"bridge\",Mm=Lm===\"frame\";",
+              "requireWithinRange": [],
+              "oldRangeSha256": "545560fd10f792e15558fd0af420ec56c2dd0310bfcbb1b682d021636c5c26ad",
+              "oldRangeLength": 104,
+              "replacement": {
+                "path": "payloads/04-real-drawer-selection-flags.js",
+                "sha256": "d8aa0fd4e2eabad2768e6bc8642c870583354638e90421ba559e8381961d9b6f"
+              },
+              "knownBehaviorChange": "Adds real-target selected flags and mirrors selected/open state for drawer panels."
+            },
+            {
+              "opId": "fd-real-target-action-wrap-open",
+              "label": "Open real-target footer action wrapper",
               "type": "replace_exact",
               "exact": "Go({\"footer:up\":By,\"footer:down\":d0,\"footer:next\":o6,\"footer:previous\":IR,\"footer:openSelected\":()=>{",
               "requireWithinRange": [],
               "oldRangeSha256": "e927b8169b546f7bcb6ae445bb32044d06c0a02a5b4731e5d4a1cf68e9fdf872",
               "oldRangeLength": 101,
               "replacement": {
-                "path": "payloads/07-footer-action-wrap-open.js",
-                "sha256": "66e1663664e6c5462ff25a65eccbe7228502f57afc7cc33bbb3e767ca65e5af5"
+                "path": "payloads/05-real-target-action-wrap-open.js",
+                "sha256": "967e6b5ff1897898e64b6d20fe56c63467efeb07f3058f8951fb350fa8a4f9c4"
               },
-              "knownBehaviorChange": "Routes drawer toolbar/open-panel actions through the shared registry while delegating stock footer targets."
+              "knownBehaviorChange": "Routes drawer actions by normalized real footer target."
             },
             {
-              "opId": "fd-footer-action-wrap-close",
-              "label": "Wrap footer action object with Footer Drawers router close",
+              "opId": "fd-real-target-action-wrap-close",
+              "label": "Close real-target footer action wrapper",
               "type": "replace_exact",
               "exact": "return!1}},{context:\"Footer\",isActive:!!Lm&&!se});",
               "requireWithinRange": [],
               "oldRangeSha256": "431e9a586c12d7fdb5481ec7852d0d8fc981f25059399a33ae887da796a37c51",
               "oldRangeLength": 50,
               "replacement": {
-                "path": "payloads/08-footer-action-wrap-close.js",
-                "sha256": "b8a428f7070006a4519434282fc49b631a5b086de045801fa69768e6e6f9c72b"
+                "path": "payloads/06-real-target-action-wrap-close.js",
+                "sha256": "a1528d4dacecc286220540b63e801d11c25a3cb7994c2a85a9aee3846631a0e0"
               },
-              "knownBehaviorChange": "Passes active footer selection and setter to the shared drawer action wrapper."
+              "knownBehaviorChange": "Passes real target and local drawer state to the action wrapper."
             },
             {
               "opId": "fd-footer-space-binding",
@@ -154,42 +119,42 @@
               "oldRangeSha256": "f949623edd3b5bcb81a77dc3b23406ccb3a0556275fdec6d11ec6af8c111813d",
               "oldRangeLength": 226,
               "replacement": {
-                "path": "payloads/09-footer-space-binding.js",
+                "path": "payloads/07-footer-space-binding.js",
                 "sha256": "5d3b8a6c13b7070962983a84aa582f139ce6e388efce505be83c6cf6d6bf7ddb"
               },
-              "knownBehaviorChange": "Maps space to footer:openSelected for drawer row toggles/opening."
+              "knownBehaviorChange": "Maps space to footer:openSelected without changing Escape."
             },
             {
-              "opId": "fd-footer-bar-selection-state",
-              "label": "Read Footer Drawers selected state in status bar hook cluster",
+              "opId": "fd-status-real-drawer-selection-hooks",
+              "label": "Read real drawer selected state in status bar",
               "type": "replace_exact",
               "exact": "k=Tt((Me)=>!1)",
               "requireWithinRange": [],
               "oldRangeSha256": "7c97dd72d37a838ebd7e328afbd5342533067c7f2e953dc40132d555c5b5a507",
               "oldRangeLength": 14,
               "replacement": {
-                "path": "payloads/14-footer-bar-selection-state.js",
-                "sha256": "dfa32339cca2453823f3cc4b83e73f8073c7293092b7d3a924233237f5806d33"
+                "path": "payloads/08-status-real-drawer-selection-hooks.js",
+                "sha256": "6fd0a2d5d1e960fe2e4b19c9b927c6a7d04df5e111c339550ceceef9b03785dd"
               },
-              "knownBehaviorChange": "Makes the status-bar drawer segment read the actual drawers footer selection instead of a colliding global symbol."
+              "knownBehaviorChange": "Reads status-bar selected state from real footer target ids."
             },
             {
-              "opId": "fd-footer-bar-var",
-              "label": "Compute Footer Drawers status-bar segment",
+              "opId": "fd-status-real-drawer-bars",
+              "label": "Compute real drawer status-bar segments",
               "type": "replace_exact",
               "exact": "ue=x.map((Me)=>di.jsx(ELc,{link:Me},Me.key??Me.url)),de=[...[]],fe=n?tNf(s,L,W,F,R,O):[];",
               "requireWithinRange": [],
               "oldRangeSha256": "c692697353f5951ba4625fb2738d8c0eb803feaaa6a0dc6049281955832b2a62",
               "oldRangeLength": 89,
               "replacement": {
-                "path": "payloads/10-footer-bar-var.js",
-                "sha256": "668887899ff52bbcb40477e557241120a694847f1da77a2b591992d3e479f56f"
+                "path": "payloads/09-status-real-drawer-bars.js",
+                "sha256": "8643d273690204451ce8966f7d76d783a7200dd7545477673e7519749b72c6bf"
               },
-              "knownBehaviorChange": "Computes a compact registry-rendered drawer toolbar segment."
+              "knownBehaviorChange": "Computes explicit Hidden Context, Thinking, and Reminders bar segments."
             },
             {
-              "opId": "fd-footer-bar-shortcuts-condition",
-              "label": "Keep shortcuts hint from masking drawer segment",
+              "opId": "fd-status-shortcuts-condition",
+              "label": "Keep shortcuts hint from masking real drawer segments",
               "type": "replace_substring_within",
               "startMarker": "ue=x.map((Me)=>di.jsx(ELc,{link:Me},Me.key??Me.url)),de=[...[]],fe=n?tNf(s,L,W,F,R,O):[];",
               "endMarker": "function tNf(e,t,n,r,o,s){",
@@ -200,14 +165,14 @@
               "oldRangeSha256": "d2ebfa4c2055d644fafe92175578a56f56ea4d7958d248e6b83495a4b4c8588d",
               "oldRangeLength": 55,
               "replacement": {
-                "path": "payloads/11-footer-bar-shortcuts-condition.js",
-                "sha256": "9fcb524dd75e97f45429f14b361ee3adbc5dcd677f4803905faca5d1693f90c0"
+                "path": "payloads/10-status-shortcuts-condition.js",
+                "sha256": "967c57a0b363c815b3465863c8e5a20f4ac8978b5126d973813d6c187e64dc0c"
               },
-              "knownBehaviorChange": "Treats a drawer segment as visible status-bar content before adding the stock shortcuts hint."
+              "knownBehaviorChange": "Treats real drawer segments as visible status-bar content before adding stock shortcuts hint."
             },
             {
-              "opId": "fd-footer-bar-null-condition",
-              "label": "Keep status bar visible for drawer-only segment",
+              "opId": "fd-status-null-condition",
+              "label": "Keep status bar visible for drawer-only real segments",
               "type": "replace_substring_within",
               "startMarker": "ue=x.map((Me)=>di.jsx(ELc,{link:Me},Me.key??Me.url)),de=[...[]],fe=n?tNf(s,L,W,F,R,O):[];",
               "endMarker": "function tNf(e,t,n,r,o,s){",
@@ -218,14 +183,14 @@
               "oldRangeSha256": "3882d71d74e76f5087c35c39ddbb506f98b1f0b0fa49be80b06fe8ec0fcacc86",
               "oldRangeLength": 99,
               "replacement": {
-                "path": "payloads/12-footer-bar-null-condition.js",
-                "sha256": "eac09281c924669cd7270b77c97b0b4e025d307d20d846dd25d99351e70b4bae"
+                "path": "payloads/11-status-null-condition.js",
+                "sha256": "441ad461184c49e8b764baf77cff56a3ba3e830b7b88552c28f5ece013178697"
               },
-              "knownBehaviorChange": "Treats a drawer segment as visible status-bar content before returning null."
+              "knownBehaviorChange": "Treats real drawer segments as visible status-bar content before returning null."
             },
             {
-              "opId": "fd-footer-bar-render",
-              "label": "Render Footer Drawers status-bar segment",
+              "opId": "fd-status-render-real-drawer-bars",
+              "label": "Render real drawer status-bar segments",
               "type": "replace_substring_within",
               "startMarker": "ue=x.map((Me)=>di.jsx(ELc,{link:Me},Me.key??Me.url)),de=[...[]],fe=n?tNf(s,L,W,F,R,O):[];",
               "endMarker": "function tNf(e,t,n,r,o,s){",
@@ -236,10 +201,10 @@
               "oldRangeSha256": "20f542a347439edef94040bfee82411e5f929cd23988d7a3242ba5032fe8bb70",
               "oldRangeLength": 309,
               "replacement": {
-                "path": "payloads/13-footer-bar-render.js",
-                "sha256": "3981c92fb34a43ff1ebc637b98ee7742488248a06acff845365cd6bff0821609"
+                "path": "payloads/12-status-render-real-drawer-bars.js",
+                "sha256": "abace6b691681476d8e5a663b849df6249c41f802d53e4ccd279b1fc1f0fb5d1"
               },
-              "knownBehaviorChange": "Renders the compact drawer toolbar segment in the existing status row without restating unrelated status content."
+              "knownBehaviorChange": "Renders explicit drawer segments between stock task UI and shortcut hints."
             }
           ]
         }
@@ -255,22 +220,22 @@
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "__CODEX_FOOTER_DRAWERS_V1__"
+          "value": "__codexFDWrapRealTargetActions"
         },
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function __codexFDWrapActions"
+          "value": "__codexHiddenContextFrame?.visible&&\"hiddenContext\""
         },
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function Ilc(){let e=MXe.c(3)"
+          "value": "typeof __codexTTDEnsure===\"function\"&&\"thinking\""
         },
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "\"drawers\""
+          "value": "typeof __codexRMState===\"function\"&&\"reminders\""
         },
         {
           "type": "module_must_contain",
@@ -280,12 +245,7 @@
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "FDbar=__codexFDAvailable().length>0"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "FDbar&&di.jsxs"
+          "value": "FDdrawerBars=[FDhBar,FDtBar,FDrBar].filter(Boolean)"
         }
       ],
       "manualSmoke": {

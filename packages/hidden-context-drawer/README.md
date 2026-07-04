@@ -59,3 +59,7 @@ Run it for manual smoke:
 This package is now a thin registrant for `packages/footer-drawers` targeting Claude Code 2.1.201. It keeps the Hidden Context projection/frame content seams, but the footer target, key routing, toolbar label, and bottom-overlay mount are owned by `footer-drawers`.
 
 Build it with `--package packages/footer-drawers --package packages/hidden-context-drawer`. Build reports remain `manual_smoke_pending` until interactive footer smoke confirms x-only close and full projection-list content.
+
+## Real-target footer contract
+
+Hidden Context is selected through the real footer target hiddenContext. Escape is not a close affordance; x closes.

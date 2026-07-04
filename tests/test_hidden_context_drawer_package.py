@@ -44,22 +44,13 @@ def test_hidden_context_drawer_targets_claude_2_1_201() -> None:
         assert hashlib.sha256(LIVE_2_1_201.read_bytes()).hexdigest() == EXPECTED_BINARY_SHA
 
 
-def test_hidden_context_drawer_thin_package_keeps_x_only_contract() -> None:
+def test_hidden_context_drawer_real_target_panel_keeps_x_only_contract() -> None:
     manifest = manifest_json()
     assert manifest["requiresPackages"] == ["footer-drawers"]
     ops = manifest["targets"][0]["modules"][0]["operations"]
     op_ids = {op["opId"] for op in ops}
-    assert {"projection-helpers-before-ypr", "yt-projection-list-drawer-frame", "hidden-context-register-footer-drawer"}.issubset(op_ids)
-    assert op_ids.isdisjoint({
-        "uxl-refresh-bottom-overlay",
-        "footer-hidden-context-selected-hook",
-        "footer-availability-bar-hidden-context",
-        "axf-messagesref-footer-target-frame",
-        "footer-hiddencontext-selection-flag",
-        "footer-hiddencontext-up-down-scroll",
-        "footer-clearselection-consumes-hiddencontext",
-        "selected-only-bottom-overlay-hidden-context-globals",
-    })
+    assert {"projection-helpers-before-ypr", "yt-projection-list-drawer-frame", "hidden-context-panel-real-target"}.issubset(op_ids)
+    assert "hidden-context-register-footer-drawer" not in op_ids
     helper_op = next(op for op in ops if op["opId"] == "projection-helpers-before-ypr")
     assert helper_op["type"] == "insert_before"
     assert helper_op["anchor"] == "function Ypr(e){"
@@ -68,14 +59,17 @@ def test_hidden_context_drawer_thin_package_keeps_x_only_contract() -> None:
     assert "function Ypr(e){" not in helper_payload
     assert "function Jur(e){" not in helper_payload
     text = payloads_text()
-    assert "__codexFDDrawers" in text
-    assert ".register" in text
-    assert 'id:"hiddenContext"' in text
-    assert "footer:clearSelection" not in text
+    assert "__codexFDDrawers" not in text
+    assert ".register" not in text
+    assert 'id:"hiddenContext"' not in text
+    assert "__CODEX_FOOTER_DRAWERS_V1__" not in text
+    assert "openId" not in text
     assert "inputOwnsEscape" not in text
     assert "escape" not in text.lower()
-    assert "x closes" in read_rel("payloads/17-register-footer-drawer.js")
-
+    panel = read_rel("payloads/17-panel-real-target.js")
+    assert "function __codexNCHCPanel" in panel
+    assert "__CODEX_HIDDEN_CONTEXT_DRAWER_SELECTED_V13__===!0&&globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__===!0" in panel
+    assert "x closes" in panel
 
 def test_hidden_context_operations_match_source_and_payload_hashes() -> None:
     source = MODULE_DUMP.read_text(encoding="utf-8") if MODULE_DUMP.exists() else None

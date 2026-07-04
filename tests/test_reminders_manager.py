@@ -45,8 +45,8 @@ def _build(tmp_path: Path, package_dirs: list[Path]):
 def _rm_payload_texts() -> tuple[str, str, str]:
     wrapper = (PACKAGE_DIR / "payloads" / "rm-attachment-wrapper-deny-2.1.201.js").read_text(encoding="utf-8")
     xye = (PACKAGE_DIR / "payloads" / "rm-xye-runtime-filter-2.1.201.js").read_text(encoding="utf-8")
-    registration = (PACKAGE_DIR / "payloads" / "rm-register-footer-drawer-2.1.201.js").read_text(encoding="utf-8")
-    return wrapper, xye, registration
+    panel = (PACKAGE_DIR / "payloads" / "rm-panel-real-target-2.1.201.js").read_text(encoding="utf-8")
+    return wrapper, xye, panel
 
 
 def test_reminders_manager_manifest_loads_v15_schema_v2_with_valid_payload_hashes():
@@ -105,20 +105,21 @@ def test_reminders_manager_operation_anchors_are_unique_in_stock_module_dump():
                 raise AssertionError(operation)
 
 
-def test_reminders_manager_thin_footer_registrant_contract():
+def test_reminders_manager_uses_spike_wrapper_and_real_target_panel():
     manifest = load_manifest_v2(PACKAGE_DIR)
     op_ids = {op.op_id for target in manifest.targets for module in target.modules for op in module.operations}
-    assert {"rm-attachment-wrapper-deny", "rm-xye-runtime-filter", "rm-register-footer-drawer"}.issubset(op_ids)
+    assert {"rm-attachment-wrapper-deny", "rm-xye-runtime-filter", "rm-panel-real-target"}.issubset(op_ids)
+    assert "rm-register-footer-drawer" not in op_ids
     assert op_ids.isdisjoint({"rm-footer-target-append-2-1-199", "rm-wo-wrap-open-2-1-199", "rm-wo-wrap-close-2-1-199", "rm-footer-space-binding-2-1-199", "rm-bar-segment-2-1-199", "rm-overlay-default-2-1-199", "rm-overlay-bde-2-1-199"})
-    registration = (PACKAGE_DIR / "payloads" / "rm-register-footer-drawer-2.1.201.js").read_text(encoding="utf-8")
-    assert "__codexFDDrawers" in registration
-    assert ".register" in registration
-    assert 'id:"reminders"' in registration
-    assert "order:300" in registration
-    assert "available:()=>!0" in registration
-    assert "footer:close" not in registration
-    assert "footer:clearSelection" not in registration
-
+    wrapper = (PACKAGE_DIR / "payloads" / "rm-attachment-wrapper-deny-2.1.201.js").read_text(encoding="utf-8")
+    panel = (PACKAGE_DIR / "payloads" / "rm-panel-real-target-2.1.201.js").read_text(encoding="utf-8")
+    assert 'function __codexRMWrapActions(e,t){if(t!=="reminders")return e' in wrapper
+    assert "__CODEX_FOOTER_DRAWERS_V1__" not in wrapper
+    assert "function __codexRMRegisterFooterDrawer" not in wrapper + panel
+    assert ".register" not in wrapper + panel
+    assert "function __codexRMPanel" in panel
+    assert "__CODEX_REMINDERS_SELECTED_V1__===!0&&n.open" in panel
+    assert "escape" not in panel.lower()
 
 def test_reminders_manager_declares_manual_smoke_for_the_drawer_ui():
     manifest = _load_manifest()
@@ -128,14 +129,15 @@ def test_reminders_manager_declares_manual_smoke_for_the_drawer_ui():
 
 
 def test_reminders_manager_deny_payloads_define_expected_state_and_gate_functions():
-    wrapper, xye, registration = _rm_payload_texts()
+    wrapper, xye, panel = _rm_payload_texts()
     assert "function __codexRMState(){" in wrapper
     assert "function __codexRMDenyLabel(e)" in wrapper
     assert "function __codexRMDenyAttachment(e)" in wrapper
     assert "globalThis.__CODEX_REMINDERS_MANAGER_V1__" in wrapper
     assert "async function _g(e,t){" in wrapper
     assert "async function*XYe(e,t,n,r,o,s,i,a){" in xye
-    assert "function __codexRMRegisterFooterDrawer" in registration
+    assert "function __codexRMPanel" in panel
+    assert "function __codexRMWrapActions" in wrapper
     for family in DENY_FAMILIES:
         assert family in wrapper
 

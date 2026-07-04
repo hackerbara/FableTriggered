@@ -22,7 +22,7 @@ EXPECTED_OPERATION_IDS = {
     "thinking-parent-structured-collector",
     "thinking-system-token-estimate",
     "thinking-cancel-salvage-collector",
-    "thinking-register-footer-drawer",
+    "thinking-panel-real-target",
 }
 
 
@@ -126,8 +126,7 @@ def test_thinking_text_drawer_targets_claude_2_1_201() -> None:
         "__codexTTDRecordThinkingSignature",
         "__codexTTDRecordThinkingEstimate",
         "__codexTTDRecordRedactedThinking",
-        "__codexTTDRegisterFooterDrawer",
-        "id:\"thinking\",order:200",
+        "function __codexTTDPanel",
     ]:
         assert value in postcondition_values
 
@@ -155,7 +154,7 @@ def test_manifest_operations_match_source_and_payload_hashes() -> None:
         assert op["replacement"]["sha256"] == hashlib.sha256(payload.read_bytes()).hexdigest(), op["opId"]
 
 
-def test_thinking_text_drawer_is_thin_footer_registrant() -> None:
+def test_thinking_text_drawer_is_real_target_panel_extension() -> None:
     manifest = manifest_json()
     assert manifest["requiresPackages"] == ["footer-drawers"]
     op_ids = {op["opId"] for op in patch_targets()[0]["modules"][0]["operations"]}
@@ -168,6 +167,7 @@ def test_thinking_text_drawer_is_thin_footer_registrant() -> None:
         "thinking-selected-overlay-globals",
         "thinking-bottom-overlay-renderer",
         "thinking-footer-status-bar",
+        "thinking-register-footer-drawer",
     })
     helper_op = next(op for op in patch_targets()[0]["modules"][0]["operations"] if op["opId"] == "thinking-helpers-before-ypr")
     assert helper_op["type"] == "insert_before"
@@ -176,35 +176,30 @@ def test_thinking_text_drawer_is_thin_footer_registrant() -> None:
     helpers = read_rel("payloads/01-thinking-text-helpers.js")
     assert "function Ypr(e){" not in helpers
     assert "__codexTTDWrapFooterActions" not in helpers
-    registration = read_rel("payloads/17-register-footer-drawer.js")
-    assert "__codexFDDrawers" in registration
-    assert ".register" in registration
-    assert 'id:"thinking"' in registration
-    assert "order:200" in registration
-    assert "available:()=>!0" in registration
-    assert "onOpen:()=>{globalThis.__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__=!0" in registration
-    assert "renderPanel:()=>" in registration
-    assert "__codexTTDIsOpen" in helpers
-    assert "globalThis.__CODEX_THINKING_TEXT_DRAWER_SELECTED_V1__&&globalThis.__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__" not in helpers
-    assert "footer:close" not in registration
-    assert "footer:clearSelection" not in registration
-
+    assert "__CODEX_FOOTER_DRAWERS_V1__" not in helpers
+    assert "openId" not in helpers
+    panel = read_rel("payloads/17-panel-real-target.js")
+    assert "function __codexTTDPanel" in panel
+    assert "__CODEX_THINKING_TEXT_DRAWER_SELECTED_V1__===!0&&globalThis.__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__===!0" in panel
+    assert "x closes" in panel
+    assert "escape" not in panel.lower()
 
 def test_thinking_text_drawer_panel_and_docs_remain_display_only() -> None:
     text = read_rel("README.md") + "\n" + payloads_text()
-    registration = read_rel("payloads/17-register-footer-drawer.js")
+    panel = read_rel("payloads/17-panel-real-target.js")
     assert "No thinking captured yet" in text
     assert "request assembly" in read_rel("README.md")
     assert "JSONL" in read_rel("README.md")
     assert "main chat" in read_rel("README.md")
     assert "transcript" in read_rel("README.md")
     assert "model-visible" in read_rel("README.md")
-    assert 'id:"thinking"' in registration
-    assert "available:()=>!0" in registration
+    assert "Thinking is a real footer target extension" in read_rel("README.md")
+    assert 'id:"thinking"' not in text
+    assert "available:()=>!0" not in text
     assert "__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__" in text
-    assert "__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__" in registration
-    assert "x closes" in registration
-    assert "escape" not in registration.lower()
+    assert "__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__" in text
+    assert "x closes" in panel
+    assert "escape" not in panel.lower()
 
 def test_thinking_text_drawer_collectors_cover_required_sources() -> None:
     helpers = read_rel("payloads/01-thinking-text-helpers.js")

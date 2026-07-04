@@ -59,13 +59,55 @@ def payloads_text() -> str:
     return "\n".join(path.read_text(encoding="utf-8") for path in sorted((PACKAGE / "payloads").glob("*.js")))
 
 
+def manifest_json() -> dict:
+    return json.loads((PACKAGE / "patch.json").read_text(encoding="utf-8"))
+
+
+def patch_targets() -> list[dict]:
+    manifest = manifest_json()
+    return manifest["patch"]["targets"]
+
+
+def test_thinking_text_drawer_payload_ui_literals_are_ascii_safe() -> None:
+    offenders = []
+    for path in sorted((PACKAGE / "payloads").glob("*.js")):
+        text = path.read_text(encoding="utf-8")
+        for line_no, line in enumerate(text.splitlines(), 1):
+            if any(ord(ch) > 127 for ch in line):
+                offenders.append(f"{path.relative_to(ROOT)}:{line_no}:{line!r}")
+
+    assert offenders == []
+
+
+def test_thinking_text_drawer_is_v3_patch_package() -> None:
+    manifest = manifest_json()
+
+    assert manifest["schemaVersion"] == 1
+    assert manifest["kind"] == "patch"
+    assert manifest["id"] == "thinking-text-drawer"
+    assert manifest["label"] == "Thinking Text Drawer"
+    assert manifest["patch"]["engine"] == "bun_graph_repack"
+
+    sys.path.insert(0, str(ROOT / "src"))
+    from claude_monkey.builder_v15 import load_manifest_v2
+    from claude_monkey.package_model import PackageKind, load_package_manifest
+
+    loaded = load_package_manifest(PACKAGE, PackageKind.PATCH)
+    assert loaded.id == "thinking-text-drawer"
+    assert loaded.patch is not None
+    assert loaded.patch.engine == "bun_graph_repack"
+    assert len(loaded.patch.targets) == 1
+
+    bridged = load_manifest_v2(PACKAGE)
+    assert bridged.id == "thinking-text-drawer"
+    assert len(bridged.targets[0].modules[0].operations) == len(EXPECTED_OPERATION_IDS)
+
+
 def test_thinking_text_drawer_targets_claude_2_1_201() -> None:
-    manifest = json.loads((PACKAGE / "patch.json").read_text(encoding="utf-8"))
-    target = manifest["targets"][0]
+    target = patch_targets()[0]
     identity = target["sourceIdentity"]
     module = target["modules"][0]
 
-    assert manifest["id"] == "thinking-text-drawer"
     assert identity == {
         "claudeVersion": "2.1.201",
         "versionOutput": "2.1.201 (Claude Code)",
@@ -101,8 +143,7 @@ def test_thinking_text_drawer_targets_claude_2_1_201() -> None:
 
 
 def test_manifest_operations_match_source_and_payload_hashes() -> None:
-    manifest = json.loads((PACKAGE / "patch.json").read_text(encoding="utf-8"))
-    module = manifest["targets"][0]["modules"][0]
+    module = patch_targets()[0]["modules"][0]
     source = source_module_text()
     if source is not None:
         for op in module["operations"]:
@@ -143,7 +184,27 @@ def test_thinking_text_drawer_x_only_close_contract() -> None:
     assert "return false" in read_rel("payloads/01-thinking-text-helpers.js")
     assert "return!1}},Lm,tDp,Rp)" in close_payload
     assert "x closes" in renderer
-    assert "older entries dropped" in renderer
+    assert "older entries dropped" in read_rel("payloads/01-thinking-text-helpers.js")
+    assert "function __codexTTDClampScroll(e,t,r)" in read_rel("payloads/01-thinking-text-helpers.js")
+    assert "__codexTTDClampScroll(p,s?.lines?.length??1,l)" in renderer
+    assert "{rows:o}=Er()" in renderer
+    assert "Math.floor(o*2/3)" in renderer
+    assert "Math.max(8,o-8)" in renderer
+    assert "s?.lines" in renderer
+    assert "s?.lineKinds" in renderer
+    assert "s?.generation" in renderer
+    assert ".flatMap(" not in renderer
+    assert 'flexDirection:"column"' in renderer
+    assert 'width:"100%"' in renderer
+    assert "height:" in renderer
+    assert 'overflow:"hidden"' in renderer
+    assert "borderText:{content:` Thinking" in renderer
+    assert "mouse wheel scroll | x closes" in renderer
+    assert "children:[u,r]" in renderer
+    status_bar = read_rel("payloads/12-footer-status-bar.js")
+    assert "de.push(tDbar)" not in status_bar
+    assert "tDbar&&di.jsxs(B" in status_bar
+    assert "we||tDbar||de.length>0" in status_bar
     assert "inputOwnsEscape" not in text
     assert "escape" not in renderer.lower()
 
@@ -174,7 +235,7 @@ def test_structured_collection_runs_before_ctrl_o_guard() -> None:
     assert "blockIndex:r" not in helpers
 
 
-def test_helper_fixture_merge_and_secondary_sources() -> None:
+def test_helper_fixture_merge_and_actual_text_only_sources() -> None:
     helper = read_rel("payloads/01-thinking-text-helpers.js")
     helper_prefix = helper.split("\nfunction Ypr(e){", 1)[0]
     script = textwrap.dedent(
@@ -184,6 +245,7 @@ def test_helper_fixture_merge_and_secondary_sources() -> None:
         __codexTTDRecordLiveThinking({{text:'abc', streamKey:'s1', turnKey:'turn'}});
         __codexTTDRecordLiveThinking({{text:'def', streamKey:'s1', turnKey:'turn'}});
         __codexTTDRecordStructuredThinking({{thinking:'abcdef finalized', messageId:'m1', blockHash:'h1', turnKey:'turn'}});
+        __codexTTDRecordSalvagedThinking({{thinking:'interrupted salvage text', messageId:'cancel-1'}});
         __codexTTDRecordRedactedThinking({{messageId:'m2', blockHash:'r1'}});
         __codexTTDRecordThinkingSignature({{chars:128, streamKey:'s1'}});
         __codexTTDRecordThinkingEstimate({{estimatedTokensDelta:7, estimatedTokens:21, streamKey:'s1'}});
@@ -191,18 +253,29 @@ def test_helper_fixture_merge_and_secondary_sources() -> None:
         const frame = __codexTTDDrawerFrame();
         if (!frame.entries.some(e => e.source === 'structured' && e.sources.includes('live') && e.text === 'abcdef finalized')) throw new Error('structured/live merge failed');
         if (!frame.entries.some(e => e.source === 'structured' && e.text === 'parent text')) throw new Error('parent structured missing');
-        if (!frame.entries.some(e => e.source === 'redacted')) throw new Error('redacted marker missing');
-        if (!frame.entries.some(e => e.source === 'signature')) throw new Error('signature marker missing');
-        if (!frame.entries.some(e => e.source === 'estimate')) throw new Error('estimate marker missing');
-        if (frame.entries.length < 4) throw new Error('entries unexpectedly discarded');
+        if (!frame.entries.some(e => e.source === 'salvaged' && e.text === 'interrupted salvage text')) throw new Error('salvaged thinking missing');
+        if (frame.entries.some(e => ['redacted','signature','estimate'].includes(e.source))) throw new Error('secondary progress markers should not create drawer rows');
+        if (frame.entries.some(e => e.status === 'secondary')) throw new Error('secondary status rows should not be shown');
+        if (frame.entries.length !== 3) throw new Error('drawer should contain only captured thinking text entries');
+        if (!Array.isArray(frame.lines) || !Array.isArray(frame.lineKinds)) throw new Error('drawer frame should expose hidden-context-style lines');
+        if (!frame.lines.some(line => line.includes('Structured thinking'))) throw new Error('structured header line missing');
+        if (frame.lines.some((line, idx) => frame.lineKinds[idx] === 'header' && (line.includes('provisional') || line.includes('final')))) throw new Error('drawer headers should not expose progress/finality statuses');
+        if (!frame.lineKinds.includes('header') || !frame.lineKinds.includes('body')) throw new Error('line kinds missing');
         """
     )
     subprocess.run(["node", "-e", script], check=True)
 
 
+def test_secondary_marker_strings_are_not_drawer_content() -> None:
+    text = payloads_text()
+    assert "[redacted thinking block present]" not in text
+    assert "thinking signature received" not in text
+    assert "thinking active; raw text not exposed" not in text
+    assert "estimated tokens" not in read_rel("payloads/01-thinking-text-helpers.js")
+
+
 def test_operations_stay_out_of_request_and_persistence_surfaces() -> None:
-    manifest = json.loads((PACKAGE / "patch.json").read_text(encoding="utf-8"))
-    op_ids = {op["opId"] for op in manifest["targets"][0]["modules"][0]["operations"]}
+    op_ids = {op["opId"] for op in patch_targets()[0]["modules"][0]["operations"]}
     assert op_ids == EXPECTED_OPERATION_IDS
     forbidden_op_fragments = ["request-assembly", "jsonl", "transcript-persist", "prompt-context"]
     for op_id in op_ids:
@@ -260,6 +333,7 @@ def test_helper_fixture_review_regressions() -> None:
         const longEntry = frame.entries.find(e => e.messageId === 'long');
         assert(longEntry.text.includes('captured text truncated') || longEntry.lines.some(l => l.includes('displayed text truncated')), 'long rendered text should label truncation');
         assert(longEntry.charCount >= 50000 && longEntry.rawCharCount >= 50000, 'long entry should track original char count');
+        assert(longEntry.fullText.length === 50000, 'long entry should preserve full captured text in frame metadata');
         assert((longEntry.text.length || 0) < longEntry.rawCharCount, 'long stored display text should be bounded');
 
         globalThis.__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__ = undefined;
@@ -268,6 +342,7 @@ def test_helper_fixture_review_regressions() -> None:
         frame = __codexTTDDrawerFrame();
         const liveLong = frame.entries.find(e => e.source === 'live');
         assert(liveLong.rawCharCount === 100000 && liveLong.charCount === 100000, 'long live raw char count should remain accurate');
+        assert(liveLong.fullText.length === 100000, 'long live fullText should preserve all chunks');
         assert(liveLong.text.length < liveLong.rawCharCount, 'long live display text should be bounded');
         assert(frame.droppedCharCount === liveLong.droppedCharCount, 'frame droppedCharCount should not double-count repeated live upserts');
         __codexTTDRecordStructuredThinking({{thinking:'y'.repeat(100000) + ' final', messageId:'long-live', requestId:'req-long'}});
@@ -275,6 +350,7 @@ def test_helper_fixture_review_regressions() -> None:
         assert(frame.entries.length === 1, 'long live and final structured thinking for same message should merge');
         assert(frame.entries[0].source === 'structured' && frame.entries[0].sources.includes('live'), 'long merge should preserve live provenance');
         assert(frame.entries[0].rawCharCount === 100006, 'merged long structured char count should be accurate');
+        assert(frame.entries[0].fullText.length === 100006, 'merged long structured fullText should be preserved');
 
         globalThis.__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__ = undefined;
         for (let i = 0; i < 100; i++) __codexTTDRecordStructuredThinking({{thinking:'entry-' + i, messageId:'m' + i, blockHash:'h' + i}});
@@ -292,6 +368,31 @@ def test_helper_fixture_review_regressions() -> None:
         for (let i = 0; i < 999; i++) actions['footer:down']();
         frame = __codexTTDDrawerFrame();
         assert(frame.scroll <= Math.max(0, frame.lineCount - 18), 'scroll should clamp to available content');
+        const maxViewport4 = Math.max(0, frame.lineCount - 4);
+        __codexTTDClampScroll(999, frame.lineCount, 4);
+        frame = __codexTTDDrawerFrame();
+        assert(frame.scroll === maxViewport4, 'frame refresh should preserve supplied drawer viewport bottom');
+        globalThis.__CODEX_THINKING_TEXT_DRAWER_VIEWPORT_V1__ = 4;
+        frame = __codexTTDDrawerFrame();
+        assert(frame.scroll === maxViewport4, 'frame refresh with stored viewport should not reclamp to default height');
+        __codexTTDClampScroll(0, frame.lineCount, 4);
+        for (let i = 0; i < 999; i++) actions['footer:down']();
+        frame = __codexTTDDrawerFrame();
+        assert(frame.scroll === maxViewport4, 'footer down should honor stored viewport height');
+
+        globalThis.__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__ = undefined;
+        globalThis.__CODEX_THINKING_TEXT_DRAWER_VIEWPORT_V1__ = 4;
+        __codexTTDRecordStructuredThinking({{thinking:Array.from({{length:95}}, (_, i) => 'base line ' + i).join('\\n'), messageId:'scroll-base', blockHash:'scroll-base'}});
+        frame = __codexTTDDrawerFrame();
+        __codexTTDClampScroll(999, frame.lineCount, 4);
+        frame = __codexTTDDrawerFrame();
+        assert(frame.scroll === Math.max(0, frame.lineCount - 4), 'setup should reach dynamic bottom');
+        __codexTTDRecordStructuredThinking({{thinking:Array.from({{length:100}}, (_, i) => 'updated line ' + i).join('\\n'), messageId:'scroll-base', blockHash:'scroll-base'}});
+        frame = __codexTTDDrawerFrame();
+        assert(frame.scroll === Math.max(0, frame.lineCount - 4), 'structured update at dynamic bottom should stay at dynamic bottom');
+        __codexTTDRecordStructuredThinking({{thinking:Array.from({{length:12}}, (_, i) => 'new line ' + i).join('\\n'), messageId:'scroll-new', blockHash:'scroll-new'}});
+        frame = __codexTTDDrawerFrame();
+        assert(frame.scroll === Math.max(0, frame.lineCount - 4), 'new entry at dynamic bottom should stay at dynamic bottom');
         actions['footer:close']();
         assert(opened === false && selected === null, 'footer close should close Thinking');
         """
@@ -300,12 +401,15 @@ def test_helper_fixture_review_regressions() -> None:
 
 
 if __name__ == "__main__":
+    test_thinking_text_drawer_is_v3_patch_package()
+    test_thinking_text_drawer_payload_ui_literals_are_ascii_safe()
     test_thinking_text_drawer_targets_claude_2_1_201()
     test_thinking_text_drawer_overlay_only_and_always_available()
     test_thinking_text_drawer_x_only_close_contract()
     test_thinking_text_drawer_collectors_cover_required_sources()
     test_structured_collection_runs_before_ctrl_o_guard()
-    test_helper_fixture_merge_and_secondary_sources()
+    test_helper_fixture_merge_and_actual_text_only_sources()
+    test_secondary_marker_strings_are_not_drawer_content()
     test_manifest_operations_match_source_and_payload_hashes()
     test_operations_stay_out_of_request_and_persistence_surfaces()
     test_helper_fixture_review_regressions()

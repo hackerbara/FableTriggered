@@ -4,9 +4,30 @@
 
 **Goal:** Build a ClaudeMonkey `thinking-text-drawer` package for Claude Code 2.1.201 that exposes Ctrl-O-visible structured thinking text plus live raw thinking deltas in an always-openable footer drawer without changing main chat rendering, Ctrl-O behavior, request assembly, JSONL history, or model-visible context.
 
-**Architecture:** Create a new standalone direct footer/overlay seam owner. The package writes display-only global frame state from structured assistant content blocks, live `thinking_delta.thinking`, cancellation salvage, `signature_delta`, and `system/thinking_tokens` estimate events. Footer controls use an explicit open-state seam and an action wrapper; they do not reuse hidden-context's `frame.visible` availability gate.
+**Architecture:** Create a new standalone direct footer/overlay seam owner. The package writes display-only global frame state from structured assistant content blocks, live `thinking_delta.thinking`, and cancellation salvage. `signature_delta`, redacted-only, and `system/thinking_tokens` estimate events keep stock behavior but must not create drawer rows. Footer controls use an explicit open-state seam and an action wrapper; they do not reuse hidden-context's `frame.visible` availability gate.
 
-**Tech Stack:** Python package tests, Node-based helper fixture tests, ClaudeMonkey manifest v2 (`replace_exact`), JavaScript payloads patched into `/$bunfs/root/src/entrypoints/cli.js`, graph-aware Bun repack validation.
+**Tech Stack:** Python package tests, Node-based helper fixture tests, ClaudeMonkey V3 patch package envelope with builder-compatible `replace_exact` target operations, JavaScript payloads patched into `/$bunfs/root/src/entrypoints/cli.js`, graph-aware Bun repack validation.
+
+## 2026-07-04 smoke correction
+
+The implemented package was corrected after manual smoke. Treat the package
+files and tests as the source of truth over older code templates in this plan:
+
+- the drawer uses the same full-width, columnar, dynamic-height bottom overlay
+  setup as `hidden-context-drawer`;
+- the drawer shows actual captured thinking text only (`structured`, `live`, and
+  `salvaged`);
+- redacted-only, signature-only, and thinking-token estimate-only events keep
+  stock handling but do not create Thinking drawer rows;
+- visible drawer headers must not expose `provisional`, `final`, or progress
+  status copy;
+- the package includes reviewed turn-identity payloads `15` and `16`, and the
+  footer status operation was widened to install a dedicated Hidden
+  Context-style footer segment.
+- after manual smoke approval, `packages/thinking-text-drawer/patch.json` was
+  converted from the direct v2 manifest shape to the ClaudeMonkey V3
+  `kind: "patch"` package envelope; the nested `patch.targets` data remains
+  the builder-compatible target/operation shape.
 
 ---
 
@@ -180,7 +201,7 @@ def test_structured_collection_runs_before_ctrl_o_guard() -> None:
     assert "blockIndex:r" not in helpers
 
 
-def test_helper_fixture_merge_and_secondary_sources() -> None:
+def test_helper_fixture_merge_and_actual_text_only_sources() -> None:
     helper = read_rel("payloads/01-thinking-text-helpers.js")
     helper_prefix = helper.split("\nfunction Ypr(e){", 1)[0]
     script = textwrap.dedent(
@@ -212,7 +233,7 @@ if __name__ == "__main__":
     test_thinking_text_drawer_x_only_close_contract()
     test_thinking_text_drawer_collectors_cover_required_sources()
     test_structured_collection_runs_before_ctrl_o_guard()
-    test_helper_fixture_merge_and_secondary_sources()
+    test_helper_fixture_merge_and_actual_text_only_sources()
     print("thinking-text drawer package checks passed")
 ```
 
@@ -263,12 +284,13 @@ Projects raw and structured thinking text that Claude Code already has or receiv
 
 This is a ClaudeMonkey V1.5 package targeting `/$bunfs/root/src/entrypoints/cli.js` with the graph-aware Bun repack engine. It does not patch request assembly, does not mutate transcript JSONL, does not change model-visible context, and does not change the main chat renderer. It is only a pop-up layer the user can open whenever.
 
-The drawer combines:
+The drawer shows only captured thinking text:
 
 - structured `thinking` blocks that Ctrl-O transcript mode can already show;
 - live `thinking_delta.thinking` chunks when the stream exposes raw text;
-- virtual/salvaged thinking blocks created during interruption;
-- secondary redacted, signature, and estimated-token markers when raw text is unavailable.
+- virtual/salvaged thinking blocks created during interruption.
+
+Progress-only, signature-only, redacted-only, and estimated-token-only events are ignored for drawer rows because they are not thinking text.
 
 The Thinking footer target is always available while the interactive footer is active. If no thinking has been captured, the drawer opens to `No thinking captured yet`. Captured entries affect unread/flash state, not whether the drawer can be opened.
 
@@ -344,9 +366,9 @@ function __codexTTDMergeStructured(e){let t=__codexTTDEnsure(),n=__codexTTDNorma
 function __codexTTDRecordStructuredThinking(e){let t=__codexTTDText(e?.thinking);if(!t.trim())return;return __codexTTDMergeStructured({source:"structured",status:"final",text:t,messageId:e?.messageId,requestId:e?.requestId,blockHash:e?.blockHash||__codexTTDContentHash(t),blockIndex:e?.blockIndex,turnKey:e?.turnKey,timestamp:e?.timestamp})}
 function __codexTTDRecordLiveThinking(e){let t=__codexTTDText(e?.text);if(!t)return;let n=__codexTTDEnsure(),r=e?.streamKey||"active",o=e?.turnKey||e?.requestId||"turn",s=n.entries.find(i=>i.source==="live"&&i.status==="provisional"&&i.streamKey===r&&i.turnKey===o),i=s?`${s.text}${t}`:t;return __codexTTDUpsert({source:"live",status:"provisional",text:i,key:["live",o,r,"provisional"].join(":"),streamKey:r,turnKey:o,requestId:e?.requestId,blockHash:__codexTTDContentHash(i),sources:["live"]})}
 function __codexTTDRecordSalvagedThinking(e){let t=__codexTTDText(e?.thinking);if(!t.trim())return;return __codexTTDUpsert({source:"salvaged",status:"final",text:t,messageId:e?.messageId,requestId:e?.requestId,turnKey:e?.turnKey,blockHash:e?.blockHash||__codexTTDContentHash(t),sources:["salvaged"]})}
-function __codexTTDRecordRedactedThinking(e){return __codexTTDUpsert({source:"redacted",status:"secondary",text:"[redacted thinking block present]",messageId:e?.messageId,requestId:e?.requestId,blockHash:e?.blockHash||"redacted",blockIndex:e?.blockIndex,turnKey:e?.turnKey,timestamp:e?.timestamp,sources:["redacted"]})}
-function __codexTTDRecordThinkingSignature(e){let t=typeof e?.chars==="number"?e.chars:0;return __codexTTDUpsert({source:"signature",status:"secondary",text:`thinking signature received (${t} chars)`,streamKey:e?.streamKey,requestId:e?.requestId,blockHash:`signature:${t}`,sources:["signature"]})}
-function __codexTTDRecordThinkingEstimate(e){let t=typeof e?.estimatedTokensDelta==="number"?e.estimatedTokensDelta:void 0,n=typeof e?.estimatedTokens==="number"?e.estimatedTokens:void 0;return __codexTTDUpsert({source:"estimate",status:"secondary",text:`thinking active; raw text not exposed${t!==void 0?`, +${t} estimated tokens`:""}${n!==void 0?`, ${n} total estimated`:""}`,streamKey:e?.streamKey,turnKey:e?.turnKey,requestId:e?.requestId,estimatedTokens:n,estimatedTokensDelta:t,blockHash:`estimate:${n??""}:${t??""}`,sources:["estimate"]})}
+function __codexTTDRecordRedactedThinking(e){return}
+function __codexTTDRecordThinkingSignature(e){return}
+function __codexTTDRecordThinkingEstimate(e){return}
 function __codexTTDScanAssistantMessage(e){let t=e?.message?.content;if(!Array.isArray(t))return;let n=e?.message?.id||e?.uuid,r=e?.requestId||e?.uuid||n;for(let o=0;o<t.length;o++){let s=t[o];if(s?.type==="thinking")__codexTTDRecordStructuredThinking({thinking:s.thinking,messageId:n,requestId:e?.requestId,blockHash:__codexTTDContentHash(s.thinking),blockIndex:o,turnKey:r,timestamp:e?.timestamp});else if(s?.type==="redacted_thinking")__codexTTDRecordRedactedThinking({messageId:n,requestId:e?.requestId,blockHash:`redacted:${n??""}:${o}`,blockIndex:o,turnKey:r,timestamp:e?.timestamp})}}
 function __codexTTDDrawerFrame(){let e=__codexTTDEnsure();return{...e,lineCount:e.entries.reduce((t,n)=>t+(n.lines?.length||1),0),entryCount:e.entries.length,empty:e.entries.length===0}}
 function __codexTTDWrapFooterActions(e,t,n,r){return{...e,"footer:up":()=>{if(t==="thinking"){let o=__codexTTDEnsure();o.scroll=Math.max(0,(o.scroll||0)-1);globalThis.__CODEX_THINKING_TEXT_DRAWER_SCROLL_V1__=o.scroll;return}return e["footer:up"]?.()},"footer:down":()=>{if(t==="thinking"){globalThis.__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__=!0;n(!0);let o=__codexTTDEnsure();o.scroll=(o.scroll||0)+1;globalThis.__CODEX_THINKING_TEXT_DRAWER_SCROLL_V1__=o.scroll;return}return e["footer:down"]?.()},"footer:openSelected":()=>{if(t==="thinking"){globalThis.__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__=!0;n(!0);return}return e["footer:openSelected"]?.()},"footer:clearSelection":()=>{if(t==="thinking")return false;return e["footer:clearSelection"]?.()},"footer:close":()=>{if(t==="thinking"){globalThis.__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__=!1;n(!1);r(null);return}return e["footer:close"]?.()}}}
@@ -546,8 +568,8 @@ manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
 specs = [
 ('thinking-helpers-before-ypr','Thinking Text Drawer helpers before hidden attachment filter','function Ypr(e){','payloads/01-thinking-text-helpers.js','Adds display-only Thinking drawer helpers and action wrapper.'),
 ('thinking-live-delta-collector','Record live raw thinking_delta text before progress-only conversion','case"thinking_delta":{let{delta:d}=e.event;if("estimated_tokens"in d&&typeof d.estimated_tokens==="number")o?.({type:"thinking_progress",estimatedTokensDelta:d.estimated_tokens});else if("thinking"in d&&typeof d.thinking==="string"&&d.thinking.length>0)o?.({type:"thinking_progress",estimatedTokensDelta:Kon(d.thinking)});return}','payloads/02-live-thinking-delta-collector.js','Records live raw thinking delta text into display-only drawer state.'),
-('thinking-signature-collector','Record thinking signature marker','case"signature_delta":o?.({type:"thinking_signature",chars:VVe(e.event.delta.signature.length)});return;','payloads/03-thinking-signature-collector.js','Records thinking signature events as secondary evidence.'),
-('thinking-parent-structured-collector','Record structured thinking and redacted blocks at parent assistant content-list seam','k=n.message.content.map(I),t[23]=s,t[24]=a,t[25]=T,t[26]=R,t[27]=c,t[28]=f,t[29]=r,t[30]=n.advisorModel,t[31]=n.message.content,t[32]=n.message.id,t[33]=n.uuid,t[34]=h,t[35]=u,t[36]=d,t[37]=p,t[38]=i,t[39]=l,t[40]=k','payloads/04-structured-thinking-block-collector.js','Records structured thinking and redacted markers before normal-mode rendering suppresses them.'),
+('thinking-signature-collector','Preserve stock thinking signature handling without drawer rows','case"signature_delta":o?.({type:"thinking_signature",chars:VVe(e.event.delta.signature.length)});return;','payloads/03-thinking-signature-collector.js','Keeps stock thinking signature handling; drawer row helper is intentionally a no-op because signatures are not thinking text.'),
+('thinking-parent-structured-collector','Record structured thinking text at parent assistant content-list seam','k=n.message.content.map(I),t[23]=s,t[24]=a,t[25]=T,t[26]=R,t[27]=c,t[28]=f,t[29]=r,t[30]=n.advisorModel,t[31]=n.message.content,t[32]=n.message.id,t[33]=n.uuid,t[34]=h,t[35]=u,t[36]=d,t[37]=p,t[38]=i,t[39]=l,t[40]=k','payloads/04-structured-thinking-block-collector.js','Records structured thinking text at the parent assistant content-list seam; redacted-only blocks do not create drawer rows.'),
 ('thinking-footer-open-state','Add Thinking drawer React open state','let[Ss,Ms]=wo.useState(!1),[go,Zo]=wo.useState(!1),[oa,Lu]=wo.useState(!1),[Ec,cn]=wo.useState(!1),[Gn,$n]=wo.useState(!1),[K,ye]=wo.useState(!1),[$e,Xe]=wo.useState(!1),wt=wo.useRef(!1)','payloads/05-footer-open-state.js','Adds a local open-state setter used by the footer action wrapper.'),
 ('thinking-footer-target','Always add Thinking footer target','ss=wo.useMemo(()=>[Ui&&"tasks",po&&"workflows",Fn&&"tmux",_e&&"bagel",Tr&&"bridge",Ne&&"frame"].filter(Boolean),[Ui,po,Fn,_e,Tr,Ne])','payloads/06-footer-target-thinking.js','Makes Thinking selectable even when no entries exist.'),
 ('thinking-footer-selection-flag','Add Thinking selected flag','let lm=Lm==="tasks",ZE=Lm==="workflows",Hd=Lm==="tmux",Zp=Lm==="bagel",AT=Lm==="bridge",Mm=Lm==="frame";function Rp','payloads/07-footer-selection-flag.js','Publishes a local Thinking selection boolean.'),
@@ -556,7 +578,7 @@ specs = [
 ('thinking-selected-overlay-globals','Publish selected/open globals for bottom overlay','return qd.jsxs(B,{flexDirection:"column",marginTop:Vt||dY?0:1,children:[Lm&&!se&&qd.jsx(B,{tabIndex:0,autoFocus:!0,onKeyDown:X8}),!Ys()&&qd.jsx(DTr,{}),J&&','payloads/10-selected-overlay-globals.js','Publishes display-only globals for the bottom overlay renderer.'),
 ('thinking-bottom-overlay-renderer','Render Thinking drawer in bottom overlay sibling','function Ilc(){let e=MXe.c(2),t=clc();if(!t)return null;let n;if(e[0]!==t)n=Xd.jsx(B,{position:"absolute",bottom:"100%",left:0,right:0,opaque:!0,children:t}),e[0]=t,e[1]=n;else n=e[1];return n}','payloads/11-bottom-overlay-renderer.js','Renders the Thinking drawer when selected/open; otherwise preserves stock overlay.'),
 ('thinking-footer-status-bar','Add Thinking footer status segment','ue=x.map((Me)=>di.jsx(ELc,{link:Me},Me.key??Me.url)),de=[...[]],fe=n?tNf(s,L,W,F,R,O):[];','payloads/12-footer-status-bar.js','Adds a Thinking footer segment without gating availability on entries.'),
-('thinking-system-token-estimate','Record system thinking_tokens as estimate marker','if(es.type==="system"&&es.subtype==="thinking_tokens"&&"estimated_tokens_delta"in es)continue;','payloads/13-system-thinking-token-estimate.js','Records system thinking_tokens as secondary estimate evidence before dropping the event.'),
+('thinking-system-token-estimate','Preserve stock system thinking_tokens drop without drawer rows','if(es.type==="system"&&es.subtype==="thinking_tokens"&&"estimated_tokens_delta"in es)continue;','payloads/13-system-thinking-token-estimate.js','Keeps stock system thinking_tokens drop behavior; drawer estimate helper is intentionally a no-op because token estimates are not thinking text.'),
 ('thinking-cancel-salvage-collector','Record cancel-salvaged thinking','let en=_t?.thinking?.trim();if(en&&WAe().thinkingStartedAt!==null)kc((_s)=>[..._s,zT({content:[{type:"thinking",thinking:en,signature:""}],isVirtual:!0})]);','payloads/14-cancel-salvage-collector.js','Records interrupted in-flight thinking as salvaged display-only drawer text while preserving stock virtual block behavior.'),
 ]
 
@@ -711,7 +733,7 @@ In the copied binary, run a prompt/model configuration selected to produce Ctrl-
 - Thinking drawer shows structured thinking text without requiring Ctrl-O to be open.
 - Ctrl-O still opens transcript mode and still shows thinking there.
 - Live thinking text appears before final assistant text when the stream exposes `thinking_delta.thinking`.
-- Redacted/signature/estimate-only events are labeled as secondary evidence, not raw thinking.
+- Redacted/signature/estimate-only events do not appear as drawer rows; the drawer shows actual captured thinking text only.
 
 - [ ] **Step 7: Verify no JSONL/request/model-visible mutation**
 

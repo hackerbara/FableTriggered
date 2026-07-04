@@ -5,6 +5,15 @@ Date: 2026-07-03
 Project: ClaudeMonkey / Claude Code binary patch package
 Target family: Claude Code 2.1.201 first, with exact binary identity validation
 
+## 2026-07-04 smoke correction
+
+Manual smoke showed that derived progress/marker rows make the drawer noisy and
+misleading. The drawer must show actual captured thinking text only: structured
+thinking, live raw `thinking_delta.thinking` text, and cancel-salvaged thinking.
+Redacted-only, signature-only, and thinking-token estimate-only events must not
+create drawer rows. Internal merge state may use live/final concepts, but visible
+drawer headers must not expose `provisional`, `final`, or progress copy.
+
 ## Goal
 
 Create a new ClaudeMonkey patch package modeled on `hidden-context-drawer`, but for thinking text.
@@ -22,9 +31,9 @@ Priority order:
 1. Structured thinking blocks that Ctrl-O transcript mode can already show.
 2. Live raw `thinking_delta.thinking` chunks, when the stream exposes them.
 3. Virtual/cancel-salvaged thinking blocks created from in-flight thinking text.
-4. Redacted/signature/estimated-token evidence only as secondary markers.
+4. Redacted/signature/estimated-token events are not thinking text and must not create drawer rows.
 
-Estimated thinking-token events are not the product. They are useful only when no raw or structured text exists.
+Estimated thinking-token, signature, and redacted-only events are not the product. They may remain stock internal events, but this drawer must not render them as rows.
 
 ## Existing evidence
 
@@ -37,7 +46,7 @@ Relevant observed seams in `2.1.201`:
 - Normal mode suppresses `thinking` and `redacted_thinking` blocks unless transcript/verbose is active.
 - The thinking renderer displays `param.thinking`.
 - Streaming handlers process `content_block_delta` with `delta.type === "thinking_delta"`; if `delta.thinking` is present, that is the earliest raw text source found so far.
-- Claude Code also creates `system/thinking_tokens` estimate events from thinking deltas. Those are not raw text, but can be shown as secondary progress evidence.
+- Claude Code also creates `system/thinking_tokens` estimate events from thinking deltas. Those are not raw text and must not be shown as Thinking drawer rows.
 - On cancel, the app may create a virtual thinking block from in-flight `_t?.thinking` when thinking had started.
 
 ## Architecture
@@ -67,14 +76,13 @@ Maintain a global display frame, for example `__CODEX_THINKING_TEXT_DRAWER_FRAME
 The frame should contain ordered entries with fields like:
 
 - `key`
-- `source`: `live`, `structured`, `salvaged`, `redacted`, or `estimate`
+- `source`: `live`, `structured`, or `salvaged` for drawer-visible entries
 - `timestamp` / turn time where available
 - `messageId` / request ID / block index where available
 - `text`
 - `charCount`
-- `estimatedTokens` / `estimatedTokensDelta` where applicable
 - `lines` for drawer rendering
-- `status`: `provisional`, `final`, or `secondary`
+- internal merge status when useful, but not as visible drawer copy
 
 The frame is display-only state. It is not written back into messages, JSONL, prompt context, or API payloads.
 
@@ -85,7 +93,7 @@ Feed the frame from multiple seams:
 - **Canonical structured source:** scan assistant message content blocks for `{ type: "thinking", thinking: ... }`, matching what Ctrl-O can reveal.
 - **Live source:** append `thinking_delta.thinking` chunks while streaming, before they are summarized into progress estimates.
 - **Salvage source:** capture virtual thinking blocks created from in-flight `_t?.thinking` on cancellation/interruption.
-- **Secondary evidence source:** record `redacted_thinking`, `thinking_signature`, and `system/thinking_tokens` as markers when raw text is not present.
+- **Non-text events:** preserve stock handling for `redacted_thinking`, `thinking_signature`, and `system/thinking_tokens`, but do not create Thinking drawer rows from them.
 
 Structured collection must run at a parent assistant-message/content-list seam that sees assistant content blocks before normal-mode rendering suppresses `thinking` and `redacted_thinking`. Do not rely on the thinking renderer as the only collection source. The collector must update display-only frame state whether or not Ctrl-O is active.
 
@@ -93,13 +101,13 @@ Structured collection must run at a parent assistant-message/content-list seam t
 
 ### During streaming
 
-When a thinking block starts, create or update a provisional live entry if the stream exposes enough identity to do so.
+When a thinking block starts, create or update an internal live entry if the stream exposes enough identity to do so.
 
-When `content_block_delta.thinking_delta.thinking` arrives, append that raw text immediately to the active provisional entry.
+When `content_block_delta.thinking_delta.thinking` arrives, append that raw text immediately to the active live entry.
 
-When only `estimated_tokens` arrives, update a secondary estimate entry rather than pretending text exists.
+When only `estimated_tokens` arrives, do not create a drawer row; token estimates are not thinking text.
 
-When redacted thinking appears, show a compact marker that a redacted thinking block exists.
+When redacted thinking appears, do not create a drawer row; a redaction marker is not captured thinking text.
 
 ### When assistant content lands
 
@@ -107,7 +115,7 @@ Scan assistant messages for structured `thinking` blocks at a content-list seam 
 
 For each structured block:
 
-- if it matches a provisional live entry, replace or finalize that entry;
+- if it matches a live entry, replace/merge that entry internally;
 - otherwise add it as a final structured entry.
 
 ### On cancel/interruption
@@ -124,13 +132,13 @@ Prefer stable IDs when available:
 - stream/block ID;
 - session ID.
 
-If live chunks lack a stable ID, use a provisional per-active-stream key.
+If live chunks lack a stable ID, use a per-active-stream key.
 
 When final structured text arrives:
 
-- merge live and structured entries only when stable identity matches, or when exactly one active provisional entry exists for the same turn and normalized structured text contains the normalized provisional text;
+- merge live and structured entries only when stable identity matches, or when exactly one active live entry exists for the same turn and normalized structured text contains the normalized live text;
 - on merge, preserve provenance, for example `sources: ["live", "structured"]`;
-- if identity is absent, ambiguous, or text disagrees, preserve both entries and label them clearly (`live partial`, `structured final`);
+- if identity is absent, ambiguous, or text disagrees, preserve both entries with source labels;
 - do not use fuzzy or Levenshtein-style “close match” dedupe.
 
 Never silently discard unique thinking text.
@@ -151,19 +159,20 @@ Entries should show:
 
 - source label;
 - optional timestamp/turn label;
-- character count and/or estimated token count;
-- wrapped thinking text when available;
-- compact secondary rows for redacted or estimate-only evidence.
+- character count;
+- wrapped thinking text when available.
+
+They should not show progress-only, signature-only, redacted-only, or estimate-only rows.
 
 If there are no entries, the drawer renders `No thinking captured yet`.
 
-Display order should be most-recent turn first, matching the hidden-context drawer style. Within a turn, in-progress live text may appear before finalization; once structured text arrives, the final/canonical entry should be preferred.
+Display order should be most-recent turn first, matching the hidden-context drawer style. Within a turn, live text may appear before structured text arrives; once structured text arrives, the canonical structured text should be preferred internally without exposing progress/finality status as drawer copy.
 
 ## Failure handling
 
-- If no raw or structured text is available, the drawer may show estimate/redaction evidence only if present.
-- If only token estimates exist, label them as estimates and do not call them raw thinking.
-- If only redacted thinking exists, show redacted markers and do not fabricate content.
+- If no raw or structured/salvaged text is available, render `No thinking captured yet`.
+- If only token estimates exist, do not create drawer rows.
+- If only redacted thinking exists, do not create drawer rows and do not fabricate content.
 - If live and final text disagree, keep both with source labels.
 - If a required anchor is missing in the target binary, package validation must fail closed.
 - If the live stream seam proves too risky for the first implementation, the package can ship a structured-only first slice only with explicit user approval during planning.
@@ -203,9 +212,9 @@ Add package-level tests for collector helpers where feasible:
 
 - structured `thinking` block becomes a drawer entry;
 - live `thinking_delta.thinking` chunks append immediately;
-- final structured thinking replaces matching provisional live text;
+- final structured thinking replaces matching live text;
 - mismatched live/final text preserves both entries;
-- redacted-only and estimate-only events produce secondary rows;
+- redacted-only, signature-only, and estimate-only events do not create drawer rows;
 - empty thinking strings do not create noisy rows.
 - long thinking text is preserved in captured frame data; rendering may viewport/wrap/cap displayed lines, but stored captured text is not silently truncated unless the UI labels truncation explicitly.
 

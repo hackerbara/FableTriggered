@@ -2,14 +2,15 @@
 
 Projects raw and structured thinking text that Claude Code already has or receives into an integrated footer drawer.
 
-This is a ClaudeMonkey V1.5 package targeting `/$bunfs/root/src/entrypoints/cli.js` with the graph-aware Bun repack engine. It does not patch request assembly, does not mutate transcript JSONL, does not change model-visible context, and does not change the main chat renderer. It is only a pop-up layer the user can open whenever.
+This is a ClaudeMonkey V3 patch package targeting `/$bunfs/root/src/entrypoints/cli.js` with the graph-aware Bun repack engine. The package uses the V3 package envelope while preserving the builder-compatible target/operation payload shape. It does not patch request assembly, does not mutate transcript JSONL, does not change model-visible context, and does not change the main chat renderer. It is only a pop-up layer the user can open whenever.
 
-The drawer combines:
+The drawer shows only captured thinking text:
 
 - structured `thinking` blocks that Ctrl-O transcript mode can already show;
 - live `thinking_delta.thinking` chunks when the stream exposes raw text;
-- virtual/salvaged thinking blocks created during interruption;
-- secondary redacted, signature, and estimated-token markers when raw text is unavailable.
+- virtual/salvaged thinking blocks created during interruption.
+
+Progress-only, signature-only, redacted-only, and estimated-token-only events are ignored for drawer rows because they are not thinking text.
 
 The Thinking footer target is always available while the interactive footer is active. If no thinking has been captured, the drawer opens to `No thinking captured yet`. Captured entries affect unread/flash state, not whether the drawer can be opened.
 

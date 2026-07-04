@@ -28,6 +28,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
   "local_real_smoke: opt-in tests that copy and smoke-test the locally installed Claude binary"
 ]

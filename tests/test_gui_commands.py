@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from claude_monkey.cli import build_parser
 from claude_monkey.gui import commands
 
 # ---------------------------------------------------------------------------
@@ -284,3 +287,58 @@ def test_repair_shim_takes_no_args_and_is_exact():
     # --target is omitted (cli._resolve_cache_or_repair_target) -- the exact
     # target the GUI wants to repair, so no --target is passed here either.
     assert commands.command_for_repair_shim() == ["repair-shim", "--json"]
+
+
+# ---------------------------------------------------------------------------
+# 11. argv round-trip against the real CLI parser (drift insurance)
+# ---------------------------------------------------------------------------
+#
+# Every test above pins a builder's argv against a hardcoded literal list --
+# useful for catching an accidental change to a builder, but it never checks
+# that argv is actually valid according to cli.py's real argparse definition
+# (`build_parser`). This enumerates every `command_for_*` builder in this
+# module (one case per function, reusing the same representative args as the
+# hardcoded-list tests above) and feeds each builder's real output straight
+# into `build_parser().parse_args(...)` -- the exact argv `CommandRunner`
+# passes to `main()`/`parser.parse_args()` (no leading "claude-monkey"
+# program-name entry: that's argv[0] for the *subprocess*
+# `CommandRunner._run_command` launches, not part of what argparse itself
+# parses -- see `CommandRunner.run_json`/`run_streaming` building
+# `[*self.cli_argv, *args]` for `subprocess.Popen`, where `args` is exactly a
+# builder's output). A future parser change that drops/renames a flag or
+# positional a builder still emits will fail here even though the
+# hardcoded-list test for that builder stays green.
+
+_ROUND_TRIP_CASES = {
+    "patch_toggle_disable": commands.command_for_patch_toggle("p", enabled=True),
+    "patch_toggle_enable": commands.command_for_patch_toggle("p", enabled=False),
+    "option_toggle_enable_confirm": commands.command_for_option_toggle(
+        "o", enabled=False, confirm=True
+    ),
+    "option_toggle_disable": commands.command_for_option_toggle("o", enabled=True),
+    "prompt_set": commands.command_for_prompt("my-prompt"),
+    "prompt_clear": commands.command_for_prompt(None),
+    "rebuild_apply": commands.command_for_rebuild_apply(),
+    "install_shim_dry_run": commands.command_for_install_shim("/tmp/target", dry_run=True),
+    "install_shim_real_run": commands.command_for_install_shim(Path("/tmp/target"), dry_run=False),
+    "uninstall_shim_no_args": commands.command_for_uninstall_shim(),
+    "uninstall_shim_target": commands.command_for_uninstall_shim(target="/x", dry_run=True),
+    "uninstall_shim_record": commands.command_for_uninstall_shim(record="/r"),
+    "add_package_patch": commands.command_for_add_package("/dir/patch", "patch"),
+    "add_package_option": commands.command_for_add_package("/dir/option", "option"),
+    "remove_package_patch": commands.command_for_remove_package("p-id", "patch"),
+    "remove_package_option": commands.command_for_remove_package("o-id", "option"),
+    "remove_package_prompt": commands.command_for_remove_package("pr-id", "prompt"),
+    "add_prompt_file_without_name": commands.command_for_add_prompt_file(
+        Path("/p/prompt.md"), "pkg-id"
+    ),
+    "add_prompt_file_with_name": commands.command_for_add_prompt_file(
+        Path("/p/prompt.md"), "pkg-id", name="My Prompt"
+    ),
+    "repair_shim": commands.command_for_repair_shim(),
+}
+
+
+@pytest.mark.parametrize("argv", _ROUND_TRIP_CASES.values(), ids=_ROUND_TRIP_CASES.keys())
+def test_command_builder_argv_parses_with_real_cli_parser(argv):
+    build_parser().parse_args(argv)  # must not raise SystemExit/argparse error

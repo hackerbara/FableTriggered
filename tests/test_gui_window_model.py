@@ -320,6 +320,78 @@ def test_option_item_enabled_allows_high_risk_requiring_confirmation():
 
 
 # ---------------------------------------------------------------------------
+# mutating_controls_enabled / install_button_enabled / uninstall_button_enabled
+# / rebuild_button_enabled -- the window-side equivalent of TrayModel's
+# mutating_enabled (Task: window pages must gate on Controller busy-state the
+# same way the tray already does via build_tray_model).
+# ---------------------------------------------------------------------------
+
+
+def test_mutating_controls_enabled_true_when_not_busy():
+    assert window_model.mutating_controls_enabled(None) is True
+
+
+def test_mutating_controls_enabled_false_when_busy():
+    assert window_model.mutating_controls_enabled("rebuild") is False
+
+
+def test_mutating_controls_enabled_matches_tray_model_for_same_busy_command(
+    state_without_shim,
+):
+    # Single source of truth: the window's notion of "busy" must never
+    # diverge from what `build_tray_model` already computes for the tray.
+    for busy_command in (None, "rebuild", "toggle_patch"):
+        tray_model = build_tray_model(state_without_shim, busy_command)
+        assert (
+            window_model.mutating_controls_enabled(busy_command) == tray_model.mutating_enabled
+        )
+
+
+def test_rebuild_button_enabled_false_when_busy(state_without_shim):
+    assert window_model.rebuild_button_enabled(state_without_shim, mutating_enabled=False) is False
+
+
+def test_rebuild_button_enabled_true_when_not_busy(state_without_shim):
+    assert window_model.rebuild_button_enabled(state_without_shim, mutating_enabled=True) is True
+
+
+def test_rebuild_button_enabled_false_when_state_none():
+    assert window_model.rebuild_button_enabled(None, mutating_enabled=True) is False
+
+
+def test_install_button_enabled_false_when_busy_even_if_not_installed(state_without_shim):
+    assert (
+        window_model.install_button_enabled(state_without_shim, mutating_enabled=False) is False
+    )
+
+
+def test_install_button_enabled_true_when_not_busy_and_not_installed(state_without_shim):
+    assert (
+        window_model.install_button_enabled(state_without_shim, mutating_enabled=True) is True
+    )
+
+
+def test_install_button_enabled_false_when_already_installed(state_with_shim):
+    assert window_model.install_button_enabled(state_with_shim, mutating_enabled=True) is False
+
+
+def test_uninstall_button_enabled_false_when_busy_even_if_installed(state_with_shim):
+    assert (
+        window_model.uninstall_button_enabled(state_with_shim, mutating_enabled=False) is False
+    )
+
+
+def test_uninstall_button_enabled_true_when_not_busy_and_installed(state_with_shim):
+    assert window_model.uninstall_button_enabled(state_with_shim, mutating_enabled=True) is True
+
+
+def test_uninstall_button_enabled_false_when_not_installed(state_without_shim):
+    assert (
+        window_model.uninstall_button_enabled(state_without_shim, mutating_enabled=True) is False
+    )
+
+
+# ---------------------------------------------------------------------------
 # default_install_target / install_target_choices
 # ---------------------------------------------------------------------------
 
@@ -348,6 +420,18 @@ def test_default_install_target_falls_back_to_managed_user_target_without_state(
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
     assert default_install_target(None) == managed_user_target(tmp_path / ".claude-monkey")
+
+
+def test_default_install_target_fallback_agrees_with_install_target_choices_root(tmp_path):
+    # Regression test: `default_install_target`'s no-shim/no-detected fallback
+    # must derive from `state.state_dir` -- the same root
+    # `install_target_choices` already uses -- rather than hardcoding
+    # `Path.home()`. A real (non-test) `state_dir` never equals the process's
+    # actual home directory, so a hardcoded `Path.home()` fallback here would
+    # silently disagree with `install_target_choices[0]` for every real user.
+    state = _state(tmp_path)  # shim_target_path=None, detected_claude_command_path=None
+    assert default_install_target(state) == managed_user_target(state.state_dir)
+    assert default_install_target(state) == install_target_choices(state)[0][1]
 
 
 def test_install_target_choices_starts_with_managed_user_target(tmp_path):

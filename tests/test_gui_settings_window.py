@@ -970,3 +970,121 @@ def test_install_target_browse_cancelled_emits_nothing(qtbot, monkeypatch, tmp_p
     qtbot.wait(50)
 
     assert seen == []
+
+
+# ---------------------------------------------------------------------------
+# Busy-state gating (window mirrors tray's TrayModel.mutating_enabled)
+# ---------------------------------------------------------------------------
+#
+# `Controller.refresh` passes its `_busy_command` into `window.render(state,
+# busy_command)` the same way it already feeds `build_tray_model` for the
+# tray -- every mutating control across the window's pages must disable
+# while a command is in flight, and re-enable once it isn't. Non-mutating
+# controls (sidebar navigation, log-viewing/open buttons) must stay live
+# regardless.
+
+
+def test_window_render_while_busy_disables_mutating_controls(qtbot, fake_state):
+    # desired_patch_ids=()/active_option_ids=() so the patch/option are
+    # otherwise removable -- if they weren't, `remove_enabled`'s own
+    # refusal would mask whether busy-gating is actually applied on top of
+    # it.
+    state = MenuState(
+        **{**fake_state.__dict__, "desired_patch_ids": (), "active_option_ids": ()}
+    )
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render(state)
+    window.patches_page.table.setCurrentCell(0, 0)
+    window.options_page.table.setCurrentCell(0, 0)
+
+    window.render(state, "toggle_patch")
+
+    patch_checkbox = window.patches_page.table.item(0, 0)
+    assert not (patch_checkbox.flags() & Qt.ItemFlag.ItemIsEnabled)
+    option_checkbox = window.options_page.table.item(0, 0)
+    assert not (option_checkbox.flags() & Qt.ItemFlag.ItemIsEnabled)
+
+    assert window.patches_page.add_button.isEnabled() is False
+    assert window.options_page.add_button.isEnabled() is False
+    assert window.prompts_page.add_button.isEnabled() is False
+    assert window.patches_page.remove_button.isEnabled() is False
+    assert window.options_page.remove_button.isEnabled() is False
+
+    # Prompt-set control (the list a user clicks to activate a prompt).
+    assert window.prompts_page.list.isEnabled() is False
+
+    assert window.overview_page.rebuild_button.isEnabled() is False
+
+    # Both install/uninstall must be disabled while busy, regardless of
+    # shim_installed (fake_state has shim_installed=True).
+    assert window.install_page.install_button.isEnabled() is False
+    assert window.install_page.uninstall_button.isEnabled() is False
+
+
+def test_window_render_not_busy_reenables_mutating_controls(qtbot, fake_state):
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(fake_state, "toggle_patch")
+    window.render(fake_state, None)
+
+    patch_checkbox = window.patches_page.table.item(0, 0)
+    assert bool(patch_checkbox.flags() & Qt.ItemFlag.ItemIsEnabled)
+    option_checkbox = window.options_page.table.item(0, 0)
+    assert bool(option_checkbox.flags() & Qt.ItemFlag.ItemIsEnabled)
+
+    assert window.patches_page.add_button.isEnabled() is True
+    assert window.options_page.add_button.isEnabled() is True
+    assert window.prompts_page.add_button.isEnabled() is True
+    assert window.prompts_page.list.isEnabled() is True
+
+    assert window.overview_page.rebuild_button.isEnabled() is True
+
+    # fake_state has shim_installed=True: install stays disabled for that
+    # reason, uninstall re-enables now that nothing is busy.
+    assert window.install_page.install_button.isEnabled() is False
+    assert window.install_page.uninstall_button.isEnabled() is True
+
+
+def test_navigation_and_logs_controls_stay_enabled_while_busy(qtbot, fake_state):
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(fake_state, "rebuild")
+
+    assert window.sidebar.isEnabled() is True
+    assert window.logs_page.open_report_button.isEnabled() is True
+    assert window.logs_page.open_logs_folder_button.isEnabled() is True
+    assert window.logs_page.open_state_folder_button.isEnabled() is True
+
+
+def test_render_busy_command_defaults_to_not_busy(qtbot, fake_state):
+    # Every pre-existing `window.render(state)` call (no `busy_command` arg)
+    # must keep behaving exactly as before this fix -- fully enabled.
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(fake_state)
+
+    assert window.overview_page.rebuild_button.isEnabled() is True
+    patch_checkbox = window.patches_page.table.item(0, 0)
+    assert bool(patch_checkbox.flags() & Qt.ItemFlag.ItemIsEnabled)
+
+
+def test_notice_repair_button_disables_while_busy_and_reenables_after(qtbot):
+    # `repair_shim` is a mutating command (`Controller._action_repair_shim`
+    # itself no-ops while busy) -- the notice's "Repair shim..." button must
+    # disable/re-enable the same way the rebuild button does, while
+    # "Dismiss" (pure Controller state, no CLI call) stays live regardless.
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    notice = NoticeModel(message="repair needed", digest="abcd1234", actions=("repair",))
+
+    window.render_notice(notice, "repair_shim")
+    assert window.overview_page.notice_repair_button.isEnabled() is False
+    assert window.overview_page.notice_dismiss_button.isEnabled() is True
+
+    window.render_notice(notice, None)
+    assert window.overview_page.notice_repair_button.isEnabled() is True
+    assert window.overview_page.notice_dismiss_button.isEnabled() is True

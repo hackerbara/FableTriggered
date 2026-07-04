@@ -5,6 +5,11 @@ Follows `settings_window.py`'s rendering discipline: `option_item_enabled`
 refusal reason) are read from `window_model.py`, never re-derived here.
 Enabling a `requires_confirmation` option shows a confirm dialog whose
 warning text is read off `MenuState.high_risk_options` -- never hardcoded.
+`render`'s `mutating_enabled` (from `window_model.mutating_controls_enabled`,
+via `SettingsWindow.render`'s `busy_command`) additionally gates every
+mutating control here -- rows, Add, and Remove -- while a Controller command
+is in flight, mirroring how the tray already gates on `TrayModel.
+mutating_enabled`.
 """
 
 from __future__ import annotations
@@ -52,6 +57,7 @@ class OptionsPage(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._state: MenuState | None = None
+        self._mutating_enabled: bool = True
         self._high_risk_warning_by_id: dict[str, str] = {}
 
         layout = QVBoxLayout(self)
@@ -79,8 +85,10 @@ class OptionsPage(QWidget):
 
         self.render(None)
 
-    def render(self, state: MenuState | None) -> None:
+    def render(self, state: MenuState | None, *, mutating_enabled: bool = True) -> None:
         self._state = state
+        self._mutating_enabled = mutating_enabled
+        self.add_button.setEnabled(mutating_enabled)
         self._high_risk_warning_by_id = (
             {summary.option_id: summary.warning for summary in state.high_risk_options}
             if state is not None
@@ -96,7 +104,7 @@ class OptionsPage(QWidget):
         self._update_remove_button()
 
     def _render_row(self, row: int, option: OptionMenuItem) -> None:
-        row_enabled = option_item_enabled(option, mutating_enabled=True)
+        row_enabled = option_item_enabled(option, mutating_enabled=self._mutating_enabled)
         cell_flags = Qt.ItemFlag.ItemIsSelectable
         if row_enabled:
             cell_flags |= Qt.ItemFlag.ItemIsEnabled
@@ -185,7 +193,7 @@ class OptionsPage(QWidget):
             self.remove_button.setToolTip("")
             return
         can_remove, reason = remove_enabled("option", option.option_id, self._state)
-        self.remove_button.setEnabled(can_remove)
+        self.remove_button.setEnabled(self._mutating_enabled and can_remove)
         self.remove_button.setToolTip("" if can_remove else reason)
 
     def _on_add_clicked(self) -> None:

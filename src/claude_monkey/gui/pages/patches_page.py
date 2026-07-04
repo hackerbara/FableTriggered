@@ -3,6 +3,11 @@
 Follows `settings_window.py`'s rendering discipline: `patch_item_enabled`
 (row enable/disable) and `remove_enabled` (Remove-button enable/disable +
 refusal reason) are read from `window_model.py`, never re-derived here.
+`render`'s `mutating_enabled` (from `window_model.mutating_controls_enabled`,
+via `SettingsWindow.render`'s `busy_command`) additionally gates every
+mutating control here -- rows, Add, and Remove -- while a Controller command
+is in flight, mirroring how the tray already gates on `TrayModel.
+mutating_enabled`.
 """
 
 from __future__ import annotations
@@ -41,6 +46,7 @@ class PatchesPage(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._state: MenuState | None = None
+        self._mutating_enabled: bool = True
 
         layout = QVBoxLayout(self)
         self.banner = Banner()
@@ -67,8 +73,10 @@ class PatchesPage(QWidget):
 
         self.render(None)
 
-    def render(self, state: MenuState | None) -> None:
+    def render(self, state: MenuState | None, *, mutating_enabled: bool = True) -> None:
         self._state = state
+        self._mutating_enabled = mutating_enabled
+        self.add_button.setEnabled(mutating_enabled)
         self.table.blockSignals(True)
         self.table.setRowCount(0)
         if state is not None:
@@ -79,7 +87,7 @@ class PatchesPage(QWidget):
         self._update_remove_button()
 
     def _render_row(self, row: int, patch: PatchMenuItem) -> None:
-        row_enabled = patch_item_enabled(patch, mutating_enabled=True)
+        row_enabled = patch_item_enabled(patch, mutating_enabled=self._mutating_enabled)
 
         checkbox_item = QTableWidgetItem()
         flags = Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsSelectable
@@ -135,7 +143,7 @@ class PatchesPage(QWidget):
             self.remove_button.setToolTip("")
             return
         can_remove, reason = remove_enabled("patch", patch.patch_id, self._state)
-        self.remove_button.setEnabled(can_remove)
+        self.remove_button.setEnabled(self._mutating_enabled and can_remove)
         self.remove_button.setToolTip("" if can_remove else reason)
 
     def _on_add_clicked(self) -> None:

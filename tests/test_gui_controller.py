@@ -98,11 +98,13 @@ class FakeWindow:
         self.rendered: list = []
         self.banners: list[tuple[str, str]] = []
         self.notices: list = []
+        self.busy_commands: list[str | None] = []
 
-    def render(self, state) -> None:
+    def render(self, state, busy_command: str | None = None) -> None:
         self.rendered.append(state)
+        self.busy_commands.append(busy_command)
 
-    def render_notice(self, notice) -> None:
+    def render_notice(self, notice, busy_command: str | None = None) -> None:
         self.notices.append(notice)
 
     def show_banner(self, page: str, message: str) -> None:

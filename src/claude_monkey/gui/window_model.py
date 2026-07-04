@@ -63,6 +63,21 @@ def _status_lines(state: MenuState) -> tuple[str, ...]:
     )
 
 
+def mutating_controls_enabled(busy_command: str | None) -> bool:
+    """Whether every mutating control should be enabled right now.
+
+    A command is "in flight" exactly when `busy_command` (`Controller.
+    _busy_command`) is not `None`. This is the single source of truth for
+    that rule -- `build_tray_model` (via `TrayModel.mutating_enabled`) and
+    the window/pages (via `SettingsWindow.render`'s `busy_command` param)
+    both read it, so the tray and every window page (Patches/Options/
+    Prompts/Install checkboxes, add/remove buttons, the rebuild button)
+    always agree on which controls are safe to click. Non-mutating controls
+    (page navigation, log viewing, quit) never consult this at all.
+    """
+    return busy_command is None
+
+
 def build_tray_model(
     state: MenuState | None,
     busy_command: str | None,
@@ -81,7 +96,7 @@ def build_tray_model(
     return TrayModel(
         status_lines=_status_lines(state),
         running_label=f"Running: {busy_command}" if busy_command else None,
-        mutating_enabled=busy_command is None,
+        mutating_enabled=mutating_controls_enabled(busy_command),
         show_install_shim=not state.shim_installed,
         prompt_items=state.prompt_items,
         patch_items=state.patch_items,
@@ -284,12 +299,32 @@ def option_item_enabled(option: OptionMenuItem, *, mutating_enabled: bool) -> bo
     return mutating_enabled and option.valid
 
 
+def rebuild_button_enabled(state: MenuState | None, *, mutating_enabled: bool) -> bool:
+    """Whether the Overview page's "Rebuild / Apply" button should be enabled.
+
+    Mirrors `patch_item_enabled`/`option_item_enabled`'s discipline: the page
+    consumes this, it never re-derives "disconnected or busy" itself.
+    """
+    return state is not None and mutating_enabled
+
+
+def install_button_enabled(state: MenuState | None, *, mutating_enabled: bool) -> bool:
+    """Whether the Install page's "Install" button should be enabled."""
+    return state is not None and mutating_enabled and not state.shim_installed
+
+
+def uninstall_button_enabled(state: MenuState | None, *, mutating_enabled: bool) -> bool:
+    """Whether the Install page's "Uninstall" button should be enabled."""
+    return state is not None and mutating_enabled and state.shim_installed
+
+
 def default_install_target(state: MenuState | None = None) -> Path:
     if state and state.shim_target_path:
         return state.shim_target_path
     if state and state.detected_claude_command_path:
         return state.detected_claude_command_path
-    return managed_user_target(Path.home() / ".claude-monkey")
+    state_dir = state.state_dir if state else Path.home() / ".claude-monkey"
+    return managed_user_target(state_dir)
 
 
 def install_target_choices(state: MenuState | None) -> tuple[tuple[str, Path], ...]:

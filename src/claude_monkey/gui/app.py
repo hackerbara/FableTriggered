@@ -493,12 +493,12 @@ class Controller:
             state = parse_menu_state(status_raw, patches_raw, prompts_raw, options_raw)
         except Exception:
             self._state = None
-            self.window.render(None)
+            self.window.render(None, self._busy_command)
             self._render_notice()
             return
 
         self._state = state
-        self.window.render(state)
+        self.window.render(state, self._busy_command)
         self._render_notice()
 
     def _render_notice(self) -> NoticeModel | None:
@@ -514,7 +514,7 @@ class Controller:
             else None
         )
         self.tray.render(build_tray_model(self._state, self._busy_command, notice=notice))
-        self.window.render_notice(notice)
+        self.window.render_notice(notice, self._busy_command)
         return notice
 
     def show_window(self) -> None:

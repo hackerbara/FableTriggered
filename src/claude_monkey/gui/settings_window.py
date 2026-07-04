@@ -43,7 +43,12 @@ from claude_monkey.gui.pages.install_page import InstallPage
 from claude_monkey.gui.pages.options_page import OptionsPage
 from claude_monkey.gui.pages.patches_page import PatchesPage
 from claude_monkey.gui.pages.prompts_page import PromptsPage
-from claude_monkey.gui.window_model import NoticeModel, build_tray_model
+from claude_monkey.gui.window_model import (
+    NoticeModel,
+    build_tray_model,
+    mutating_controls_enabled,
+    rebuild_button_enabled,
+)
 from claude_monkey.menubar_state import MenuState
 
 __all__ = [
@@ -147,7 +152,7 @@ class OverviewPage(QWidget):
         self.report_path: Path | None = None
         self.render(None)
 
-    def render(self, state: MenuState | None) -> None:
+    def render(self, state: MenuState | None, *, mutating_enabled: bool = True) -> None:
         if state is None:
             for label in (
                 self.status_label,
@@ -179,7 +184,9 @@ class OverviewPage(QWidget):
         self.high_risk_list.clear()
         self.high_risk_list.addItems(list(state.high_risk_warnings))
 
-        self.rebuild_button.setEnabled(True)
+        self.rebuild_button.setEnabled(
+            rebuild_button_enabled(state, mutating_enabled=mutating_enabled)
+        )
 
         modules_changed = len(state.changed_modules)
         self.build_summary_label.setText(
@@ -188,7 +195,7 @@ class OverviewPage(QWidget):
         self.report_path = state.latest_build_report_path
         self.open_report_button.setEnabled(self.report_path is not None)
 
-    def render_notice(self, notice: NoticeModel | None) -> None:
+    def render_notice(self, notice: NoticeModel | None, *, mutating_enabled: bool = True) -> None:
         self._notice = notice
         if notice is None:
             self.notice_label.hide()
@@ -198,6 +205,11 @@ class OverviewPage(QWidget):
         self.notice_label.setText(notice.message)
         self.notice_label.show()
         self.notice_repair_button.setVisible("repair" in notice.actions)
+        # `repair_shim` is a mutating CLI command (see `Controller.
+        # _action_repair_shim`), so it disables while busy exactly like the
+        # rebuild button -- `notice_dismiss_button` is pure Controller state
+        # (no CLI call), so it stays live regardless.
+        self.notice_repair_button.setEnabled(mutating_enabled)
         self.notice_dismiss_button.setVisible(notice.digest is not None)
 
 
@@ -231,7 +243,12 @@ class LogsPage(QWidget):
         self.state_dir: Path | None = None
         self.render(None)
 
-    def render(self, state: MenuState | None) -> None:
+    def render(self, state: MenuState | None, *, mutating_enabled: bool = True) -> None:
+        # `mutating_enabled` is accepted for signature parity with every
+        # other page (`SettingsWindow.render` calls all pages uniformly),
+        # but unused here: opening a report/logs/state folder is never a
+        # mutating CLI command, so this page has nothing to gate on busy.
+        del mutating_enabled
         if state is None:
             self.report_path = None
             self.logs_dir = None
@@ -346,8 +363,20 @@ class SettingsWindow(QMainWindow):
         self.options_page.action.connect(self.action.emit)
         self.install_page.action.connect(self.action.emit)
 
-    def render(self, state: MenuState | None) -> None:
-        """Repopulate every page from `state`; `None` shows a disconnected banner."""
+    def render(self, state: MenuState | None, busy_command: str | None = None) -> None:
+        """Repopulate every page from `state`; `None` shows a disconnected banner.
+
+        `busy_command` mirrors `Controller._busy_command` -- the exact value
+        `build_tray_model` already reads to compute `TrayModel.
+        mutating_enabled` for the tray. `window_model.mutating_controls_enabled`
+        turns it into the single `mutating_enabled` flag threaded into every
+        page's `render()`, so every mutating control (patch/option checkboxes,
+        add/remove buttons, the prompt-set list, install/uninstall buttons,
+        the rebuild button) disables while a command is in flight exactly
+        like the tray already does -- pages only consume the flag, they never
+        decide busy-ness themselves. Non-mutating controls (sidebar
+        navigation, log viewing, quit) never consult it.
+        """
         if state is None:
             self.disconnected_banner.show()
             self.retry_button.show()
@@ -355,8 +384,9 @@ class SettingsWindow(QMainWindow):
             self.disconnected_banner.hide()
             self.retry_button.hide()
 
+        mutating_enabled = mutating_controls_enabled(busy_command)
         for page in self._pages_by_key.values():
-            page.render(state)
+            page.render(state, mutating_enabled=mutating_enabled)
 
     def show_banner(self, page: str, message: str) -> None:
         """Show a dismissible inline error banner on `page` (a sidebar key)."""
@@ -365,15 +395,20 @@ class SettingsWindow(QMainWindow):
             raise ValueError(f"unknown settings page: {page!r}")
         banner.show_message(message)
 
-    def render_notice(self, notice: NoticeModel | None) -> None:
+    def render_notice(self, notice: NoticeModel | None, busy_command: str | None = None) -> None:
         """Render the shim-update-resilience notice (spec sec4) on Overview.
 
         Controller calls this alongside `render(state)` (both from
         `refresh()` and from `_action_dismiss_notice`) with the output of
         `window_model.build_notice_model` -- this method never re-derives
-        the decision, only pushes the already-decided model into the page.
+        that decision, only pushes the already-decided model into the page.
+        `busy_command` is the same value fed to `render()`/`build_tray_model`
+        -- it decides whether the notice's "Repair shim..." button (a
+        mutating command) is enabled, via `mutating_controls_enabled`.
         """
-        self.overview_page.render_notice(notice)
+        self.overview_page.render_notice(
+            notice, mutating_enabled=mutating_controls_enabled(busy_command)
+        )
 
     def _emit_dismiss_notice(self) -> None:
         notice = self.overview_page._notice

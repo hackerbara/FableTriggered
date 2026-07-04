@@ -2,7 +2,12 @@
 
 Follows `settings_window.py`'s rendering discipline: `remove_enabled` (from
 `window_model.py`) decides Remove-button enable/disable + refusal reason;
-this page never re-derives that rule.
+this page never re-derives that rule. `render`'s `mutating_enabled` (from
+`window_model.mutating_controls_enabled`, via `SettingsWindow.render`'s
+`busy_command`) additionally gates every mutating control here -- the
+prompt-set list, Add, and Remove -- while a Controller command is in
+flight, mirroring how the tray already gates on `TrayModel.
+mutating_enabled`.
 """
 
 from __future__ import annotations
@@ -73,6 +78,7 @@ class PromptsPage(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._state: MenuState | None = None
+        self._mutating_enabled: bool = True
 
         layout = QVBoxLayout(self)
         self.banner = Banner()
@@ -95,8 +101,11 @@ class PromptsPage(QWidget):
 
         self.render(None)
 
-    def render(self, state: MenuState | None) -> None:
+    def render(self, state: MenuState | None, *, mutating_enabled: bool = True) -> None:
         self._state = state
+        self._mutating_enabled = mutating_enabled
+        self.list.setEnabled(mutating_enabled)
+        self.add_button.setEnabled(mutating_enabled)
         self.list.blockSignals(True)
         self.list.clear()
         if state is not None:
@@ -131,7 +140,7 @@ class PromptsPage(QWidget):
             self.remove_button.setToolTip("")
             return
         can_remove, reason = remove_enabled("prompt", package_id, self._state)
-        self.remove_button.setEnabled(can_remove)
+        self.remove_button.setEnabled(self._mutating_enabled and can_remove)
         self.remove_button.setToolTip("" if can_remove else reason)
 
     def _on_add_clicked(self) -> None:

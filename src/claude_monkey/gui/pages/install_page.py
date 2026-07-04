@@ -4,7 +4,15 @@ Follows `settings_window.py`'s rendering discipline: `install_target_choices`
 and `InstallTargetSelection` (from `window_model.py`) decide the combo's
 choices and the remembered user selection, and `install_plan_for_target`
 (from `menubar_install.py`) decides the protected/user-writable status --
-this page never re-derives that logic Qt-side.
+this page never re-derives that logic Qt-side. `install_button_enabled`/
+`uninstall_button_enabled` (also `window_model.py`) likewise decide whether
+the Install/Uninstall buttons are enabled, folding in `render`'s
+`mutating_enabled` (from `window_model.mutating_controls_enabled`, via
+`SettingsWindow.render`'s `busy_command`) so both buttons disable while a
+Controller command is in flight, mirroring the tray's `TrayModel.
+mutating_enabled`. The target combo/Browse never call the CLI themselves
+(`set_install_target` is local selection state, applied on the next
+install/uninstall), so they are not gated by busy-state.
 """
 
 from __future__ import annotations
@@ -23,7 +31,12 @@ from PySide6.QtWidgets import (
 )
 
 from claude_monkey.gui.pages.common import Banner
-from claude_monkey.gui.window_model import InstallTargetSelection, install_target_choices
+from claude_monkey.gui.window_model import (
+    InstallTargetSelection,
+    install_button_enabled,
+    install_target_choices,
+    uninstall_button_enabled,
+)
 from claude_monkey.menubar_install import install_plan_for_target
 from claude_monkey.menubar_state import MenuState
 
@@ -74,7 +87,7 @@ class InstallPage(QWidget):
 
         self.render(None)
 
-    def render(self, state: MenuState | None) -> None:
+    def render(self, state: MenuState | None, *, mutating_enabled: bool = True) -> None:
         self._state = state
         if state is None:
             self.target_combo.blockSignals(True)
@@ -104,8 +117,12 @@ class InstallPage(QWidget):
 
         self._render_status(state, current_target)
 
-        self.install_button.setEnabled(not state.shim_installed)
-        self.uninstall_button.setEnabled(state.shim_installed)
+        self.install_button.setEnabled(
+            install_button_enabled(state, mutating_enabled=mutating_enabled)
+        )
+        self.uninstall_button.setEnabled(
+            uninstall_button_enabled(state, mutating_enabled=mutating_enabled)
+        )
 
     def _render_status(self, state: MenuState, target: Path) -> None:
         plan = install_plan_for_target(target, state_dir=state.state_dir)

@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import shutil
 import stat
 from collections.abc import Callable
@@ -29,6 +30,43 @@ class ProtectedTargetRestoreUnavailable(RuntimeError):
 
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+_VERSION_SEGMENT_RE = re.compile(r"^\d+(?:\.\d+)+$")
+
+
+def _version_from_path(path: Path) -> str | None:
+    """Best-effort version extraction from a resolved source path's own
+    versioned-directory layout (e.g. `.../claude/versions/2.1.201/claude`,
+    matching the official installer's own directory shape described in the
+    spec's "Observed failure mode").
+
+    This NEVER executes `path`. Both `status.py`'s replaced-shim detection
+    (called on every `status --json`/GUI refresh) and `repair.py`'s
+    cache-source/repair-shim actions need this: running `<path> --version`
+    against an unverified path is arbitrary-binary execution whose only
+    credential is that the path merely *classifies* as plausible-official
+    (see `classify_plausible_official_source`'s own docstring -- that proves
+    internal consistency, not provenance). Concretely, when `path` is later
+    shown to still be the intact managed shim, `--version` is a management
+    token, so running the shim invokes `select_launch_target(...,
+    prefer_official=True)` -> `shutil.which("claude")` -> execution of
+    whatever `claude` resolves on PATH.
+
+    Per spec R7, extraction failure just means "version unknown" -- it never
+    gates anything, so falling back to `None` here is always safe. Lives
+    here (rather than in `status.py` or `repair.py`) so both modules can
+    import it without a circular import: `repair.py` already imports from
+    `status.py` (`classify_plausible_official_source`), so the parser must
+    live somewhere `status.py` can import without importing `repair.py` --
+    `install.py` imports neither and both already depend on it directly.
+    """
+    parts = path.parts
+    for index, part in enumerate(parts[:-1]):
+        candidate = parts[index + 1]
+        if part == "versions" and _VERSION_SEGMENT_RE.match(candidate):
+            return candidate
+    return None
 
 
 def shim_digest(state_dir: Path) -> str:

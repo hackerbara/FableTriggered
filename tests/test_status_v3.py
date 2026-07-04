@@ -423,9 +423,16 @@ def replace_target_with_official(target: Path, tmp_path: Path, version: str = "2
     """Simulate an official Claude updater clobbering the shim in place with
     a symlink to a newly installed official binary (the spec's observed
     failure mode: target path unchanged, target identity replaced).
+
+    The official binary lives under a `versions/<version>` path segment,
+    mirroring the real official installer's own versioned-directory layout
+    (spec "Observed failure mode": `.../claude/versions/2.1.201`) -- this is
+    also what `install._version_from_path` parses, since status detection
+    must never execute an unverified replacement target for `--version`
+    (see `test_status_detects_version_from_path_without_executing_target`).
     """
     official = make_executable(
-        tmp_path / "official-source" / "claude",
+        tmp_path / "official-source" / "versions" / version / "claude",
         f"#!/bin/sh\necho '{version} (Claude Code)'\n",
     )
     target.unlink()
@@ -447,6 +454,35 @@ def test_status_detects_target_replaced_by_official(tmp_path):
     assert payload["detectedOfficialVersion"] == "2.1.201"
     assert payload["shimRepairAvailable"] is True
     assert payload["rolloutRequired"] is True
+
+
+def test_status_detects_version_from_path_without_executing_target(tmp_path):
+    """Detection must extract `detectedOfficialVersion` from the target's own
+    `versions/<version>` path segment -- never by running `<target>
+    --version`. `status_payload` runs on every GUI refresh (R5), so a
+    replacement target sitting at the (previously shim-owned) path must not
+    become passive, automatic arbitrary-binary execution; the only
+    credential a replacement has is that it path-classifies as "plausible
+    official" (`classify_plausible_official_source`), which proves internal
+    consistency, not provenance. The fake binary below writes a marker file
+    and exits non-zero if it is ever actually run, so this test fails loudly
+    (via the marker assertion) if a future change reintroduces execution.
+    """
+    state, target = seed_shim_target(tmp_path)
+    marker = tmp_path / "executed.marker"
+    version = "2.1.201"
+    official = make_executable(
+        tmp_path / "official-source" / "versions" / version / "claude",
+        f"#!/bin/sh\ntouch '{marker}'\nexit 1\n",
+    )
+    target.unlink()
+    target.symlink_to(official)
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["targetReplacedByOfficial"] is True
+    assert payload["detectedOfficialVersion"] == version
+    assert not marker.exists()
 
 
 def test_status_never_managed_target_reports_all_new_fields_empty(tmp_path):

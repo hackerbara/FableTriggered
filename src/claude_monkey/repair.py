@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 from time import time
 from typing import Any
@@ -10,6 +9,7 @@ from typing import Any
 from claude_monkey.authorization import target_needs_authorization
 from claude_monkey.install import (
     OWNER_MARKER,
+    _version_from_path,
     atomic_write_json,
     cache_source,
     describe_existing,
@@ -60,33 +60,6 @@ def _file_sha256(path: Path) -> str | None:
         return sha256_bytes(path.read_bytes())
     except OSError:
         return None
-
-
-_VERSION_SEGMENT_RE = re.compile(r"^\d+(?:\.\d+)+$")
-
-
-def _version_from_path(path: Path) -> str | None:
-    """Best-effort version extraction from a resolved source path's own
-    versioned-directory layout (e.g. `.../claude/versions/2.1.201/claude`,
-    matching the official installer's own directory shape described in the
-    spec's "Observed failure mode").
-
-    C1: this NEVER executes `path`. The previous implementation ran
-    `<path> --version` as a subprocess; when `path` was later shown to still
-    be the intact managed shim (the exact C1 bug), `--version` is a
-    management token, so running the shim invoked
-    `select_launch_target(..., prefer_official=True)` -> `shutil.which
-    ("claude")` -> execution of whatever `claude` resolved on PATH --
-    arbitrary-binary execution from what was meant to be a metadata probe.
-    Per R7, extraction failure just means "version unknown" -- it never
-    gates anything, so falling back to `None` here is always safe.
-    """
-    parts = path.parts
-    for index, part in enumerate(parts[:-1]):
-        candidate = parts[index + 1]
-        if part == "versions" and _VERSION_SEGMENT_RE.match(candidate):
-            return candidate
-    return None
 
 
 def _matches_installed_shim_digest(digest: str, state_dir: Path) -> bool:

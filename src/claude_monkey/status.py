@@ -11,6 +11,7 @@ from typing import Any
 from claude_monkey.config import ClaudeMonkeyConfig, LaunchProfile
 from claude_monkey.install import (
     OWNER_MARKER,
+    _version_from_path,
     current_target_is_installed_shim,
     shim_digest,
 )
@@ -384,19 +385,20 @@ def classify_plausible_official_source(target_path: Path, paths: StatePaths) -> 
 
 
 def _cheap_official_version(path: Path) -> str | None:
-    """Best-effort version extraction, reusing the existing --version probe.
+    """Best-effort version extraction for a detected replacement target.
 
+    `path` here is reached only when the target's digest does NOT match the
+    managed shim -- i.e. exactly when an unverified binary sits at the
+    target path, with only `classify_plausible_official_source`'s path-shape
+    check as credential (not verified Anthropic provenance). Detection runs
+    on every `status --json`/GUI refresh (R5), so this must never execute
+    `path` -- see `install._version_from_path`'s docstring for the concrete
+    failure mode (running an intact shim's `--version` re-enters
+    `select_launch_target` and executes whatever `claude` resolves on PATH).
     Per spec R7, extraction failure must not suppress detection -- callers
     treat None as "version unknown", not as an error.
     """
-    try:
-        result = run_command([str(path), "--version"])
-    except OSError:
-        return None
-    if result.returncode != 0:
-        return None
-    output = result.stdout.strip() or result.stderr.strip() or None
-    return _version_from_output(output)
+    return _version_from_path(path)
 
 
 _NO_OFFICIAL_REPLACEMENT: dict[str, Any] = {

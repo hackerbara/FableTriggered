@@ -16,3 +16,5 @@ The Thinking footer target is always available while the interactive footer is a
 This package is a standalone direct footer/overlay seam owner for Claude Code 2.1.201. It is expected to conflict with other direct footer drawer packages targeting the same source until structured splices or a reviewed footer-drawer framework exists.
 
 Manual smoke is required: select Thinking from the footer, open it, verify entries or the empty state, scroll, and close with x. Ctrl-O transcript mode must continue to work, and normal chat must remain unchanged.
+
+Manual smoke must also include a before/after transcript JSONL check and any available request/model-visible context preview check. Drawer-only strings such as `__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__`, `No thinking captured yet`, `thinking-available`, and `x closes` must not appear in transcript persistence, request assembly, or model-visible context.

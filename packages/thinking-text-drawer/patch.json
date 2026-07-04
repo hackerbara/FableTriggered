@@ -32,9 +32,37 @@
               "oldRangeLength": 16,
               "replacement": {
                 "path": "payloads/01-thinking-text-helpers.js",
-                "sha256": "fba1f2409925dd525bc0b079f21cf6439220a09cec70176573134e8dcb9ce1df"
+                "sha256": "d3884b23d381c093aff91e9ca8f64f181832851845db2fd61e4a632ed15c875e"
               },
               "knownBehaviorChange": "Adds display-only Thinking drawer helpers and action wrapper."
+            },
+            {
+              "opId": "thinking-message-start-turn-collector",
+              "label": "Capture current assistant message id for live thinking turn identity",
+              "type": "replace_exact",
+              "exact": "if(e.event.type===\"message_start\"){if(e.ttftMs!=null)o?.({type:\"start\",ttftMs:e.ttftMs,messageId:e.event.message.id});i?.((d)=>d.length>0?[]:d),LNo(),a?.((d)=>d!==null?null:d),u?.begin(e.event.message.id)}",
+              "requireWithinRange": [],
+              "oldRangeSha256": "927a38b9cbc9824bdbaa447ba97ca561e95e050ace91b4b7c18acbfd45e249c0",
+              "oldRangeLength": 205,
+              "replacement": {
+                "path": "payloads/15-message-start-turn-collector.js",
+                "sha256": "a266a41c3957a4cd8f222a8d162bf0dd9c2567af76a4bdc899ce84a1187487ef"
+              },
+              "knownBehaviorChange": "Captures display-only current turn identity for live thinking delta merge keys."
+            },
+            {
+              "opId": "thinking-message-stop-turn-collector",
+              "label": "Clear current live thinking turn identity at message stop",
+              "type": "replace_exact",
+              "exact": "if(e.event.type===\"message_stop\"){u?.finalize(),r?.(\"tool-use\"),i?.(()=>[]);return}",
+              "requireWithinRange": [],
+              "oldRangeSha256": "489aff6b8f985488ebf2c62d6587bea8bf212cd4b4900b46642106e60a546e0a",
+              "oldRangeLength": 83,
+              "replacement": {
+                "path": "payloads/16-message-stop-turn-collector.js",
+                "sha256": "1c3dad086efade6484c8efaefcda3f293b08aac5ab115d5daec847786595b14a"
+              },
+              "knownBehaviorChange": "Clears display-only current turn identity after streaming message completion."
             },
             {
               "opId": "thinking-live-delta-collector",
@@ -46,7 +74,7 @@
               "oldRangeLength": 329,
               "replacement": {
                 "path": "payloads/02-live-thinking-delta-collector.js",
-                "sha256": "5204c3fd37ce6b2958a2cc7cb74d2331e21ed94e10c8c077f5c00dd0f73719c6"
+                "sha256": "ce77319636a654fa17094d28223276de5903c24fd63cbd809a29e4d31a4cd8b9"
               },
               "knownBehaviorChange": "Records live raw thinking delta text into display-only drawer state."
             },
@@ -60,7 +88,7 @@
               "oldRangeLength": 104,
               "replacement": {
                 "path": "payloads/03-thinking-signature-collector.js",
-                "sha256": "62d99cdb9dabd48e13582ee5ec4a46c3cb3eb46a3c92d3bb4d812d72cc9685e7"
+                "sha256": "d34925318e8b3b3c45fadb0d7015e4c261379825f732818a09ee31481fd52d01"
               },
               "knownBehaviorChange": "Records thinking signature events as secondary evidence."
             },
@@ -172,7 +200,7 @@
               "oldRangeLength": 193,
               "replacement": {
                 "path": "payloads/11-bottom-overlay-renderer.js",
-                "sha256": "3948ccf8ad1954511796522ebffd3d311dc9b76d0be849eefa6d9ccb924820ad"
+                "sha256": "684597400fcfd793883679ceceb36250cbd3529b14dac10e2b1f8ed69c274d07"
               },
               "knownBehaviorChange": "Renders the Thinking drawer when selected/open; otherwise preserves stock overlay."
             },
@@ -186,7 +214,7 @@
               "oldRangeLength": 89,
               "replacement": {
                 "path": "payloads/12-footer-status-bar.js",
-                "sha256": "0d6f7b2dc1ef5d4656ea6889cff67ead7d7fa8a03b8a95d94a746760db37e13f"
+                "sha256": "53636c02ee6156332d781f24762a4feeb9f220a824ea3e81862f06be37c0df77"
               },
               "knownBehaviorChange": "Adds a Thinking footer segment without gating availability on entries."
             },

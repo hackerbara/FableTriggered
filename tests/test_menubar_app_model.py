@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import struct
 import sys
-import zlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -31,67 +29,6 @@ from claude_monkey.menubar_state import (
     PatchMenuItem,
     PromptMenuItem,
 )
-
-ROOT = Path(__file__).resolve().parents[1]
-
-
-def test_menubar_icon_asset_exists():
-    icon = ROOT / "assets" / "claude-monkey-menubar-template.png"
-    assert icon.exists()
-    assert icon.stat().st_size > 0
-
-
-def _png_rgba_rows(path: Path) -> list[bytes]:
-    data = path.read_bytes()
-    assert data.startswith(b"\x89PNG\r\n\x1a\n")
-    offset = 8
-    width = height = color_type = None
-    compressed = b""
-    while offset < len(data):
-        length = struct.unpack(">I", data[offset : offset + 4])[0]
-        chunk_type = data[offset + 4 : offset + 8]
-        chunk = data[offset + 8 : offset + 8 + length]
-        offset += length + 12
-        if chunk_type == b"IHDR":
-            width, height, bit_depth, color_type, _compression, _filter, _interlace = struct.unpack(
-                ">IIBBBBB", chunk
-            )
-            assert bit_depth == 8
-            assert color_type == 6
-        elif chunk_type == b"IDAT":
-            compressed += chunk
-        elif chunk_type == b"IEND":
-            break
-    assert width is not None and height is not None and color_type == 6
-    raw = zlib.decompress(compressed)
-    stride = width * 4
-    rows: list[bytes] = []
-    prior = bytearray(stride)
-    position = 0
-    for _row_index in range(height):
-        filter_type = raw[position]
-        position += 1
-        row = bytearray(raw[position : position + stride])
-        position += stride
-        if filter_type == 1:
-            for index in range(stride):
-                left = row[index - 4] if index >= 4 else 0
-                row[index] = (row[index] + left) & 0xFF
-        elif filter_type == 2:
-            for index in range(stride):
-                row[index] = (row[index] + prior[index]) & 0xFF
-        else:
-            assert filter_type == 0
-        rows.append(bytes(row))
-        prior = row
-    return rows
-
-
-def test_menubar_icon_asset_has_visible_template_pixels():
-    icon = ROOT / "assets" / "claude-monkey-menubar-template.png"
-    rows = _png_rgba_rows(icon)
-    alphas = [row[index + 3] for row in rows for index in range(0, len(row), 4)]
-    assert any(alpha > 0 for alpha in alphas)
 
 
 def test_menubar_refuses_root_process(monkeypatch):

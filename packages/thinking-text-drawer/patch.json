@@ -116,7 +116,7 @@
               "oldRangeLength": 115,
               "replacement": {
                 "path": "payloads/07-footer-selection-flag.js",
-                "sha256": "f8701aad04b138e26746dd3073488ca26dff080ba81a2591cd024bb24ece0d3d"
+                "sha256": "feb646cd6526b5b361622953a51e55084f79d17482a9a24aad2307c95bfc516c"
               },
               "knownBehaviorChange": "Publishes a local Thinking selection boolean."
             },
@@ -158,7 +158,7 @@
               "oldRangeLength": 155,
               "replacement": {
                 "path": "payloads/10-selected-overlay-globals.js",
-                "sha256": "f3ef8cd0d210e20b9ea51789646bb58aded12455aa81b1201473988ad88c5ca5"
+                "sha256": "118fc83c15430f460ce36e321da589668297237e199472cf40e2f1b4849c8a67"
               },
               "knownBehaviorChange": "Publishes display-only globals for the bottom overlay renderer."
             },

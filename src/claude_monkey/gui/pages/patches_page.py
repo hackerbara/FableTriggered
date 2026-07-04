@@ -1,13 +1,19 @@
-"""Patches page: checkbox|label|compatibility table + add/remove controls.
+"""Patches page: checkbox|label|notes|compatibility table + add/remove controls.
 
 Follows `settings_window.py`'s rendering discipline: `patch_item_enabled`
-(row enable/disable) and `remove_enabled` (Remove-button enable/disable +
-refusal reason) are read from `window_model.py`, never re-derived here.
-`render`'s `mutating_enabled` (from `window_model.mutating_controls_enabled`,
-via `SettingsWindow.render`'s `busy_command`) additionally gates every
-mutating control here -- rows, Add, and Remove -- while a Controller command
-is in flight, mirroring how the tray already gates on `TrayModel.
-mutating_enabled`.
+(row enable/disable), `patch_notes` (Notes column text), and `remove_enabled`
+(Remove-button enable/disable + refusal reason) are read from
+`window_model.py`, never re-derived here. `render`'s `mutating_enabled`
+(from `window_model.mutating_controls_enabled`, via `SettingsWindow.render`'s
+`busy_command`) additionally gates every mutating control here -- rows, Add,
+and Remove -- while a Controller command is in flight, mirroring how the
+tray already gates on `TrayModel.mutating_enabled`.
+
+The checkbox and (usually-blank) Compatibility columns are sized to their
+contents; Patch/Notes share the remaining width (`Stretch`), so the table
+uses the page width sensibly instead of truncating the name column. A
+`PendingRebuildBanner` above the table surfaces `MenuState.rebuild_required`
+(the "no feedback that we need to rebuild to apply" fix).
 """
 
 from __future__ import annotations
@@ -17,6 +23,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
     QHBoxLayout,
+    QHeaderView,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -24,11 +31,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from claude_monkey.gui.pages.common import Banner
-from claude_monkey.gui.window_model import compatibility_display, patch_item_enabled, remove_enabled
+from claude_monkey.gui.pages.common import Banner, PendingRebuildBanner
+from claude_monkey.gui.window_model import (
+    compatibility_display,
+    patch_item_enabled,
+    patch_notes,
+    rebuild_pending_banner_visible,
+    remove_enabled,
+)
 from claude_monkey.menubar_state import MenuState, PatchMenuItem
 
-COLUMN_LABELS = ("", "Patch", "Compatibility")
+COLUMN_LABELS = ("", "Patch", "Notes", "Compatibility")
+CHECKBOX_COLUMN = 0
+NAME_COLUMN = 1
+NOTES_COLUMN = 2
+COMPATIBILITY_COLUMN = 3
 PATCH_ID_ROLE = Qt.ItemDataRole.UserRole
 
 
@@ -51,6 +68,11 @@ class PatchesPage(QWidget):
         layout = QVBoxLayout(self)
         self.banner = Banner()
         layout.addWidget(self.banner)
+        self.pending_rebuild_banner = PendingRebuildBanner()
+        self.pending_rebuild_banner.rebuild_requested.connect(
+            lambda: self.action.emit("rebuild", {})
+        )
+        layout.addWidget(self.pending_rebuild_banner)
 
         self.table = QTableWidget(0, len(COLUMN_LABELS))
         self.table.setHorizontalHeaderLabels(COLUMN_LABELS)
@@ -59,6 +81,15 @@ class PatchesPage(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.itemChanged.connect(self._on_item_changed)
         self.table.itemSelectionChanged.connect(self._update_remove_button)
+        # Size columns to use the page width sensibly: the checkbox and
+        # (usually-blank, per `compatibility_display`) Compatibility columns
+        # shrink to fit their contents/header, while the Patch/Notes columns
+        # -- the ones that actually carry variable-length text -- share
+        # whatever width remains.
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(CHECKBOX_COLUMN, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(COMPATIBILITY_COLUMN, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.table, 1)
 
         buttons_row = QHBoxLayout()
@@ -77,6 +108,9 @@ class PatchesPage(QWidget):
         self._state = state
         self._mutating_enabled = mutating_enabled
         self.add_button.setEnabled(mutating_enabled)
+        self.pending_rebuild_banner.render(
+            visible=rebuild_pending_banner_visible(state), mutating_enabled=mutating_enabled
+        )
         self.table.blockSignals(True)
         self.table.setRowCount(0)
         if state is not None:
@@ -98,23 +132,27 @@ class PatchesPage(QWidget):
             Qt.CheckState.Checked if patch.checked else Qt.CheckState.Unchecked
         )
         checkbox_item.setData(PATCH_ID_ROLE, patch.patch_id)
-        self.table.setItem(row, 0, checkbox_item)
+        self.table.setItem(row, CHECKBOX_COLUMN, checkbox_item)
 
         label_flags = Qt.ItemFlag.ItemIsSelectable
         if row_enabled:
             label_flags |= Qt.ItemFlag.ItemIsEnabled
         label_item = QTableWidgetItem(patch.label)
         label_item.setFlags(label_flags)
-        self.table.setItem(row, 1, label_item)
+        self.table.setItem(row, NAME_COLUMN, label_item)
+
+        notes_item = QTableWidgetItem(patch_notes(patch))
+        notes_item.setFlags(label_flags)
+        self.table.setItem(row, NOTES_COLUMN, notes_item)
 
         compat_item = QTableWidgetItem(
             compatibility_display(patch.compatibility_status, patch.compatibility_message)
         )
         compat_item.setFlags(label_flags)
-        self.table.setItem(row, 2, compat_item)
+        self.table.setItem(row, COMPATIBILITY_COLUMN, compat_item)
 
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
-        if item.column() != 0 or self._state is None:
+        if item.column() != CHECKBOX_COLUMN or self._state is None:
             return
         patch = self._patch_by_id(item.data(PATCH_ID_ROLE))
         if patch is None:

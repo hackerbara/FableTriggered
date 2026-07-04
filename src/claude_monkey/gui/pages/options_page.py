@@ -1,15 +1,23 @@
-"""Options page: checkbox|label|risk|compatibility table + add/remove.
+"""Options page: checkbox|label|risk|notes|compatibility table + add/remove.
 
 Follows `settings_window.py`'s rendering discipline: `option_item_enabled`
-(row enable/disable) and `remove_enabled` (Remove-button enable/disable +
-refusal reason) are read from `window_model.py`, never re-derived here.
-Enabling a `requires_confirmation` option shows a confirm dialog whose
-warning text is read off `MenuState.high_risk_options` -- never hardcoded.
-`render`'s `mutating_enabled` (from `window_model.mutating_controls_enabled`,
-via `SettingsWindow.render`'s `busy_command`) additionally gates every
-mutating control here -- rows, Add, and Remove -- while a Controller command
-is in flight, mirroring how the tray already gates on `TrayModel.
+(row enable/disable), `option_notes` (Notes column text), and
+`remove_enabled` (Remove-button enable/disable + refusal reason) are read
+from `window_model.py`, never re-derived here. Enabling a
+`requires_confirmation` option shows a confirm dialog whose warning text is
+read off `MenuState.high_risk_options` -- never hardcoded. `render`'s
+`mutating_enabled` (from `window_model.mutating_controls_enabled`, via
+`SettingsWindow.render`'s `busy_command`) additionally gates every mutating
+control here -- rows, Add, and Remove -- while a Controller command is in
+flight, mirroring how the tray already gates on `TrayModel.
 mutating_enabled`.
+
+The checkbox, Risk, and (usually-blank) Compatibility columns are sized to
+their contents; Option/Notes share the remaining width (`Stretch`), so the
+table uses the page width sensibly instead of truncating the name column
+("options should be wide"). A `PendingRebuildBanner` above the table
+surfaces `MenuState.rebuild_required` (the "no feedback that we need to
+rebuild to apply" fix).
 """
 
 from __future__ import annotations
@@ -20,6 +28,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
     QHBoxLayout,
+    QHeaderView,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -28,15 +37,22 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from claude_monkey.gui.pages.common import Banner
+from claude_monkey.gui.pages.common import Banner, PendingRebuildBanner
 from claude_monkey.gui.window_model import (
     compatibility_display,
     option_item_enabled,
+    option_notes,
+    rebuild_pending_banner_visible,
     remove_enabled,
 )
 from claude_monkey.menubar_state import MenuState, OptionMenuItem
 
-COLUMN_LABELS = ("", "Option", "Risk", "Compatibility")
+COLUMN_LABELS = ("", "Option", "Risk", "Notes", "Compatibility")
+CHECKBOX_COLUMN = 0
+NAME_COLUMN = 1
+RISK_COLUMN = 2
+NOTES_COLUMN = 3
+COMPATIBILITY_COLUMN = 4
 OPTION_ID_ROLE = Qt.ItemDataRole.UserRole
 HIGH_RISK_COLOR = QColor("#a00")
 
@@ -63,6 +79,11 @@ class OptionsPage(QWidget):
         layout = QVBoxLayout(self)
         self.banner = Banner()
         layout.addWidget(self.banner)
+        self.pending_rebuild_banner = PendingRebuildBanner()
+        self.pending_rebuild_banner.rebuild_requested.connect(
+            lambda: self.action.emit("rebuild", {})
+        )
+        layout.addWidget(self.pending_rebuild_banner)
 
         self.table = QTableWidget(0, len(COLUMN_LABELS))
         self.table.setHorizontalHeaderLabels(COLUMN_LABELS)
@@ -71,6 +92,14 @@ class OptionsPage(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.itemChanged.connect(self._on_item_changed)
         self.table.itemSelectionChanged.connect(self._update_remove_button)
+        # Size columns to use the page width sensibly ("options should be
+        # wide"): checkbox/Risk/(usually-blank) Compatibility shrink to fit
+        # contents, Option/Notes share the remaining width.
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(CHECKBOX_COLUMN, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(RISK_COLUMN, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(COMPATIBILITY_COLUMN, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.table, 1)
 
         buttons_row = QHBoxLayout()
@@ -89,6 +118,9 @@ class OptionsPage(QWidget):
         self._state = state
         self._mutating_enabled = mutating_enabled
         self.add_button.setEnabled(mutating_enabled)
+        self.pending_rebuild_banner.render(
+            visible=rebuild_pending_banner_visible(state), mutating_enabled=mutating_enabled
+        )
         self._high_risk_warning_by_id = (
             {summary.option_id: summary.warning for summary in state.high_risk_options}
             if state is not None
@@ -115,24 +147,28 @@ class OptionsPage(QWidget):
             Qt.CheckState.Checked if option.enabled else Qt.CheckState.Unchecked
         )
         checkbox_item.setData(OPTION_ID_ROLE, option.option_id)
-        self.table.setItem(row, 0, checkbox_item)
+        self.table.setItem(row, CHECKBOX_COLUMN, checkbox_item)
 
         label_item = QTableWidgetItem(option.label)
         label_item.setFlags(cell_flags)
-        self.table.setItem(row, 1, label_item)
+        self.table.setItem(row, NAME_COLUMN, label_item)
 
         risk_item = QTableWidgetItem(option.risk_level)
         risk_item.setFlags(cell_flags)
         if option.risk_level == "high":
             risk_item.setForeground(HIGH_RISK_COLOR)
-        self.table.setItem(row, 2, risk_item)
+        self.table.setItem(row, RISK_COLUMN, risk_item)
+
+        notes_item = QTableWidgetItem(option_notes(option))
+        notes_item.setFlags(cell_flags)
+        self.table.setItem(row, NOTES_COLUMN, notes_item)
 
         compat_item = QTableWidgetItem(compatibility_display(option.compatibility_status))
         compat_item.setFlags(cell_flags)
-        self.table.setItem(row, 3, compat_item)
+        self.table.setItem(row, COMPATIBILITY_COLUMN, compat_item)
 
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
-        if item.column() != 0 or self._state is None:
+        if item.column() != CHECKBOX_COLUMN or self._state is None:
             return
         option = self._option_by_id(item.data(OPTION_ID_ROLE))
         if option is None:

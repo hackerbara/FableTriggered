@@ -1,5 +1,6 @@
 import hashlib
 import json
+import sys
 import subprocess
 import textwrap
 from pathlib import Path
@@ -30,6 +31,24 @@ EXPECTED_OPERATION_IDS = {
     "thinking-system-token-estimate",
     "thinking-cancel-salvage-collector",
 }
+
+
+def source_module_text() -> str | None:
+    source_path = ROOT / ".development" / "artifacts" / "claude-2.1.201-thinking-text-drawer-source-module0.js"
+    if source_path.exists():
+        return source_path.read_text(encoding="utf-8")
+    if not LIVE_2_1_201.exists():
+        return None
+    sys.path.insert(0, str(ROOT / "src"))
+    from claude_monkey.macho import find_macho_layout
+    from claude_monkey.bun_graph import parse_bun_section
+
+    raw = LIVE_2_1_201.read_bytes()
+    layout = find_macho_layout(raw)
+    section = raw[layout.bun_section.offset : layout.bun_section.offset + layout.bun_section.size]
+    graph = parse_bun_section(section)
+    module = graph.module_by_path("/$bunfs/root/src/entrypoints/cli.js")
+    return module.content.decode("utf-8")
 
 
 def read_rel(path: str) -> str:
@@ -84,14 +103,13 @@ def test_thinking_text_drawer_targets_claude_2_1_201() -> None:
 def test_manifest_operations_match_source_and_payload_hashes() -> None:
     manifest = json.loads((PACKAGE / "patch.json").read_text(encoding="utf-8"))
     module = manifest["targets"][0]["modules"][0]
-    source_path = ROOT / ".development" / "artifacts" / "claude-2.1.201-thinking-text-drawer-source-module0.js"
-    assert source_path.exists(), source_path
-    source = source_path.read_text(encoding="utf-8")
-    for op in module["operations"]:
-        exact = op["exact"]
-        assert source.count(exact) == 1, op["opId"]
-        assert op["oldRangeLength"] == len(exact.encode("utf-8")), op["opId"]
-        assert op["oldRangeSha256"] == hashlib.sha256(exact.encode("utf-8")).hexdigest(), op["opId"]
+    source = source_module_text()
+    if source is not None:
+        for op in module["operations"]:
+            exact = op["exact"]
+            assert source.count(exact) == 1, op["opId"]
+            assert op["oldRangeLength"] == len(exact.encode("utf-8")), op["opId"]
+            assert op["oldRangeSha256"] == hashlib.sha256(exact.encode("utf-8")).hexdigest(), op["opId"]
     for op in module["operations"]:
         payload = PACKAGE / op["replacement"]["path"]
         assert payload.exists(), op["opId"]
@@ -125,6 +143,7 @@ def test_thinking_text_drawer_x_only_close_contract() -> None:
     assert "return false" in read_rel("payloads/01-thinking-text-helpers.js")
     assert "return!1}},Lm,tDp,Rp)" in close_payload
     assert "x closes" in renderer
+    assert "older entries dropped" in renderer
     assert "inputOwnsEscape" not in text
     assert "escape" not in renderer.lower()
 
@@ -250,6 +269,12 @@ def test_helper_fixture_review_regressions() -> None:
         const liveLong = frame.entries.find(e => e.source === 'live');
         assert(liveLong.rawCharCount === 100000 && liveLong.charCount === 100000, 'long live raw char count should remain accurate');
         assert(liveLong.text.length < liveLong.rawCharCount, 'long live display text should be bounded');
+        assert(frame.droppedCharCount === liveLong.droppedCharCount, 'frame droppedCharCount should not double-count repeated live upserts');
+        __codexTTDRecordStructuredThinking({{thinking:'y'.repeat(100000) + ' final', messageId:'long-live', requestId:'req-long'}});
+        frame = __codexTTDDrawerFrame();
+        assert(frame.entries.length === 1, 'long live and final structured thinking for same message should merge');
+        assert(frame.entries[0].source === 'structured' && frame.entries[0].sources.includes('live'), 'long merge should preserve live provenance');
+        assert(frame.entries[0].rawCharCount === 100006, 'merged long structured char count should be accurate');
 
         globalThis.__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__ = undefined;
         for (let i = 0; i < 100; i++) __codexTTDRecordStructuredThinking({{thinking:'entry-' + i, messageId:'m' + i, blockHash:'h' + i}});

@@ -32,7 +32,7 @@
               "oldRangeLength": 16,
               "replacement": {
                 "path": "payloads/01-thinking-text-helpers.js",
-                "sha256": "e2e0122825c772b85614a5049446c03e7fc2fb23ba7dbca4102d95a525a5c6ab"
+                "sha256": "0d7c3576f17a969e99209d7bebe6a45c0a62df45c50921c92e7054f4c3d2e686"
               },
               "knownBehaviorChange": "Adds display-only Thinking drawer helpers and action wrapper."
             },
@@ -200,7 +200,7 @@
               "oldRangeLength": 193,
               "replacement": {
                 "path": "payloads/11-bottom-overlay-renderer.js",
-                "sha256": "684597400fcfd793883679ceceb36250cbd3529b14dac10e2b1f8ed69c274d07"
+                "sha256": "ca9ba8298d28118a4b5914bf0be5122c2c43db597474200651309e6c09af54f7"
               },
               "knownBehaviorChange": "Renders the Thinking drawer when selected/open; otherwise preserves stock overlay."
             },

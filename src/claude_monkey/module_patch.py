@@ -23,6 +23,14 @@ class PlannedModuleOperation:
     delta: int
     old_sha256: str
     replacement: bytes
+    kind: str = "replacement"
+    op_type: str = "replace_exact"
+    insert_order: int | None = None
+    context_start: int | None = None
+    context_end: int | None = None
+    evidence_spans: tuple[tuple[int, int], ...] = ()
+    anchor: str | None = None
+    seam_hint: str | None = None
 
 
 def _b(value: str) -> bytes:
@@ -42,7 +50,45 @@ def _count(source: bytes, needle: bytes) -> int:
         pos = found + 1
 
 
-def _range_for_operation(module: bytes, operation: ModuleOperationV2) -> tuple[int, int]:
+@dataclass(frozen=True)
+class _Resolved:
+    start: int
+    end: int
+    kind: str
+    context_start: int | None = None
+    context_end: int | None = None
+    evidence_spans: tuple[tuple[int, int], ...] = ()
+
+
+def _resolve_context(
+    module: bytes, operation: ModuleOperationV2
+) -> tuple[int, int, tuple[tuple[int, int], ...]]:
+    """Resolve a context span: start of startMarker through END of endMarker."""
+    if operation.start_marker is None or operation.end_marker is None:
+        raise ModulePatchError(f"{operation.op_id}: context requires startMarker and endMarker")
+    start_marker = _b(operation.start_marker)
+    end_marker = _b(operation.end_marker)
+    start_count = _count(module, start_marker)
+    if start_count != operation.expected_start_marker_count:
+        raise ModulePatchError(
+            f"{operation.op_id}: start marker count {start_count} "
+            f"!= {operation.expected_start_marker_count}"
+        )
+    start = module.find(start_marker)
+    tail = module[start + len(start_marker) :]
+    end_count = _count(tail, end_marker)
+    if end_count != operation.expected_end_marker_count:
+        raise ModulePatchError(
+            f"{operation.op_id}: end marker count {end_count} "
+            f"!= {operation.expected_end_marker_count}"
+        )
+    end_marker_start = module.find(end_marker, start + len(start_marker))
+    end = end_marker_start + len(end_marker)
+    spans = ((start, start + len(start_marker)), (end_marker_start, end))
+    return start, end, spans
+
+
+def _resolve_operation(module: bytes, operation: ModuleOperationV2) -> _Resolved:
     if operation.type == "replace_between":
         if operation.start_marker is None or operation.end_marker is None:
             raise ModulePatchError(
@@ -74,12 +120,34 @@ def _range_for_operation(module: bytes, operation: ModuleOperationV2) -> tuple[i
             raise ModulePatchError(f"{operation.op_id}: exact marker count {exact_count} != 1")
         start = module.find(exact)
         end = start + len(exact)
+    elif operation.type in {"insert_before", "insert_after"}:
+        if operation.anchor is None:
+            raise ModulePatchError(f"{operation.op_id}: insertion requires anchor")
+        anchor = _b(operation.anchor)
+        if operation.start_marker is not None:
+            ctx_start, ctx_end, ctx_spans = _resolve_context(module, operation)
+        else:
+            ctx_start, ctx_end, ctx_spans = None, None, ()
+        scope_base = ctx_start if ctx_start is not None else 0
+        scope = module[ctx_start:ctx_end] if ctx_start is not None else module
+        anchor_count = _count(scope, anchor)
+        if anchor_count != 1:
+            raise ModulePatchError(f"{operation.op_id}: anchor count {anchor_count} != 1")
+        found = scope_base + scope.find(anchor)
+        point = found if operation.type == "insert_before" else found + len(anchor)
+        return _Resolved(
+            start=point,
+            end=point,
+            kind="insertion",
+            context_start=ctx_start,
+            context_end=ctx_end,
+            evidence_spans=ctx_spans + ((found, found + len(anchor)),),
+        )
     else:
         raise ModulePatchError(f"{operation.op_id}: unsupported operation type {operation.type}")
     if start < 0 or end < 0 or end < start:
         raise ModulePatchError(f"{operation.op_id}: invalid module range [{start},{end})")
-    return start, end
-
+    return _Resolved(start, end, "replacement")
 
 def plan_module_operations(
     package_id: str,
@@ -89,7 +157,8 @@ def plan_module_operations(
 ) -> list[PlannedModuleOperation]:
     planned: list[PlannedModuleOperation] = []
     for operation, replacement in operations:
-        start, end = _range_for_operation(module_content, operation)
+        resolved = _resolve_operation(module_content, operation)
+        start, end = resolved.start, resolved.end
         old = module_content[start:end]
         for required in operation.require_within_range:
             if _b(required) not in old:
@@ -114,6 +183,14 @@ def plan_module_operations(
                 delta=len(replacement) - len(old),
                 old_sha256=old_sha,
                 replacement=replacement,
+                kind=resolved.kind,
+                op_type=operation.type,
+                insert_order=operation.insert_order,
+                context_start=resolved.context_start,
+                context_end=resolved.context_end,
+                evidence_spans=resolved.evidence_spans,
+                anchor=operation.anchor,
+                seam_hint=operation.seam_hint,
             )
         )
     planned.sort(key=lambda item: (item.module_start, item.module_end, item.package_id, item.op_id))

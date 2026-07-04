@@ -77,3 +77,100 @@ def test_plan_module_operations_rejects_overlaps():
             MODULE,
             [(first, b"function render(){NEW}\n"), (second, b"NEW")],
         )
+
+
+
+def make_op(**overrides) -> ModuleOperationV2:
+    base = dict(
+        op_id="insert-entry",
+        label="Insert entry",
+        type="insert_after",
+        start_marker=None,
+        end_marker=None,
+        exact=None,
+        expected_start_marker_count=1,
+        expected_end_marker_count=1,
+        require_within_range=(),
+        old_range_sha256=None,
+        old_range_length=None,
+        replacement=PayloadRefV2(inline=",NEW_ENTRY"),
+        known_behavior_change=None,
+        anchor="OLD_RENDER",
+        insert_order=None,
+    )
+    base.update(overrides)
+    return ModuleOperationV2(**base)
+
+
+def test_insert_after_plans_zero_width_point_after_anchor():
+    replacement = b",NEW_ENTRY"
+    planned = plan_module_operations(
+        "pkg", "/$bunfs/root/src/entrypoints/cli.js", MODULE, [(make_op(), replacement)]
+    )
+    point = MODULE.index(b"OLD_RENDER") + len(b"OLD_RENDER")
+    item = planned[0]
+    assert item.kind == "insertion"
+    assert item.op_type == "insert_after"
+    assert (item.module_start, item.module_end) == (point, point)
+    assert item.old_len == 0
+    assert item.new_len == len(replacement)
+    assert item.delta == len(replacement)
+    anchor_start = MODULE.index(b"OLD_RENDER")
+    assert (anchor_start, anchor_start + len(b"OLD_RENDER")) in item.evidence_spans
+    changed = render_changed_module(MODULE, planned)
+    assert b"OLD_RENDER,NEW_ENTRY" in changed
+    assert len(changed) == len(MODULE) + len(replacement)
+
+
+def test_insert_before_plans_point_at_anchor_start():
+    replacement = b"PREFIX_"
+    planned = plan_module_operations(
+        "pkg",
+        "/$bunfs/root/src/entrypoints/cli.js",
+        MODULE,
+        [(make_op(type="insert_before"), replacement)],
+    )
+    assert planned[0].module_start == MODULE.index(b"OLD_RENDER")
+    changed = render_changed_module(MODULE, planned)
+    assert b"PREFIX_OLD_RENDER" in changed
+
+
+def test_insertion_rejects_ambiguous_anchor():
+    with pytest.raises(ModulePatchError, match="anchor count 2"):
+        plan_module_operations(
+            "pkg",
+            "/$bunfs/root/src/entrypoints/cli.js",
+            MODULE,
+            [(make_op(anchor="function"), b",X")],
+        )
+
+
+def test_insertion_context_bounds_anchor_search():
+    # "return 1" appears once; "n" appears many times. Context makes "n 1" unique scope.
+    operation = make_op(
+        anchor="return 1",
+        start_marker="function after(){",
+        end_marker="}",
+        expected_end_marker_count=1,
+    )
+    planned = plan_module_operations(
+        "pkg", "/$bunfs/root/src/entrypoints/cli.js", MODULE, [(operation, b";EXTRA()")]
+    )
+    item = planned[0]
+    ctx_start = MODULE.index(b"function after(){")
+    assert item.context_start == ctx_start
+    assert item.context_end is not None and item.context_end > ctx_start
+    changed = render_changed_module(MODULE, planned)
+    assert b"return 1;EXTRA()" in changed
+
+
+def test_insertion_missing_anchor_in_context_fails():
+    operation = make_op(
+        anchor="OLD_RENDER",
+        start_marker="function after(){",
+        end_marker="}",
+    )
+    with pytest.raises(ModulePatchError, match="anchor count 0"):
+        plan_module_operations(
+            "pkg", "/$bunfs/root/src/entrypoints/cli.js", MODULE, [(operation, b",X")]
+        )

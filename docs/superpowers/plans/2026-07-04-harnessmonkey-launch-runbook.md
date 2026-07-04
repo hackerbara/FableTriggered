@@ -32,7 +32,7 @@
 
 ## Gates (in flight, user-driven)
 
-- [ ] **G1 — footer-drawers lands.** `codex/footer-drawers-framework` is a clean 10-commit fast-forward of main (merge-base = main's tip `3364d04`). Merge when the user's in-flight work completes.
+- [x] **G1 — footer-drawers lands.** ✅ Merged 2026-07-04 as `70c467d` (user landed it with port fix `fde46cc`). Note: it merged mid-flight against agent 1.6's working-tree edits — conflict resolution on the two drawer test files handled under 1.6.
 - [ ] **G2 — GUI rework lands.** `codex/claude-monkey-v3-gui` (canonical; `-sr1`/`-t16`/`-t17` are confirmed strict-subset earlier iterations). 41 commits behind main → **must rebase onto main after G1**, then land. Its `packages/` copies are stale — take main's/G1's for every package. **The branch is a full menubar replacement, not an addition** — its deletions and pyproject changes are intentional and must survive the rebase: deletes `src/claude_monkey/menubar.py` (rumps retired), repoints the menubar console script to `claude_monkey.gui.app:main`, swaps the `gui` extra from `rumps` to `PySide6>=6.7` (+ `pytest-qt`, `Pillow` dev deps), deletes `assets/claude-monkey-menubar-template.png`, adds `monkey-color-*.png` / `monkey-tray-*.png` assets (these ship).
 - [ ] **G3 — demo recorder tool ready.** In flight per `docs/superpowers/plans/2026-07-04-demo-recorder.md`. Independent of G1/G2; only blocks Phase 3 recording.
 
@@ -100,16 +100,18 @@
 - PyPI stubs built (see 4.1) — awaiting user's API token to publish. Names verified free.
 - PII scan baseline: zero true `alex`/`bernson` hits in ship set (known false positive documented in 4.2a).
 
-**In flight (sub-agents dispatched 2026-07-04, check `git log` for their commits):**
-- 1.3 examples/ curation — agent copying + scrubbing the capy/dragons generator pipelines from `.development/` into `examples/*-generator/`.
-- 1.6 test-path parameterization — agent replacing `/Users/MAC` literals with an env-var + home-relative discovery helper; dvd test files deliberately skipped (they're cut in 1.1).
-- G1 (footer-drawers), G3 (demo recorder) — **user's own in-flight work**, not agent tasks. Do not start G2 (GUI rebase) until the user lands G1.
+**In flight (2026-07-04):**
+- ~~1.3 examples/ curation~~ **done** — commit `7ff5781`; both compile pipelines verified byte-for-byte reproducible; caution in the example READMEs: running `generate_package.py` overwrites the live package (agent tripped this once and cleanly reverted).
+- 1.6 test-path parameterization — agent resolving a merge collision: G1 landed mid-flight and conflicted with its edits on the two drawer test files (`UU` state). Agent briefed to take the merged footer-drawers content as base and re-apply parameterization on top, then re-baseline the suite.
+- G3 (demo recorder) — **user's own in-flight work.**
+
+**G2 is NOT started deliberately:** the user may still have their own sub-agent doing final work on the GUI worktree (`codex/claude-monkey-v3-gui`). Rebasing a branch under a live agent invites chaos. **Ask the user to confirm their GUI work is complete before starting the G2 rebase.** G1's merge is one more thing the rebase must cross.
 
 **Next actions when resuming:**
-1. Verify the two sub-agent commits landed and tests are green (`uv run pytest`).
-2. Ask the user about G1/G3 status. When G1 lands → immediately do the G2 rebase (highest-conflict step; instructions in the G2 gate above).
-3. After G1+G2: Phase 1 tasks 1.1, 1.2, 1.4, 1.5, 1.7 in order.
-4. Remaining user-only items: PyPI token (4.1), creating `github.com/hackerbara/harnessmonkey` (4.3), G1/G3 completion.
+1. Verify 1.6 landed its commit and the post-merge test suite is green (`uv run pytest`).
+2. Confirm with the user that GUI final work is done → do the G2 rebase (highest-conflict step; instructions in the G2 gate above).
+3. After G2: Phase 1 tasks 1.1, 1.2, 1.4, 1.5, 1.7 in order.
+4. Remaining user-only items: PyPI token (4.1), creating `github.com/hackerbara/harnessmonkey` (4.3), G3 completion, GUI-work-done confirmation.
 
 ## Research appendix
 

@@ -124,7 +124,7 @@
               "oldRangeLength": 1988,
               "replacement": {
                 "path": "payloads/16-footer-availability-bar-hidden-context.js",
-                "sha256": "398091a46f5afdcc3b8db8e11f7ab94b56f9479ab16c949d7ec517ee2e80a259"
+                "sha256": "5acaad6a3b518b36a812321cbe2918b422354de0a49f7e2e7f74138ed4a776ff"
               }
             },
             {
@@ -163,7 +163,7 @@
               "oldRangeLength": 224,
               "replacement": {
                 "path": "payloads/03-axf-messagesref-footer-target-frame.js",
-                "sha256": "adc0b0c2823680efc13f018dafc283d70be77db4fb726f2335c3caf81795002a"
+                "sha256": "4b7f2e3531c12770a45c3bc5b5689448da42bbc174ec6b04ce01cff86d87460b"
               }
             },
             {
@@ -189,7 +189,7 @@
               "oldRangeLength": 292,
               "replacement": {
                 "path": "payloads/12-footer-hiddencontext-up-down-scroll.js",
-                "sha256": "8c69468c6a4e03318221ebc64e9c04f3c9afb47e3ce8bd6d670413b80300e458"
+                "sha256": "ed15e0f5d6018574aafdfec97589e1918647a3753e441cc112c8ed4dd56110bf"
               }
             },
             {

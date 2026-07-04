@@ -74,7 +74,7 @@
               "oldRangeLength": 67,
               "replacement": {
                 "path": "payloads/rm-footer-target-append-2.1.199.js",
-                "sha256": "4b2e8f53196595ef22851feb7ba7b326bd850d5b793c522be42281426ce78736"
+                "sha256": "8c1219ae9a97c3af861c6c8c4fcf5077931937bbe0c21405c4791020a2a3c516"
               },
               "knownBehaviorChange": "Adds \"reminders\" to the footer targets list and sets globalThis.__CODEX_REMINDERS_SELECTED_V1__ each render."
             },
@@ -130,7 +130,7 @@
               "oldRangeLength": 89,
               "replacement": {
                 "path": "payloads/rm-bar-segment-2.1.199.js",
-                "sha256": "c86e87193467cf8cf7767e36ab2d6a4184dded343cf797926ef8c4072df5cd5f"
+                "sha256": "f3bffc2a25a9e5414ff6480e68c5643100dd6ce5546621311d343908f5a0aa3f"
               },
               "knownBehaviorChange": "Adds a dim \"Reminders\" segment (highlighted when selected) to the footer availability bar; renders under stock or drawer-patched downstream code."
             },
@@ -221,7 +221,7 @@
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "ji=[...ji,\"reminders\"]"
+          "value": "var __rmI=ji.indexOf(\"hiddenContext\")"
         },
         {
           "type": "module_must_contain",

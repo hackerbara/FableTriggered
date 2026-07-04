@@ -411,7 +411,8 @@ def install_shim_transaction(
         if existing_record is None and _install_target_fails_plausibility(target_path):
             raise TargetNotPlausibleOfficial(
                 "refusing to install shim over a target that does not look like a real "
-                f"Claude binary (below the plausibility size floor): {target_path}"
+                "Claude binary -- it looks too small to be a real Claude app, more like "
+                f"another program's launcher: {target_path}"
             )
         previous = (
             {

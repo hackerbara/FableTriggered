@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from claude_monkey.menubar_install import managed_user_target
 from claude_monkey.menubar_state import MenuState, OptionMenuItem, PatchMenuItem, PromptMenuItem
@@ -309,6 +310,37 @@ def repair_refusal_display(code: str | None, fallback: str = _REPAIR_REFUSAL_FAL
     if code is None:
         return fallback
     return _REPAIR_REFUSAL_MESSAGES.get(code, fallback)
+
+
+def repair_success_display(payload: dict[str, Any]) -> str | None:
+    """Banner text for a *successfully completed* repair-shim payload, or
+    `None` when no banner is needed.
+
+    A `repair-shim` completion with `ok: true` and `revertedImmediately:
+    true` is the field-observed fast-revert loop: the swap genuinely
+    succeeded (see `repair.py`'s docstring for `revertedImmediately`), but
+    something -- observed twice on a real machine to be the official Claude
+    installer's own self-heal -- already replaced the target again within
+    seconds, before this very GUI round-trip finished. Without this banner,
+    the app's next routine refresh would simply re-show the ordinary
+    "Repair shim" notice, and the user would reasonably (but wrongly) read
+    that as "the repair didn't work" -- so this must be told explicitly,
+    once, right when it's known, rather than left to go silently stale.
+
+    Every other shape (still `ok: false` -- handled separately by
+    `repair_refusal_display` -- or `ok: true` with `revertedImmediately`
+    false/absent, the ordinary successful-and-stable outcome) returns
+    `None`: nothing new to tell the user beyond the routine refresh.
+    """
+    if not payload.get("ok", False):
+        return None
+    if not payload.get("revertedImmediately", False):
+        return None
+    return (
+        "The shim was reinstalled, but something replaced it again within seconds"
+        " — most likely the official Claude updater's own self-heal. It will keep"
+        " happening until that updater is dealt with."
+    )
 
 
 HEALTHY_COMPATIBILITY_STATUSES = frozenset(

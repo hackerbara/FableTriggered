@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from claude_monkey import repair as repair_module
 from claude_monkey import source_discovery
 from claude_monkey.cli import main
 
@@ -1295,6 +1296,9 @@ def test_cache_source_json_missing_target_returns_envelope(monkeypatch, tmp_path
 
 def test_repair_shim_json_contract_via_cli(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("HOME", str(tmp_path))
+    # Fix 1's post-swap revert re-check sleeps for real by default; keep this
+    # contract test fast by collapsing that bounded delay to 0.
+    monkeypatch.setattr(repair_module, "REPAIR_REVERT_RECHECK_DELAY_SECONDS", 0)
     target = tmp_path / "local-bin" / "claude"
     target.parent.mkdir(parents=True)
     target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
@@ -1318,6 +1322,11 @@ def test_repair_shim_json_contract_via_cli(monkeypatch, tmp_path, capsys):
     assert payload["newOfficialSha256"] == official_sha
     assert payload["newOfficialVersion"] == "2.1.201"
     assert Path(payload["cachedSourcePath"]).read_bytes() == official.read_bytes()
+    # Fix 1: additive field -- honest about whether an external actor (the
+    # field-observed official-updater self-heal) already clobbered the
+    # target again within seconds of this successful swap. Nothing touches
+    # the target between the CLI's swap and this assertion, so it's False.
+    assert payload["revertedImmediately"] is False
 
     assert main(["status", "--json"]) == 0
     after = parse_json_output(capsys)

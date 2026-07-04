@@ -113,6 +113,60 @@ def test_repair_shim_happy_path_caches_swaps_and_rewrites_record(tmp_path):
     assert record["installedShimSha256"]
 
 
+# -- Fix 1: bounded post-swap revert re-check -----------------------------
+#
+# Field evidence (verified twice on a real machine): the official
+# installer's own self-heal mechanism re-detects and re-overwrites the
+# target within ~12-45s of a successful `repair-shim` swap. The CLI's
+# `"repaired": true` is truthful in the moment but then goes silently stale.
+# `repair_shim_action` now waits `REPAIR_REVERT_RECHECK_DELAY_SECONDS`
+# (module-level constant, monkeypatched to 0 in these tests) after the swap
+# and re-hashes `target_path` exactly once (read+hash only, never executes
+# the target) to report whether it was already clobbered again.
+
+
+def test_repair_shim_revert_recheck_reports_false_when_not_reverted(tmp_path, monkeypatch):
+    state, target = seed_shim_target(tmp_path)
+    replace_target_with_official(target, tmp_path)
+    paths = StatePaths(state)
+    monkeypatch.setattr(repair_module, "REPAIR_REVERT_RECHECK_DELAY_SECONDS", 0)
+
+    result = repair_shim_action(target, state, paths)
+
+    assert result["repaired"] is True
+    assert result["revertedImmediately"] is False
+    assert "ClaudeMonkey" in target.read_text()
+
+
+def test_repair_shim_revert_recheck_reports_true_when_target_clobbered_after_swap(
+    tmp_path, monkeypatch
+):
+    state, target = seed_shim_target(tmp_path)
+    replace_target_with_official(target, tmp_path)
+    paths = StatePaths(state)
+    monkeypatch.setattr(repair_module, "REPAIR_REVERT_RECHECK_DELAY_SECONDS", 0)
+
+    clobber_bytes = b"#!/bin/sh\necho reclobbered-by-official-updater\n"
+
+    def fake_sleep(seconds: float) -> None:
+        # Simulate the official updater's self-heal landing during the
+        # bounded post-swap wait window, immediately before the re-hash.
+        target.unlink()
+        target.write_bytes(clobber_bytes)
+        target.chmod(target.stat().st_mode | 0o111)
+
+    monkeypatch.setattr(repair_module, "sleep", fake_sleep)
+
+    result = repair_shim_action(target, state, paths)
+
+    # The swap itself genuinely succeeded -- "repaired" stays truthful about
+    # that -- but "revertedImmediately" now also tells the truth about what
+    # happened microseconds later.
+    assert result["repaired"] is True
+    assert result["revertedImmediately"] is True
+    assert target.read_bytes() == clobber_bytes
+
+
 # -- R9: concurrent clobber ----------------------------------------------
 
 

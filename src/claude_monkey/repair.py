@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from time import time
+from time import sleep, time
 from typing import Any
 
 from claude_monkey.authorization import target_needs_authorization
@@ -25,6 +25,16 @@ from claude_monkey.status import classify_plausible_official_source
 # R6 default retention: keep the active install record's rollback digest
 # plus the N most recently captured *other* distinct digests.
 RETENTION_KEEP_RECENT = 2
+
+# Field evidence (verified twice on a real machine): the official Claude
+# installer's own self-heal mechanism re-detects and re-overwrites a
+# just-repaired target again within roughly 12-45 seconds. A bounded wait
+# this long after the swap, followed by a single re-hash, is enough to catch
+# that specific fast-loop case honestly instead of reporting "repaired: true"
+# and then silently going stale until the next status refresh. This is
+# intentionally short: it is not trying to catch every possible future
+# clobber, only the fast, already-observed re-heal window.
+REPAIR_REVERT_RECHECK_DELAY_SECONDS = 2.0
 
 
 class CacheSourceRefused(RuntimeError):
@@ -347,6 +357,15 @@ def repair_shim_action(
         tmp.unlink(missing_ok=True)
         raise RepairRefused(f"failed to swap shim into place: {exc}", code="swap_failed") from exc
 
+    # Fix 1: the swap above is already complete and successful -- "repaired"
+    # is (and stays) true regardless of what happens next. This bounded
+    # re-check is a NEW step strictly after that transaction, purely to
+    # report whether an external actor (observed: the official installer's
+    # own self-heal) already clobbered the target again within seconds.
+    # Read+hash only -- `_current_target_digest` never executes target_path.
+    sleep(REPAIR_REVERT_RECHECK_DELAY_SECONDS)
+    reverted_immediately = _current_target_digest(target_path) != new_shim_digest
+
     removed = gc_source_cache(
         state_dir,
         active_digest=cached["previousSourceSha256"],
@@ -361,4 +380,5 @@ def repair_shim_action(
         "newOfficialVersion": version,
         "cachedSourcePath": cached["previousSourceCachePath"],
         "gcRemovedDigests": removed,
+        "revertedImmediately": reverted_immediately,
     }

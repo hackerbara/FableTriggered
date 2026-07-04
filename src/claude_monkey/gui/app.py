@@ -49,6 +49,7 @@ from claude_monkey.gui.window_model import (
     build_tray_model,
     repair_confirm_text,
     repair_refusal_display,
+    repair_success_display,
 )
 from claude_monkey.menubar_commands import CommandRunner
 from claude_monkey.menubar_state import MenuState, parse_menu_state
@@ -675,6 +676,16 @@ class Controller:
         page = self._pending_quick_pages.pop(name, None)
         if not payload.get("ok", True) and page is not None:
             self.window.show_banner(page, self._quick_op_failure_message(name, payload))
+        elif name == "repair_shim" and page is not None:
+            # Fix 2: `ok: true` with `revertedImmediately: true` is still a
+            # success (the swap DID succeed) -- but the field-observed
+            # fast-revert loop means it's already stale by the time this
+            # very callback runs, so tell the user now rather than letting
+            # the next routine refresh silently re-show the ordinary
+            # "Repair shim" notice with no explanation of what just happened.
+            message = repair_success_display(payload)
+            if message is not None:
+                self.window.show_banner(page, message)
         self.refresh()
 
     def _quick_op_failure_message(self, name: str, payload: dict[str, Any]) -> str:

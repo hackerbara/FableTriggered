@@ -47,6 +47,7 @@ from claude_monkey.gui.window_model import (
     remove_enabled,
     repair_confirm_text,
     repair_refusal_display,
+    repair_success_display,
 )
 from claude_monkey.menubar_install import managed_user_target
 from claude_monkey.menubar_state import MenuState, OptionMenuItem, PatchMenuItem, PromptMenuItem
@@ -935,3 +936,34 @@ def test_repair_refusal_display_falls_back_for_unknown_code():
 def test_repair_refusal_display_falls_back_for_none_code():
     display = repair_refusal_display(None, fallback="repair failed")
     assert display == "repair failed"
+
+
+# -- repair_success_display -------------------------------------------------
+#
+# Fix 2 (field evidence: the official Claude installer's own self-heal
+# re-clobbers a just-repaired target within ~12-45s on a real machine). This
+# is deliberately a pure function of an already-known repair-shim JSON
+# payload -- no I/O -- following every other function in this module.
+
+
+def test_repair_success_display_reverted_immediately_returns_message():
+    message = repair_success_display({"ok": True, "revertedImmediately": True})
+    assert message is not None
+    assert message != ""
+    # Plain language, no raw field name/code ever surfaced in the UI.
+    assert "revertedImmediately" not in message
+
+
+def test_repair_success_display_not_reverted_returns_none():
+    assert repair_success_display({"ok": True, "revertedImmediately": False}) is None
+
+
+def test_repair_success_display_missing_field_returns_none():
+    # Older/other payload shapes without the additive field must not crash
+    # or spuriously show a banner.
+    assert repair_success_display({"ok": True}) is None
+
+
+def test_repair_success_display_failure_payload_returns_none():
+    # Failures are handled entirely by `repair_refusal_display` instead.
+    assert repair_success_display({"ok": False, "revertedImmediately": True}) is None

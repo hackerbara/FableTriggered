@@ -843,7 +843,8 @@ def _dry_run_install_payload(
     ):
         message = (
             "refusing to install shim over a target that does not look like a real "
-            f"Claude binary (below the plausibility size floor): {target}"
+            "Claude binary -- it looks too small to be a real Claude app, more like "
+            f"another program's launcher: {target}"
         )
         return envelope_error(
             message,
@@ -1208,7 +1209,22 @@ def handle_repair_shim(args: argparse.Namespace, paths: StatePaths) -> int:
         else:
             print(str(exc), file=sys.stderr)
         return 1
-    envelope = envelope_ok("repaired managed claude shim", target_path=target)
+    reverted_immediately = result["revertedImmediately"]
+    if reverted_immediately:
+        # Fix 1: honest summary for the field-observed fast-revert loop --
+        # the swap genuinely succeeded (see `repaired` below), but something
+        # (observed: the official Claude installer's own self-heal) already
+        # replaced the target again within seconds, so "repaired" alone
+        # would read as a lie once the GUI's next refresh re-shows the
+        # notice. Say so up front instead of letting it go silently stale.
+        summary = (
+            "Shim installed, but another program replaced it again within seconds"
+            " -- likely the official Claude updater. It will keep doing this until"
+            " that updater is dealt with."
+        )
+    else:
+        summary = "repaired managed claude shim"
+    envelope = envelope_ok(summary, target_path=target)
     payload = to_jsonable(envelope)
     payload["repaired"] = result["repaired"]
     payload["previousOfficialSha256"] = result["previousOfficialSha256"]
@@ -1216,6 +1232,7 @@ def handle_repair_shim(args: argparse.Namespace, paths: StatePaths) -> int:
     payload["newOfficialVersion"] = result["newOfficialVersion"]
     payload["cachedSourcePath"] = result["cachedSourcePath"]
     payload["gcRemovedDigests"] = result["gcRemovedDigests"]
+    payload["revertedImmediately"] = reverted_immediately
     if args.json:
         print_json(payload)
     else:

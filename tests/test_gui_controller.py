@@ -683,6 +683,27 @@ def test_repair_shim_success_triggers_refresh(controller_parts):
 
     # refresh() re-fetches status/patches/prompts/options.
     assert len(runner.run_json_calls) > calls_before
+    # Ordinary successful-and-stable outcome: no banner needed.
+    assert window.banners == []
+
+
+def test_repair_shim_success_with_revert_shows_banner(controller_parts):
+    # Fix 2: field-observed fast-revert loop (the official Claude installer's
+    # own self-heal re-clobbers a just-repaired target within seconds) -- a
+    # successful swap (`ok: true`) that already reverted must still surface a
+    # banner explaining what happened, distinct from the refusal-message path.
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("repair_shim", {})
+    bridge.command_finished.emit(
+        "repair_shim", _envelope(ok=True) | {"revertedImmediately": True}
+    )
+
+    assert len(window.banners) == 1
+    page, message = window.banners[0]
+    assert page == "overview"
+    assert message != ""
+    assert "revertedImmediately" not in message
 
 
 # ---------------------------------------------------------------------------

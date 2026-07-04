@@ -19,7 +19,7 @@ These anchors were checked against `/Users/MAC/.local/share/claude/versions/2.1.
 | `01-thinking-text-helpers.js` | `thinking-helpers-before-ypr` | `function Ypr(e){` |
 | `02-live-thinking-delta-collector.js` | `thinking-live-delta-collector` | `case"thinking_delta":{let{delta:d}=e.event;if("estimated_tokens"in d&&typeof d.estimated_tokens==="number")o?.({type:"thinking_progress",estimatedTokensDelta:d.estimated_tokens});else if("thinking"in d&&typeof d.thinking==="string"&&d.thinking.length>0)o?.({type:"thinking_progress",estimatedTokensDelta:Kon(d.thinking)});return}` |
 | `03-thinking-signature-collector.js` | `thinking-signature-collector` | `case"signature_delta":o?.({type:"thinking_signature",chars:VVe(e.event.delta.signature.length)});return;` |
-| `04-structured-thinking-block-collector.js` | `thinking-structured-block-collector` | `case"redacted_thinking":{if(!p&&!i)return null;let S;if(t[40]!==r)S=Lb.jsx(qRl,{addMargin:r}),t[40]=r,t[41]=S;else S=t[41];return S}case"thinking":{if(!p&&!i)return null;let S;if(t[42]!==r||t[43]!==p||t[44]!==n||t[45]!==i)S=Lb.jsx(wtr,{addMargin:r,param:n,isTranscriptMode:p,verbose:i}),t[42]=r,t[43]=p,t[44]=n,t[45]=i,t[46]=S;else S=t[46];return S}` |
+| `04-structured-thinking-block-collector.js` | `thinking-parent-structured-collector` | `k=n.message.content.map(I),t[23]=s,t[24]=a,t[25]=T,t[26]=R,t[27]=c,t[28]=f,t[29]=r,t[30]=n.advisorModel,t[31]=n.message.content,t[32]=n.message.id,t[33]=n.uuid,t[34]=h,t[35]=u,t[36]=d,t[37]=p,t[38]=i,t[39]=l,t[40]=k` |
 | `05-footer-open-state.js` | `thinking-footer-open-state` | `let[Ss,Ms]=wo.useState(!1),[go,Zo]=wo.useState(!1),[oa,Lu]=wo.useState(!1),[Ec,cn]=wo.useState(!1),[Gn,$n]=wo.useState(!1),[K,ye]=wo.useState(!1),[$e,Xe]=wo.useState(!1),wt=wo.useRef(!1)` |
 | `06-footer-target-thinking.js` | `thinking-footer-target` | `ss=wo.useMemo(()=>[Ui&&"tasks",po&&"workflows",Fn&&"tmux",_e&&"bagel",Tr&&"bridge",Ne&&"frame"].filter(Boolean),[Ui,po,Fn,_e,Tr,Ne])` |
 | `07-footer-selection-flag.js` | `thinking-footer-selection-flag` | `let lm=Lm==="tasks",ZE=Lm==="workflows",Hd=Lm==="tmux",Zp=Lm==="bagel",AT=Lm==="bridge",Mm=Lm==="frame";function Rp` |
@@ -148,7 +148,7 @@ def test_thinking_text_drawer_x_only_close_contract() -> None:
     assert "__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__=!1" in read_rel("payloads/01-thinking-text-helpers.js")
     assert "footer:clearSelection" in read_rel("payloads/01-thinking-text-helpers.js")
     assert "return false" in read_rel("payloads/01-thinking-text-helpers.js")
-    assert ",Lm,tDp,Rp)" in close_payload
+    assert "return!1}},Lm,tDp,Rp)" in close_payload
     assert "x closes" in renderer
     assert "inputOwnsEscape" not in text
     assert "escape" not in renderer.lower()
@@ -168,12 +168,16 @@ def test_thinking_text_drawer_collectors_cover_required_sources() -> None:
 
 def test_structured_collection_runs_before_ctrl_o_guard() -> None:
     structured = read_rel("payloads/04-structured-thinking-block-collector.js")
-    before_guard = structured.split('if(!p&&!i)return null', 1)[0]
-    assert "__codexTTDRecordRedactedThinking" in before_guard
-    assert "__codexTTDRecordStructuredThinking" in structured
-    assert "messageId:g" in structured
-    assert "blockHash:__codexTTDContentHash" in structured
-    assert "blockIndex:r" not in structured
+    assert "__codexTTDScanAssistantMessage(n)" in structured
+    assert "n.message.content.map(I)" in structured
+    assert "if(!p&&!i)return null" not in structured
+    assert "case\"thinking\"" not in structured
+    helpers = read_rel("payloads/01-thinking-text-helpers.js")
+    assert "function __codexTTDScanAssistantMessage" in helpers
+    assert "__codexTTDRecordRedactedThinking" in helpers
+    assert "__codexTTDRecordStructuredThinking" in helpers
+    assert "blockIndex:o" in helpers
+    assert "blockIndex:r" not in helpers
 
 
 def test_helper_fixture_merge_and_secondary_sources() -> None:
@@ -189,8 +193,10 @@ def test_helper_fixture_merge_and_secondary_sources() -> None:
         __codexTTDRecordRedactedThinking({{messageId:'m2', blockHash:'r1'}});
         __codexTTDRecordThinkingSignature({{chars:128, streamKey:'s1'}});
         __codexTTDRecordThinkingEstimate({{estimatedTokensDelta:7, estimatedTokens:21, streamKey:'s1'}});
+        __codexTTDScanAssistantMessage({{uuid:'u1', requestId:'req', timestamp:123, message:{{id:'mid', content:[{{type:'thinking', thinking:'parent text'}}, {{type:'redacted_thinking'}}]}}}});
         const frame = __codexTTDDrawerFrame();
         if (!frame.entries.some(e => e.source === 'structured' && e.sources.includes('live') && e.text === 'abcdef finalized')) throw new Error('structured/live merge failed');
+        if (!frame.entries.some(e => e.source === 'structured' && e.text === 'parent text')) throw new Error('parent structured missing');
         if (!frame.entries.some(e => e.source === 'redacted')) throw new Error('redacted marker missing');
         if (!frame.entries.some(e => e.source === 'signature')) throw new Error('signature marker missing');
         if (!frame.entries.some(e => e.source === 'estimate')) throw new Error('estimate marker missing');
@@ -331,16 +337,17 @@ function __codexTTDText(e){return typeof e==="string"?e:""}
 function __codexTTDNormalize(e){return __codexTTDText(e).replace(/\s+/g," ").trim()}
 function __codexTTDContentHash(e){let t=__codexTTDText(e),n=0;for(let r=0;r<t.length;r++)n=(n*31+t.charCodeAt(r))>>>0;return `${t.length}:${n.toString(16)}`}
 function __codexTTDEnsure(){let e=globalThis.__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__;if(!e||typeof e!=="object")e={entries:[],visible:true,unread:false,flashUntil:0,updatedAt:0,scroll:0},globalThis.__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__=e;return e}
-function __codexTTDKey(e){return [e.source||"unknown",e.messageId||"",e.requestId||"",e.blockHash||"",e.streamKey||"",e.status||""].join(":")}
+function __codexTTDKey(e){return e.key||[e.source||"unknown",e.messageId||"",e.requestId||"",e.blockHash||"",e.streamKey||"",e.blockIndex??"",e.status||""].join(":")}
 function __codexTTDLines(e){let t=__codexTTDText(e).split(/\r?\n/);return t.length>400?[...t.slice(0,400),"… displayed text truncated; captured text preserved in frame entry"]:t}
 function __codexTTDUpsert(e){let t=__codexTTDEnsure(),n={...e};n.text=__codexTTDText(n.text);n.charCount=n.text.length;n.key=n.key||__codexTTDKey(n);n.updatedAt=__codexTTDNow();n.sources=Array.isArray(n.sources)?Array.from(new Set(n.sources)):[n.source||"unknown"];n.lines=__codexTTDLines(n.text);let r=t.entries.findIndex(o=>o.key===n.key);if(r>=0)t.entries=[...t.entries.slice(0,r),{...t.entries[r],...n,sources:Array.from(new Set([...(t.entries[r].sources||[]),...n.sources]))},...t.entries.slice(r+1)];else t.entries=[n,...t.entries];t.visible=true;t.unread=true;t.flashUntil=Number.MAX_SAFE_INTEGER;t.updatedAt=n.updatedAt;return t}
 function __codexTTDMergeStructured(e){let t=__codexTTDEnsure(),n=__codexTTDNormalize(e.text),r=t.entries.findIndex(o=>o.messageId&&e.messageId&&o.messageId===e.messageId&&o.blockHash&&e.blockHash&&o.blockHash===e.blockHash);if(r<0){let o=t.entries.filter(s=>s.status==="provisional"&&s.turnKey&&e.turnKey&&s.turnKey===e.turnKey);if(o.length===1){let s=__codexTTDNormalize(o[0].text);if(s&&n.includes(s))r=t.entries.indexOf(o[0])}}if(r>=0){let o=t.entries[r],s={...o,...e,text:__codexTTDText(e.text),status:"final",source:"structured",sources:Array.from(new Set([...(o.sources||[]),"live","structured"])),charCount:__codexTTDText(e.text).length,updatedAt:__codexTTDNow()};s.lines=__codexTTDLines(s.text);t.entries=[...t.entries.slice(0,r),s,...t.entries.slice(r+1)];t.visible=true;t.unread=true;t.flashUntil=Number.MAX_SAFE_INTEGER;t.updatedAt=s.updatedAt;return t}return __codexTTDUpsert({...e,source:"structured",status:"final",sources:["structured"]})}
-function __codexTTDRecordStructuredThinking(e){let t=__codexTTDText(e?.thinking);if(!t.trim())return;return __codexTTDMergeStructured({source:"structured",status:"final",text:t,messageId:e?.messageId,requestId:e?.requestId,blockHash:e?.blockHash||__codexTTDContentHash(t),turnKey:e?.turnKey,timestamp:e?.timestamp})}
-function __codexTTDRecordLiveThinking(e){let t=__codexTTDText(e?.text);if(!t)return;let n=__codexTTDEnsure(),r=e?.streamKey||"active",o=n.entries.find(s=>s.source==="live"&&s.status==="provisional"&&s.streamKey===r),s=o?`${o.text}${t}`:t;return __codexTTDUpsert({source:"live",status:"provisional",text:s,streamKey:r,turnKey:e?.turnKey,requestId:e?.requestId,blockHash:__codexTTDContentHash(s),sources:["live"]})}
+function __codexTTDRecordStructuredThinking(e){let t=__codexTTDText(e?.thinking);if(!t.trim())return;return __codexTTDMergeStructured({source:"structured",status:"final",text:t,messageId:e?.messageId,requestId:e?.requestId,blockHash:e?.blockHash||__codexTTDContentHash(t),blockIndex:e?.blockIndex,turnKey:e?.turnKey,timestamp:e?.timestamp})}
+function __codexTTDRecordLiveThinking(e){let t=__codexTTDText(e?.text);if(!t)return;let n=__codexTTDEnsure(),r=e?.streamKey||"active",o=e?.turnKey||e?.requestId||"turn",s=n.entries.find(i=>i.source==="live"&&i.status==="provisional"&&i.streamKey===r&&i.turnKey===o),i=s?`${s.text}${t}`:t;return __codexTTDUpsert({source:"live",status:"provisional",text:i,key:["live",o,r,"provisional"].join(":"),streamKey:r,turnKey:o,requestId:e?.requestId,blockHash:__codexTTDContentHash(i),sources:["live"]})}
 function __codexTTDRecordSalvagedThinking(e){let t=__codexTTDText(e?.thinking);if(!t.trim())return;return __codexTTDUpsert({source:"salvaged",status:"final",text:t,messageId:e?.messageId,requestId:e?.requestId,turnKey:e?.turnKey,blockHash:e?.blockHash||__codexTTDContentHash(t),sources:["salvaged"]})}
-function __codexTTDRecordRedactedThinking(e){return __codexTTDUpsert({source:"redacted",status:"secondary",text:"[redacted thinking block present]",messageId:e?.messageId,requestId:e?.requestId,blockHash:e?.blockHash||"redacted",turnKey:e?.turnKey,sources:["redacted"]})}
+function __codexTTDRecordRedactedThinking(e){return __codexTTDUpsert({source:"redacted",status:"secondary",text:"[redacted thinking block present]",messageId:e?.messageId,requestId:e?.requestId,blockHash:e?.blockHash||"redacted",blockIndex:e?.blockIndex,turnKey:e?.turnKey,timestamp:e?.timestamp,sources:["redacted"]})}
 function __codexTTDRecordThinkingSignature(e){let t=typeof e?.chars==="number"?e.chars:0;return __codexTTDUpsert({source:"signature",status:"secondary",text:`thinking signature received (${t} chars)`,streamKey:e?.streamKey,requestId:e?.requestId,blockHash:`signature:${t}`,sources:["signature"]})}
 function __codexTTDRecordThinkingEstimate(e){let t=typeof e?.estimatedTokensDelta==="number"?e.estimatedTokensDelta:void 0,n=typeof e?.estimatedTokens==="number"?e.estimatedTokens:void 0;return __codexTTDUpsert({source:"estimate",status:"secondary",text:`thinking active; raw text not exposed${t!==void 0?`, +${t} estimated tokens`:""}${n!==void 0?`, ${n} total estimated`:""}`,streamKey:e?.streamKey,turnKey:e?.turnKey,requestId:e?.requestId,estimatedTokens:n,estimatedTokensDelta:t,blockHash:`estimate:${n??""}:${t??""}`,sources:["estimate"]})}
+function __codexTTDScanAssistantMessage(e){let t=e?.message?.content;if(!Array.isArray(t))return;let n=e?.message?.id||e?.uuid,r=e?.requestId||e?.uuid||n;for(let o=0;o<t.length;o++){let s=t[o];if(s?.type==="thinking")__codexTTDRecordStructuredThinking({thinking:s.thinking,messageId:n,requestId:e?.requestId,blockHash:__codexTTDContentHash(s.thinking),blockIndex:o,turnKey:r,timestamp:e?.timestamp});else if(s?.type==="redacted_thinking")__codexTTDRecordRedactedThinking({messageId:n,requestId:e?.requestId,blockHash:`redacted:${n??""}:${o}`,blockIndex:o,turnKey:r,timestamp:e?.timestamp})}}
 function __codexTTDDrawerFrame(){let e=__codexTTDEnsure();return{...e,lineCount:e.entries.reduce((t,n)=>t+(n.lines?.length||1),0),entryCount:e.entries.length,empty:e.entries.length===0}}
 function __codexTTDWrapFooterActions(e,t,n,r){return{...e,"footer:up":()=>{if(t==="thinking"){let o=__codexTTDEnsure();o.scroll=Math.max(0,(o.scroll||0)-1);globalThis.__CODEX_THINKING_TEXT_DRAWER_SCROLL_V1__=o.scroll;return}return e["footer:up"]?.()},"footer:down":()=>{if(t==="thinking"){globalThis.__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__=!0;n(!0);let o=__codexTTDEnsure();o.scroll=(o.scroll||0)+1;globalThis.__CODEX_THINKING_TEXT_DRAWER_SCROLL_V1__=o.scroll;return}return e["footer:down"]?.()},"footer:openSelected":()=>{if(t==="thinking"){globalThis.__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__=!0;n(!0);return}return e["footer:openSelected"]?.()},"footer:clearSelection":()=>{if(t==="thinking")return false;return e["footer:clearSelection"]?.()},"footer:close":()=>{if(t==="thinking"){globalThis.__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__=!1;n(!1);r(null);return}return e["footer:close"]?.()}}}
 // normalized structured text contains the normalized provisional text; otherwise preserve both
@@ -366,7 +373,7 @@ case"signature_delta":try{__codexTTDRecordThinkingSignature({chars:VVe(e.event.d
 `packages/thinking-text-drawer/payloads/04-structured-thinking-block-collector.js`:
 
 ```javascript
-case"redacted_thinking":{try{__codexTTDRecordRedactedThinking({messageId:g,blockHash:"redacted",turnKey:g})}catch(A){}if(!p&&!i)return null;let S;if(t[40]!==r)S=Lb.jsx(qRl,{addMargin:r}),t[40]=r,t[41]=S;else S=t[41];return S}case"thinking":{try{__codexTTDRecordStructuredThinking({thinking:n?.thinking,messageId:g,blockHash:__codexTTDContentHash(n?.thinking),turnKey:g})}catch(A){}if(!p&&!i)return null;let S;if(t[42]!==r||t[43]!==p||t[44]!==n||t[45]!==i)S=Lb.jsx(wtr,{addMargin:r,param:n,isTranscriptMode:p,verbose:i}),t[42]=r,t[43]=p,t[44]=n,t[45]=i,t[46]=S;else S=t[46];return S}
+try{__codexTTDScanAssistantMessage(n)}catch(P){}k=n.message.content.map(I),t[23]=s,t[24]=a,t[25]=T,t[26]=R,t[27]=c,t[28]=f,t[29]=r,t[30]=n.advisorModel,t[31]=n.message.content,t[32]=n.message.id,t[33]=n.uuid,t[34]=h,t[35]=u,t[36]=d,t[37]=p,t[38]=i,t[39]=l,t[40]=k
 ```
 
 `packages/thinking-text-drawer/payloads/05-footer-open-state.js`:
@@ -396,7 +403,7 @@ Go(__codexTTDWrapFooterActions({"footer:up":By,"footer:down":d0,"footer:next":o6
 `packages/thinking-text-drawer/payloads/09-footer-action-wrap-close.js`:
 
 ```javascript
-return!1},Lm,tDp,Rp),{context:"Footer",isActive:!!Lm&&!se});
+return!1}},Lm,tDp,Rp),{context:"Footer",isActive:!!Lm&&!se});
 ```
 
 `packages/thinking-text-drawer/payloads/10-selected-overlay-globals.js`:
@@ -499,7 +506,7 @@ anchors = {
 '01': 'function Ypr(e){',
 '02': 'case"thinking_delta":{let{delta:d}=e.event;if("estimated_tokens"in d&&typeof d.estimated_tokens==="number")o?.({type:"thinking_progress",estimatedTokensDelta:d.estimated_tokens});else if("thinking"in d&&typeof d.thinking==="string"&&d.thinking.length>0)o?.({type:"thinking_progress",estimatedTokensDelta:Kon(d.thinking)});return}',
 '03': 'case"signature_delta":o?.({type:"thinking_signature",chars:VVe(e.event.delta.signature.length)});return;',
-'04': 'case"redacted_thinking":{if(!p&&!i)return null;let S;if(t[40]!==r)S=Lb.jsx(qRl,{addMargin:r}),t[40]=r,t[41]=S;else S=t[41];return S}case"thinking":{if(!p&&!i)return null;let S;if(t[42]!==r||t[43]!==p||t[44]!==n||t[45]!==i)S=Lb.jsx(wtr,{addMargin:r,param:n,isTranscriptMode:p,verbose:i}),t[42]=r,t[43]=p,t[44]=n,t[45]=i,t[46]=S;else S=t[46];return S}',
+'04': 'k=n.message.content.map(I),t[23]=s,t[24]=a,t[25]=T,t[26]=R,t[27]=c,t[28]=f,t[29]=r,t[30]=n.advisorModel,t[31]=n.message.content,t[32]=n.message.id,t[33]=n.uuid,t[34]=h,t[35]=u,t[36]=d,t[37]=p,t[38]=i,t[39]=l,t[40]=k',
 '05': 'let[Ss,Ms]=wo.useState(!1),[go,Zo]=wo.useState(!1),[oa,Lu]=wo.useState(!1),[Ec,cn]=wo.useState(!1),[Gn,$n]=wo.useState(!1),[K,ye]=wo.useState(!1),[$e,Xe]=wo.useState(!1),wt=wo.useRef(!1)',
 '06': 'ss=wo.useMemo(()=>[Ui&&"tasks",po&&"workflows",Fn&&"tmux",_e&&"bagel",Tr&&"bridge",Ne&&"frame"].filter(Boolean),[Ui,po,Fn,_e,Tr,Ne])',
 '07': 'let lm=Lm==="tasks",ZE=Lm==="workflows",Hd=Lm==="tmux",Zp=Lm==="bagel",AT=Lm==="bridge",Mm=Lm==="frame";function Rp',
@@ -540,7 +547,7 @@ specs = [
 ('thinking-helpers-before-ypr','Thinking Text Drawer helpers before hidden attachment filter','function Ypr(e){','payloads/01-thinking-text-helpers.js','Adds display-only Thinking drawer helpers and action wrapper.'),
 ('thinking-live-delta-collector','Record live raw thinking_delta text before progress-only conversion','case"thinking_delta":{let{delta:d}=e.event;if("estimated_tokens"in d&&typeof d.estimated_tokens==="number")o?.({type:"thinking_progress",estimatedTokensDelta:d.estimated_tokens});else if("thinking"in d&&typeof d.thinking==="string"&&d.thinking.length>0)o?.({type:"thinking_progress",estimatedTokensDelta:Kon(d.thinking)});return}','payloads/02-live-thinking-delta-collector.js','Records live raw thinking delta text into display-only drawer state.'),
 ('thinking-signature-collector','Record thinking signature marker','case"signature_delta":o?.({type:"thinking_signature",chars:VVe(e.event.delta.signature.length)});return;','payloads/03-thinking-signature-collector.js','Records thinking signature events as secondary evidence.'),
-('thinking-structured-block-collector','Record structured thinking and redacted blocks before transcript-mode suppression','case"redacted_thinking":{if(!p&&!i)return null;let S;if(t[40]!==r)S=Lb.jsx(qRl,{addMargin:r}),t[40]=r,t[41]=S;else S=t[41];return S}case"thinking":{if(!p&&!i)return null;let S;if(t[42]!==r||t[43]!==p||t[44]!==n||t[45]!==i)S=Lb.jsx(wtr,{addMargin:r,param:n,isTranscriptMode:p,verbose:i}),t[42]=r,t[43]=p,t[44]=n,t[45]=i,t[46]=S;else S=t[46];return S}','payloads/04-structured-thinking-block-collector.js','Records structured thinking before normal-mode rendering suppresses it.'),
+('thinking-parent-structured-collector','Record structured thinking and redacted blocks at parent assistant content-list seam','k=n.message.content.map(I),t[23]=s,t[24]=a,t[25]=T,t[26]=R,t[27]=c,t[28]=f,t[29]=r,t[30]=n.advisorModel,t[31]=n.message.content,t[32]=n.message.id,t[33]=n.uuid,t[34]=h,t[35]=u,t[36]=d,t[37]=p,t[38]=i,t[39]=l,t[40]=k','payloads/04-structured-thinking-block-collector.js','Records structured thinking and redacted markers before normal-mode rendering suppresses them.'),
 ('thinking-footer-open-state','Add Thinking drawer React open state','let[Ss,Ms]=wo.useState(!1),[go,Zo]=wo.useState(!1),[oa,Lu]=wo.useState(!1),[Ec,cn]=wo.useState(!1),[Gn,$n]=wo.useState(!1),[K,ye]=wo.useState(!1),[$e,Xe]=wo.useState(!1),wt=wo.useRef(!1)','payloads/05-footer-open-state.js','Adds a local open-state setter used by the footer action wrapper.'),
 ('thinking-footer-target','Always add Thinking footer target','ss=wo.useMemo(()=>[Ui&&"tasks",po&&"workflows",Fn&&"tmux",_e&&"bagel",Tr&&"bridge",Ne&&"frame"].filter(Boolean),[Ui,po,Fn,_e,Tr,Ne])','payloads/06-footer-target-thinking.js','Makes Thinking selectable even when no entries exist.'),
 ('thinking-footer-selection-flag','Add Thinking selected flag','let lm=Lm==="tasks",ZE=Lm==="workflows",Hd=Lm==="tmux",Zp=Lm==="bagel",AT=Lm==="bridge",Mm=Lm==="frame";function Rp','payloads/07-footer-selection-flag.js','Publishes a local Thinking selection boolean.'),

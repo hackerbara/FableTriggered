@@ -3,9 +3,14 @@
 Follows `settings_window.py`'s rendering discipline: `option_item_enabled`
 (row enable/disable), `option_notes` (Notes column text), and
 `remove_enabled` (Remove-button enable/disable + refusal reason) are read
-from `window_model.py`, never re-derived here. Enabling a
-`requires_confirmation` option shows a confirm dialog whose warning text is
-read off `MenuState.high_risk_options` -- never hardcoded. `render`'s
+from `window_model.py`, never re-derived here. Toggling a checkbox always
+emits the same `requires_confirmation` shape the tray already uses (see
+`Tray._add_items_submenu`'s "Options" call) -- this page never shows its
+own confirm dialog; `Controller` (`gui/app.py`) is the sole place that ever
+confirms a high-risk enable (Item 1's unified high-risk-option confirm
+dialog), and it corrects any checkbox Qt already flipped on a decline by
+re-rendering from the true `MenuState` (`Controller.refresh()`), not by
+this page reverting its own widget state. `render`'s
 `mutating_enabled` (from `window_model.mutating_controls_enabled`, via
 `SettingsWindow.render`'s `busy_command`) additionally gates every mutating
 control here -- rows, Add, and Remove -- while a Controller command is in
@@ -29,7 +34,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
-    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -61,11 +65,11 @@ class OptionsPage(QWidget):
     """Table of installed option packages, plus add/remove controls.
 
     Signals:
-        action(str, dict): "toggle_option" (checkbox toggled -- carries
-            "confirmed": True only after a high-risk confirm dialog is
-            accepted), "add_package" (folder picked), "remove_package"
-            (Remove clicked) -- bubbled through `SettingsWindow.action` by
-            the caller.
+        action(str, dict): "toggle_option" (checkbox toggled -- always
+            carries "requires_confirmation", mirroring tray's kwargs shape;
+            `Controller` alone decides whether/how to confirm), "add_package"
+            (folder picked), "remove_package" (Remove clicked) -- bubbled
+            through `SettingsWindow.action` by the caller.
     """
 
     action = Signal(str, dict)
@@ -74,7 +78,6 @@ class OptionsPage(QWidget):
         super().__init__()
         self._state: MenuState | None = None
         self._mutating_enabled: bool = True
-        self._high_risk_warning_by_id: dict[str, str] = {}
 
         layout = QVBoxLayout(self)
         self.banner = Banner()
@@ -120,11 +123,6 @@ class OptionsPage(QWidget):
         self.add_button.setEnabled(mutating_enabled)
         self.pending_rebuild_banner.render(
             visible=rebuild_pending_banner_visible(state), mutating_enabled=mutating_enabled
-        )
-        self._high_risk_warning_by_id = (
-            {summary.option_id: summary.warning for summary in state.high_risk_options}
-            if state is not None
-            else {}
         )
         self.table.blockSignals(True)
         self.table.setRowCount(0)
@@ -174,39 +172,21 @@ class OptionsPage(QWidget):
         if option is None:
             return
 
-        turning_on = not option.enabled
-        if turning_on and option.requires_confirmation:
-            self._confirm_and_emit(item, option)
-            return
-
         # `enabled` reports the option's CURRENT (pre-toggle) state, matching
         # `command_for_option_toggle`'s enable/disable direction convention.
-        self.action.emit(
-            "toggle_option", {"option_id": option.option_id, "enabled": option.enabled}
-        )
-
-    def _confirm_and_emit(self, item: QTableWidgetItem, option: OptionMenuItem) -> None:
-        # Deferred import to avoid a circular import with `gui/app.py` (see
-        # `activate_app_for_window`'s docstring).
-        from claude_monkey.gui.app import activate_app_for_window
-
-        warning = self._high_risk_warning_by_id.get(option.option_id, "")
-        message = f"{option.label}\n\n{warning}" if warning else option.label
-        activate_app_for_window()
-        answer = QMessageBox.question(
-            self,
-            "Confirm high-risk option",
-            message,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            self.table.blockSignals(True)
-            item.setCheckState(Qt.CheckState.Unchecked)
-            self.table.blockSignals(False)
-            return
+        # `requires_confirmation` mirrors tray's kwargs shape exactly (see
+        # `Tray._add_items_submenu`'s "Options" call) -- Controller alone
+        # decides whether/how to confirm now (Item 1's unified high-risk
+        # confirm dialog); this page never shows its own QMessageBox, and a
+        # decline is corrected by `Controller.refresh()` re-rendering from
+        # the true `MenuState`, not by this page reverting its own checkbox.
         self.action.emit(
             "toggle_option",
-            {"option_id": option.option_id, "enabled": option.enabled, "confirmed": True},
+            {
+                "option_id": option.option_id,
+                "enabled": option.enabled,
+                "requires_confirmation": option.requires_confirmation,
+            },
         )
 
     def _option_by_id(self, option_id: object) -> OptionMenuItem | None:

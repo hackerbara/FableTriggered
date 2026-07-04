@@ -47,6 +47,7 @@ from claude_monkey.gui.window_model import (
     NoticeModel,
     build_notice_model,
     build_tray_model,
+    high_risk_confirm_text,
     repair_confirm_text,
     repair_refusal_display,
     repair_success_display,
@@ -272,15 +273,29 @@ class Controller:
         malformed/missing-field payload (both `ProgressModel.apply_result`
         and `ProgressDialog.finish` already tolerate that defensively), so a
         dialog is never stranded mid-RUNNING.
-      - `toggle_option` is emitted with two different shapes (see the
-        per-emitter handling in `_action_toggle_option`): the window's
-        Options page always runs its own confirm `QMessageBox` before
-        emitting (payload carries `confirmed` when relevant), while the
-        tray emits a static `requires_confirmation` flag and never shows a
-        dialog of its own -- when the tray asks to enable a
-        `requires_confirmation` option, `Controller` runs the confirm
-        prompt itself (`confirm_high_risk`, using the warning text from
-        `MenuState.high_risk_options`).
+      - `toggle_option`'s high-risk confirm is unified across both
+        emitters (Item 1 fix -- this used to diverge: the window's Options
+        page ran its own confirm `QMessageBox`, built from `f"{label}\n\n
+        {warning}"`, with no way for the tray to show the same dialog,
+        since the tray has no confirm-dialog UI of its own). Both the tray
+        and the window's Options page now emit the exact same shape --
+        `requires_confirmation` is always a static flag, never a
+        page-owned `QMessageBox` result -- so `_action_toggle_option`'s
+        single `"requires_confirmation" in payload` branch handles both
+        surfaces identically: when turning a `requires_confirmation`
+        option ON, `Controller` is the sole place that ever shows the
+        confirm prompt (`confirm_high_risk`, text built by
+        `window_model.high_risk_confirm_text` from `MenuState.
+        high_risk_options`, so the same label+warning text renders
+        regardless of trigger). The payload's `confirmed` key is a
+        still-supported legacy translation path (kept for the
+        injected-confirm-callable test shape / any external caller that
+        already ran its own confirm), but no real emitter sends it
+        anymore. A declined confirm now also calls `self.refresh()` before
+        returning -- since neither surface reverts its own checkbox/
+        checkmark widget state anymore, this is what corrects whatever Qt
+        already flipped on click, by re-rendering both tray and window
+        from the true (unchanged) `MenuState`.
       - `open_path` -> `runner.open_path`. `quit` cancels any live
         streaming handle and calls `quit_callback` (defaults to
         `QApplication.quit`).
@@ -394,20 +409,29 @@ class Controller:
         enabled = bool(payload.get("enabled", False))
 
         if "requires_confirmation" in payload:
-            # Tray emitter: `requires_confirmation` is a static flag -- the
-            # tray has no confirm-dialog UI of its own, so if the user is
-            # turning a high-risk option ON (currently disabled), Controller
-            # must run the confirm prompt itself.
+            # Unified shape (Item 1): both the tray and the window's Options
+            # page emit this now -- `requires_confirmation` is a static
+            # flag, neither surface has (or shows) a confirm dialog of its
+            # own, so if the user is turning a high-risk option ON
+            # (currently disabled), Controller is the sole place that runs
+            # the confirm prompt.
             requires_confirmation = bool(payload["requires_confirmation"])
             confirm = False
             if requires_confirmation and not enabled:
-                warning = self._high_risk_warning(option_id)
-                if not self._confirm_high_risk(option_id, warning):
+                text = high_risk_confirm_text(self._state, option_id)
+                if not self._confirm_high_risk(option_id, text):
+                    # Neither emitter reverts its own checkbox/checkmark on
+                    # decline anymore -- re-render both surfaces from the
+                    # true (unchanged) MenuState to correct whatever Qt
+                    # already flipped on click.
+                    self.refresh()
                     return
                 confirm = True
         else:
-            # Window emitter: the Options page already ran its own
-            # QMessageBox confirm flow before emitting, if one was needed.
+            # Legacy translation path: an already-confirmed payload from a
+            # caller that ran its own confirm flow before emitting (no real
+            # emitter does this anymore -- kept so the shape stays
+            # supported).
             confirm = bool(payload.get("confirmed", False))
 
         argv = command_for_option_toggle(option_id, enabled=enabled, confirm=confirm)
@@ -734,22 +758,18 @@ class Controller:
 
     # -- high-risk option confirm ------------------------------------------
 
-    def _high_risk_warning(self, option_id: str) -> str:
-        if self._state is None:
-            return ""
-        summary = next(
-            (o for o in self._state.high_risk_options if o.option_id == option_id), None
-        )
-        return summary.warning if summary is not None else ""
-
-    def _default_confirm_high_risk(self, option_id: str, warning: str) -> bool:
+    def _default_confirm_high_risk(self, option_id: str, text: str) -> bool:
+        # `text` is already the fully-built confirm-dialog body
+        # (`window_model.high_risk_confirm_text`, label + warning, with its
+        # own generic fallback) -- this never re-derives or falls back on
+        # its own. `option_id` is accepted only to keep the injectable
+        # `Callable[[str, str], bool]` shape (same as before this change).
         parent = self._dialog_parent()
-        message = warning or "This option is high-risk."
         activate_app_for_window()
         answer = QMessageBox.question(
             parent,
             "Confirm high-risk option",
-            message,
+            text,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         return answer == QMessageBox.StandardButton.Yes

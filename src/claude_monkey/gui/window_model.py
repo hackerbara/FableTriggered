@@ -271,6 +271,32 @@ def build_notice_model(
     return None
 
 
+_HIGH_RISK_CONFIRM_FALLBACK = "This option is high-risk."
+
+
+def high_risk_confirm_text(state: MenuState | None, option_id: str) -> str:
+    """Confirm-dialog body for enabling a high-risk option.
+
+    Mirrors `repair_confirm_text`'s pattern: a pure function of `MenuState`
+    (looking up `option_id` in `state.high_risk_options`, see
+    `HighRiskOptionSummary`) so the exact same label+warning text renders
+    regardless of which surface (tray or the window's Options page)
+    triggered the confirm -- previously the window built this text itself
+    (`f"{option.label}\n\n{warning}"`) while the tray's Controller-owned
+    confirm only ever showed the raw warning, with no label. Falls back to
+    a generic message when `state` is `None` or the option isn't found in
+    `state.high_risk_options` (matches the prior `_default_confirm_high_risk`
+    fallback text).
+    """
+    if state is not None:
+        summary = next(
+            (o for o in state.high_risk_options if o.option_id == option_id), None
+        )
+        if summary is not None:
+            return f"{summary.label}\n\n{summary.warning}" if summary.warning else summary.label
+    return _HIGH_RISK_CONFIRM_FALLBACK
+
+
 def repair_confirm_text(state: MenuState | None) -> str:
     """Confirm-dialog body for the repair-shim action (R2: user-triggered).
 

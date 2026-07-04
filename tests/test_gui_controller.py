@@ -19,6 +19,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from pathlib import Path  # noqa: E402
 
 import pytest  # noqa: E402
+from PySide6.QtCore import Qt  # noqa: E402
 
 from claude_monkey.gui import commands  # noqa: E402
 from claude_monkey.gui.app import CommandBridge, Controller  # noqa: E402
@@ -395,14 +396,18 @@ def test_toggle_option_window_unconfirmed_maps_to_confirm_false(controller_parts
 
 def test_toggle_option_tray_high_risk_runs_confirm_and_proceeds(controller_parts):
     controller, runner, bridge, tray, window, confirm_calls = controller_parts
-    controller._state = None  # no state fetched yet -- warning lookup must not crash
+    controller._state = None  # no state fetched yet -- text lookup must not crash
 
     controller.on_action(
         "toggle_option",
         {"option_id": "danger", "enabled": False, "requires_confirmation": True},
     )
 
-    assert confirm_calls == [("danger", "")]
+    # Item 1 (unified high-risk confirm): the second arg is now the full
+    # Controller-built confirm text (window_model.high_risk_confirm_text),
+    # not the raw warning -- with no state fetched yet, that's its generic
+    # fallback, same text `_default_confirm_high_risk` always fell back to.
+    assert confirm_calls == [("danger", "This option is high-risk.")]
     assert runner.background_calls == [
         ("toggle_option", ["enable-option", "danger", "--confirm", "--json"], True)
     ]
@@ -428,6 +433,12 @@ def test_toggle_option_tray_high_risk_declined_does_not_run_command(controller_p
     )
 
     assert runner.background_calls == []
+    # Item 1: a declined high-risk confirm now triggers a refresh() so both
+    # tray and window re-render from the true MenuState -- this is what
+    # corrects a checkbox/checkmark Qt already flipped on click, since
+    # neither surface reverts its own widget state anymore.
+    assert len(window.rendered) == 1
+    assert window.rendered[0] is not None
 
 
 def test_toggle_option_tray_not_high_risk_skips_confirm(controller_parts):
@@ -459,6 +470,61 @@ def test_toggle_option_tray_disabling_high_risk_skips_confirm(controller_parts):
     assert runner.background_calls == [
         ("toggle_option", ["disable-option", "danger", "--json"], True)
     ]
+
+
+def test_toggle_option_window_declined_reverts_checkbox_via_refresh(qtbot):
+    # Item 1 (unified high-risk confirm dialog): the window's Options page
+    # no longer owns its own QMessageBox/checkbox-revert logic -- it emits
+    # the same requires_confirmation shape the tray already does, and a
+    # decline is corrected purely by Controller.refresh() re-rendering from
+    # the true (unchanged) MenuState. This needs a REAL SettingsWindow (not
+    # the lightweight FakeWindow double used elsewhere in this file) wired
+    # to a real Controller, since the regression under test is specifically
+    # about the Qt checkbox widget's on-screen state after a decline.
+    from claude_monkey.gui.settings_window import SettingsWindow
+
+    runner = StubRunner()
+    runner.run_json_results[("list-options", "--json")] = {
+        "schemaVersion": 1,
+        "options": [
+            {
+                "id": "danger",
+                "label": "Danger",
+                "enabled": False,
+                "valid": True,
+                "riskLevel": "high",
+                "requiresConfirmation": True,
+            }
+        ],
+    }
+    runner.run_json_results[("status", "--json")] = _status_raw(
+        highRiskOptions=[{"id": "danger", "label": "Danger", "warning": "This is risky."}]
+    )
+
+    bridge = CommandBridge()
+    tray = FakeTray()
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    controller = Controller(
+        runner=runner,
+        bridge=bridge,
+        tray=tray,
+        window=window,
+        confirm_high_risk=lambda option_id, text: False,
+        quit_callback=lambda: None,
+    )
+    window.action.connect(controller.on_action)
+
+    controller.refresh()
+    checkbox_item = window.options_page.table.item(0, 0)
+    assert checkbox_item.checkState() == Qt.CheckState.Unchecked
+
+    checkbox_item.setCheckState(Qt.CheckState.Checked)
+    qtbot.wait(50)
+
+    assert runner.background_calls == []
+    reverted_item = window.options_page.table.item(0, 0)
+    assert reverted_item.checkState() == Qt.CheckState.Unchecked
 
 
 # ---------------------------------------------------------------------------

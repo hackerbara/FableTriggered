@@ -38,6 +38,7 @@ from claude_monkey.gui.window_model import (
     build_tray_model,
     compatibility_display,
     default_install_target,
+    high_risk_confirm_text,
     install_target_choice_label,
     install_target_choices,
     option_item_enabled,
@@ -52,7 +53,13 @@ from claude_monkey.gui.window_model import (
     repair_success_display,
 )
 from claude_monkey.menubar_install import managed_user_target
-from claude_monkey.menubar_state import MenuState, OptionMenuItem, PatchMenuItem, PromptMenuItem
+from claude_monkey.menubar_state import (
+    HighRiskOptionSummary,
+    MenuState,
+    OptionMenuItem,
+    PatchMenuItem,
+    PromptMenuItem,
+)
 
 
 def _state(tmp_path: Path, **overrides) -> MenuState:
@@ -847,6 +854,41 @@ def test_build_notice_model_digest_less_notice_is_dismissable(tmp_path):
 
     key = window_model.notice_dismiss_key(notice)
     assert build_notice_model(state, frozenset({key})) is None
+
+
+# ---------------------------------------------------------------------------
+# high_risk_confirm_text (Item 1: unified high-risk-option confirm dialog)
+# ---------------------------------------------------------------------------
+
+
+def test_high_risk_confirm_text_includes_label_and_warning(tmp_path):
+    state = _state(
+        tmp_path,
+        high_risk_options=(
+            HighRiskOptionSummary("danger", "Dangerous permissions", "This is risky."),
+        ),
+    )
+    assert (
+        high_risk_confirm_text(state, "danger")
+        == "Dangerous permissions\n\nThis is risky."
+    )
+
+
+def test_high_risk_confirm_text_label_only_when_warning_empty(tmp_path):
+    state = _state(
+        tmp_path,
+        high_risk_options=(HighRiskOptionSummary("danger", "Dangerous permissions", ""),),
+    )
+    assert high_risk_confirm_text(state, "danger") == "Dangerous permissions"
+
+
+def test_high_risk_confirm_text_falls_back_when_state_none():
+    assert high_risk_confirm_text(None, "danger") == "This option is high-risk."
+
+
+def test_high_risk_confirm_text_falls_back_when_option_not_found(tmp_path):
+    state = _state(tmp_path, high_risk_options=())
+    assert high_risk_confirm_text(state, "unknown") == "This option is high-risk."
 
 
 # ---------------------------------------------------------------------------

@@ -721,19 +721,26 @@ def _high_risk_state(tmp_path: Path, *, enabled: bool) -> MenuState:
     )
 
 
-def test_high_risk_option_confirm_yes_emits_confirmed_true(qtbot, monkeypatch, tmp_path):
+def test_high_risk_option_toggle_on_emits_requires_confirmation_without_dialog(
+    qtbot, monkeypatch, tmp_path
+):
+    # Item 1 (unified high-risk confirm dialog): OptionsPage no longer shows
+    # its own QMessageBox at all -- it emits the same requires_confirmation
+    # shape the tray already uses, and Controller (gui/app.py) is the sole
+    # place that ever confirms. See tests/test_gui_controller.py's
+    # toggle_option tests for the Controller-side confirm/decline coverage,
+    # and test_default_confirm_high_risk_activates_app_before_message_box in
+    # tests/test_gui_app.py for the activate-before-QMessageBox coverage
+    # (both now live at the Controller level, not the page level).
     state = _high_risk_state(tmp_path, enabled=False)
     window = SettingsWindow()
     qtbot.addWidget(window)
     window.render(state)
 
-    seen_messages: list[str] = []
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("OptionsPage must not call QMessageBox.question itself")
 
-    def fake_question(_parent, _title, message, *_args, **_kwargs):
-        seen_messages.append(message)
-        return QMessageBox.StandardButton.Yes
-
-    monkeypatch.setattr(QMessageBox, "question", fake_question)
+    monkeypatch.setattr(QMessageBox, "question", fail_if_called)
 
     checkbox_item = window.options_page.table.item(0, 0)
     with qtbot.waitSignal(window.action, timeout=1000) as blocker:
@@ -741,56 +748,12 @@ def test_high_risk_option_confirm_yes_emits_confirmed_true(qtbot, monkeypatch, t
 
     assert blocker.args == [
         "toggle_option",
-        {"option_id": "dangerous-permissions", "enabled": False, "confirmed": True},
+        {
+            "option_id": "dangerous-permissions",
+            "enabled": False,
+            "requires_confirmation": True,
+        },
     ]
-    # The warning text comes from state (high_risk_options), not a hardcoded string.
-    assert "This is risky." in seen_messages[0]
-    assert "Dangerous permissions" in seen_messages[0]
-
-
-def test_high_risk_option_confirm_activates_app_before_message_box(qtbot, monkeypatch, tmp_path):
-    state = _high_risk_state(tmp_path, enabled=False)
-    window = SettingsWindow()
-    qtbot.addWidget(window)
-    window.render(state)
-
-    calls: list[str] = []
-    monkeypatch.setattr(
-        app_module, "activate_app_for_window", lambda: calls.append("activate_app")
-    )
-
-    def fake_question(*_args, **_kwargs):
-        calls.append("question")
-        return QMessageBox.StandardButton.Yes
-
-    monkeypatch.setattr(QMessageBox, "question", fake_question)
-
-    checkbox_item = window.options_page.table.item(0, 0)
-    with qtbot.waitSignal(window.action, timeout=1000):
-        checkbox_item.setCheckState(Qt.CheckState.Checked)
-
-    assert calls == ["activate_app", "question"]
-
-
-def test_high_risk_option_confirm_no_emits_nothing_and_reverts_checkbox(
-    qtbot, monkeypatch, tmp_path
-):
-    state = _high_risk_state(tmp_path, enabled=False)
-    window = SettingsWindow()
-    qtbot.addWidget(window)
-    window.render(state)
-
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No)
-
-    seen: list[tuple[str, dict]] = []
-    window.action.connect(lambda action_id, payload: seen.append((action_id, payload)))
-
-    checkbox_item = window.options_page.table.item(0, 0)
-    checkbox_item.setCheckState(Qt.CheckState.Checked)
-    qtbot.wait(50)
-
-    assert seen == []
-    assert checkbox_item.checkState() == Qt.CheckState.Unchecked
 
 
 def test_low_risk_option_toggle_emits_action_without_confirm_dialog(qtbot, monkeypatch, tmp_path):
@@ -813,7 +776,10 @@ def test_low_risk_option_toggle_emits_action_without_confirm_dialog(qtbot, monke
     with qtbot.waitSignal(window.action, timeout=1000) as blocker:
         checkbox_item.setCheckState(Qt.CheckState.Unchecked)
 
-    assert blocker.args == ["toggle_option", {"option_id": "safe-thing", "enabled": True}]
+    assert blocker.args == [
+        "toggle_option",
+        {"option_id": "safe-thing", "enabled": True, "requires_confirmation": False},
+    ]
 
 
 def test_disabling_high_risk_option_skips_confirm_dialog(qtbot, monkeypatch, tmp_path):
@@ -835,7 +801,7 @@ def test_disabling_high_risk_option_skips_confirm_dialog(qtbot, monkeypatch, tmp
 
     assert blocker.args == [
         "toggle_option",
-        {"option_id": "dangerous-permissions", "enabled": True},
+        {"option_id": "dangerous-permissions", "enabled": True, "requires_confirmation": True},
     ]
 
 

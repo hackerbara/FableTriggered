@@ -44,7 +44,7 @@
 - [ ] 1.3b **Generator parity (user decision 2026-07-04, supersedes the earlier "examples only, may not match" stance):** the example generators must regenerate the live packages exactly. They're currently two generations stale — the responsive-frame (`78f2b2c`) and gutter/breakpoint (`3364d04`) work was applied directly to package payloads (incl. `-2-1-199.js` → `-2-1-201.js` payload renames) without updating the generators, which still emit the old fullscreen 2.1.199 scene. Fix during 1.5: port the responsive payload structure into both `generate_package.py` scripts, regenerate the packages *through* them at the new pin, and add a parity test (generator output ≡ `packages/` content, run as part of the suite). Also rewrite the "output may not byte-match" language in both example READMEs.
 - [ ] 1.4 **Schema unification:** make package-model the only public format — `kind` required; remove the `schemaVersion:1`-without-`kind` compat dispatch (`builder_v15.py:103-105`); fix the lossy v3→internal conversion (hardcoded `packageVersion "0.0.0"`, `builder_v15.py:85`); migrate all 9 manifests; extend `tests/test_reference_packages.py` to cover all 9 (it currently checks a stale list of 5).
 - [ ] 1.5 **Re-pin all 9 packages to the latest Claude Code binary** — determine latest at execution time (do not assume 2.1.201); re-verify each patch against it; fix `normal-channel-hidden-context`'s dual-pin (2.1.198 + 2.1.199 in one manifest). This is per-package verification work, potentially re-authoring ops that no longer anchor. **For `capybara-onsen` and `hotrod-dragons`, the re-pin goes THROUGH the updated generators (1.3b)** — never hand-edit those payloads again; regenerate them.
-- [ ] 1.6 Parameterize `/Users/MAC` paths in the ~8 remaining test files after 1.1 (env var or discovery helper with the current paths as fallback).
+- [x] 1.6 Parameterize `/Users/MAC` paths in test files. ✅ Done, commit `52f0f8b` (helper `tests/claude_binary.py`).
 - [ ] 1.7a **`install` / `uninstall` commands (user decision 2026-07-04 — the install story leads with the GUI/menubar manager):** `harnessmonkey install` = create state dir, copy every repo package into `~/.harnessmonkey/patches/` (disabled, via the existing `add_package` validation path, per-package report), write + `launchctl` load a LaunchAgent (`com.hackerbara.harnessmonkey.plist` → the venv's `harnessmonkey-gui`) so the manager appears now and returns at login, print next steps ("click the menubar icon → Install to set up your shim"). `--cli` variant skips the LaunchAgent (state dir + packages only). `harnessmonkey uninstall` unloads + removes the plist (leaves state dir and shim; `uninstall-shim` handles that). **GUI deps (PySide6/pyobjc) move from `--extra gui` to default dependencies** so plain `uv sync` suffices. Shim install remains an in-GUI step. CLI tests included. Resolution stays state-dir-only (`test_no_repo_package_source_v3.py` guards this deliberately — install copies; the repo never becomes a live source).
 - [ ] 1.7 **Package doc scrub:** rewrite the "Build pipeline" sections in `capybara-onsen`, `hotrod-dragons`, `hidden-context-drawer`, `reminders-manager` READMEs — they currently give `cd /Users/MAC/Documents/Claude-patch` + `.development/` rebuild commands that are dead in the public repo; point them at `examples/` instead. Remove cut-package cross-references from surviving docs: the "Why this supersedes reminder-suppression" section in `upstream-attachment-suppression/README.md:44-46`, the compat mention in `hidden-context-drawer/README.md:22`, and the `reminder-suppression` fixture strings in `tests/test_config_v3.py:28,41`.
 
@@ -58,8 +58,8 @@
 
 ## Phase 3 — README & demos (after Phase 2 + G3)
 
-- [ ] 3.1 Finalize README (becomes `README.md`): fill install TKs with the real clone+uv journey (requirements: macOS Apple Silicon + uv; verify whether Xcode CLT is actually needed before claiming); **document the GUI install explicitly** — `uv sync --extra gui` pulls PySide6, a heavy non-default dependency, and the README's "Click Install from the menubar or GUI page" flow depends on it; system-prompt link → https://github.com/hackerbara/lessanxious-claude/tree/main; clone URL → `github.com/hackerbara/harnessmonkey`.
-- [ ] 3.2 Rebuild the package table: 9 rows, final names, one line each, `assets/demos/<final-name>.gif` per row.
+- [x] 3.1 Finalize README text. ✅ Done 2026-07-04: install section is GUI-led (clone → `uv sync` → `harnessmonkey install`, per 1.7a), lessanxious link, doctor/rollback/use-official troubleshooting. All text TKs resolved.
+- [x] 3.2 Rebuild the package table. ✅ Done: 9 rows, final names, `assets/demos/<final-name>.gif` per row.
 - [ ] 3.3 Record demos with the G3 recorder: 9 package GIFs + header GIF (`capyclaude.gif`); copy reviewed output into `assets/demos/`; verify every README image resolves.
 - [ ] 3.4 Sweep for remaining TKs; anything Claude can't fill gets flagged to the user explicitly.
 
@@ -113,10 +113,12 @@
 
 **README status:** `HarnessMonkey-README.md` is committed and canonical (user cleanup snapshot + TK fill). All text TKs are resolved — install journey (verified against the real CLI: `enable-patch` is one package per call; codesign is stock, no Xcode), lessanxious-claude link, doctor/rollback/use-official troubleshooting, final 9-row package table. Doc is written **future-state** (harnessmonkey names, public clone URL) — the Phase 2 rename makes code match doc; 2.2's zero-grep done-condition must therefore EXCLUDE this file's intentional forward references (it contains no old names, so this is automatic). Remaining README gap: demo GIFs only (blocked on G3). Old `README.md` (FableTriggered) stays archive-only.
 
+**Test suite:** post-G2 failures (footer-drawers expectations vs the merge's manual-smoke-bypass product decision, `builder_v15.py:709-717`) are being cleaned up by the **user's own agent** — do NOT dispatch anything that touches `tests/` (or fix suite failures) until the user says that work has landed.
+
 **Next actions when resuming:**
-1. Re-verify suite post-G2-merge (`uv run pytest`) — expected baseline 456+/2/1-known (dvd-goblin).
-2. Phase 1 in order: 1.1, 1.2, 1.3b (generator parity — fold into 1.5), 1.4, 1.5, 1.7.
-3. Remaining user-only items: PyPI token (4.1), creating `github.com/hackerbara/harnessmonkey` (4.3), G3 completion.
+1. Confirm the user's test-cleanup agent has landed; get the new green baseline (`uv run pytest`).
+2. Phase 1 in order: 1.1, 1.2, 1.4, 1.5 (+1.3b folded in), 1.7a, 1.7 — all unblocked, most touch `tests/`, so they queue behind step 1.
+3. Remaining user-only items: PyPI token (4.1), creating `github.com/hackerbara/harnessmonkey` (4.3), G3 completion, test-cleanup landing.
 
 ## Research appendix
 

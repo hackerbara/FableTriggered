@@ -289,3 +289,64 @@ def test_composition_sensitive_postcondition_fails_build(tmp_path):
     report = _build(tmp_path, source, [pkg_a, pkg_b])
     assert report.status == "failed"
     assert report.failureReason.startswith("postcondition_composition_sensitive:pkg-a")
+
+
+
+def _add_relationships(package: Path, *, requires=None, conflicts=None) -> None:
+    manifest = json.loads((package / "patch.json").read_text())
+    if requires is not None:
+        manifest["requiresPackages"] = requires
+    if conflicts is not None:
+        manifest["conflictsWithPackages"] = conflicts
+    (package / "patch.json").write_text(json.dumps(manifest))
+
+
+def test_required_package_missing_fails_before_planning(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg = tmp_path / "pkg-a"
+    write_insertion_package(
+        pkg, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    _add_relationships(pkg, requires=["footer-drawers"])
+    report = _build(tmp_path, source, [pkg])
+    assert report.status == "failed"
+    assert report.failureReason == "patch_conflict:required_package_missing:pkg-a:footer-drawers"
+
+
+def test_package_conflict_fails_before_planning(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg_a = tmp_path / "pkg-a"
+    pkg_b = tmp_path / "pkg-b"
+    write_insertion_package(
+        pkg_a, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    write_insertion_package(
+        pkg_b, source, package_id="pkg-b", payload=",B_ENTRY",
+        insert_order=200, postcondition_value="B_ENTRY",
+    )
+    _add_relationships(pkg_a, conflicts=["pkg-b"])
+    report = _build(tmp_path, source, [pkg_a, pkg_b])
+    assert report.status == "failed"
+    assert report.failureReason == "patch_conflict:package_conflict:pkg-a:pkg-b"
+
+
+def test_requirements_satisfied_build_passes(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg_a = tmp_path / "pkg-a"
+    pkg_b = tmp_path / "pkg-b"
+    write_insertion_package(
+        pkg_a, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    write_insertion_package(
+        pkg_b, source, package_id="pkg-b", payload=",B_ENTRY",
+        insert_order=200, postcondition_value="B_ENTRY",
+    )
+    _add_relationships(pkg_a, requires=["pkg-b"])
+    report = _build(tmp_path, source, [pkg_a, pkg_b])
+    assert report.automatedStatus == "passed"

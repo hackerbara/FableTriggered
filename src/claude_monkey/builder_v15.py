@@ -492,6 +492,18 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
     report = _base_report(request, source)
     report.enabledPatches = [manifest.id for _, manifest, _ in selected]
     try:
+        enabled_ids = {manifest.id for _, manifest, _ in selected}
+        for _, manifest, _ in selected:
+            for required in sorted(manifest.requires_packages):
+                if required not in enabled_ids:
+                    raise ValueError(
+                        f"patch_conflict:required_package_missing:{manifest.id}:{required}"
+                    )
+            for conflict in sorted(manifest.conflicts_with_packages):
+                if conflict in enabled_ids:
+                    raise ValueError(
+                        f"patch_conflict:package_conflict:{manifest.id}:{conflict}"
+                    )
         layout = find_macho_layout(source)
         graph = parse_bun_section(
             source[layout.bun_section.offset : layout.bun_section.offset + layout.bun_section.size]

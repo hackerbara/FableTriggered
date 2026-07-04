@@ -7,6 +7,7 @@ import os
 import platform as platform_module
 import shutil
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -118,12 +119,14 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--json", action="store_true")
     build.add_argument("--dry-run", action="store_true")
     build.add_argument("--activate", action="store_true")
+    build.add_argument("--progress", action="store_true")
 
     install = sub.add_parser("install-shim")
     install.add_argument("--target")
     install.add_argument("--state-dir")
     install.add_argument("--dry-run", action="store_true")
     install.add_argument("--json", action="store_true")
+    install.add_argument("--progress", action="store_true")
 
     uninstall = sub.add_parser("uninstall-shim")
     uninstall.add_argument("--target")
@@ -132,6 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
     uninstall.add_argument("--force", action="store_true")
     uninstall.add_argument("--dry-run", action="store_true")
     uninstall.add_argument("--json", action="store_true")
+    uninstall.add_argument("--progress", action="store_true")
 
     rollback = sub.add_parser("rollback")
     rollback.add_argument("--target")
@@ -163,6 +167,22 @@ def emit(
     else:
         print(text, file=sys.stderr if error else sys.stdout)
     return 0
+
+
+def _progress_emitter(enabled: bool) -> Callable[[dict], None] | None:
+    """Return a stderr JSONL progress emitter when enabled, else None.
+
+    Each event is written as a single sorted-key JSON object per line to stderr,
+    flushed immediately. stdout is never touched, preserving the byte-identical
+    stdout contract between --progress and non-progress runs.
+    """
+    if not enabled:
+        return None
+
+    def emit_event(event: dict) -> None:
+        print(json.dumps(event, sort_keys=True), file=sys.stderr, flush=True)
+
+    return emit_event
 
 
 def _read_json_file(path: Path) -> dict[str, Any] | None:
@@ -1015,6 +1035,7 @@ def handle_build(args: argparse.Namespace, paths: StatePaths, config) -> int:
             current_path=paths.current_path,
             manifest_digests=_manifest_digests_for_build(package_dirs),
             build_input_snapshot=_build_input_snapshot(config, package_dirs),
+            on_event=_progress_emitter(getattr(args, "progress", False)),
         )
     )
     if report.status == "verified" and report.activationStatus == "activated":
@@ -1082,7 +1103,12 @@ def handle_restore(args: argparse.Namespace, paths: StatePaths) -> int:
             print("dryRun=true")
         return 0
     try:
-        restored = restore_install_transaction(target, record_path, force=args.force)
+        restored = restore_install_transaction(
+            target,
+            record_path,
+            force=args.force,
+            on_event=_progress_emitter(getattr(args, "progress", False)),
+        )
     except (AuthorizationRequired, AuthorizationDenied) as exc:
         code = (
             "authorization_denied"
@@ -1354,8 +1380,12 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     print(payload.summary, file=sys.stderr)
             return 0 if getattr(payload, "ok", False) else 1
+        install_kwargs: dict[str, Any] = {}
+        progress_emitter = _progress_emitter(getattr(args, "progress", False))
+        if progress_emitter is not None:
+            install_kwargs["on_event"] = progress_emitter
         try:
-            record = install_shim_transaction(target, state_dir, dry_run=False)
+            record = install_shim_transaction(target, state_dir, dry_run=False, **install_kwargs)
         except ProtectedTargetRestoreUnavailable as exc:
             payload = envelope_error(
                 str(exc),

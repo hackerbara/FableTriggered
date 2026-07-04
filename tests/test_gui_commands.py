@@ -120,25 +120,25 @@ def test_rebuild_apply_takes_no_args_and_is_exact():
 
 def test_install_shim_dry_run_excludes_progress_str_target():
     result = commands.command_for_install_shim("/tmp/target", dry_run=True)
-    assert result == ["install-shim", "/tmp/target", "--dry-run"]
+    assert result == ["install-shim", "--target", "/tmp/target", "--json", "--dry-run"]
     assert "--progress" not in result
 
 
 def test_install_shim_dry_run_excludes_progress_path_target():
     result = commands.command_for_install_shim(Path("/tmp/target"), dry_run=True)
-    assert result == ["install-shim", "/tmp/target", "--dry-run"]
+    assert result == ["install-shim", "--target", "/tmp/target", "--json", "--dry-run"]
     assert "--progress" not in result
 
 
 def test_install_shim_real_run_includes_progress_excludes_dry_run():
     result = commands.command_for_install_shim(Path("/tmp/target"), dry_run=False)
-    assert result == ["install-shim", "/tmp/target", "--progress"]
+    assert result == ["install-shim", "--target", "/tmp/target", "--json", "--progress"]
     assert "--dry-run" not in result
 
 
 def test_install_shim_default_dry_run_is_false():
     result = commands.command_for_install_shim("/tmp/target")
-    assert result == ["install-shim", "/tmp/target", "--progress"]
+    assert result == ["install-shim", "--target", "/tmp/target", "--json", "--progress"]
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +147,7 @@ def test_install_shim_default_dry_run_is_false():
 
 
 def test_uninstall_shim_no_args():
-    assert commands.command_for_uninstall_shim() == ["uninstall-shim", "--progress"]
+    assert commands.command_for_uninstall_shim() == ["uninstall-shim", "--json", "--progress"]
 
 
 def test_uninstall_shim_target_only_dry_run_str():
@@ -155,13 +155,14 @@ def test_uninstall_shim_target_only_dry_run_str():
         "uninstall-shim",
         "--target",
         "/x",
+        "--json",
         "--dry-run",
     ]
 
 
 def test_uninstall_shim_target_only_path():
     result = commands.command_for_uninstall_shim(target=Path("/x"), dry_run=True)
-    assert result == ["uninstall-shim", "--target", "/x", "--dry-run"]
+    assert result == ["uninstall-shim", "--target", "/x", "--json", "--dry-run"]
 
 
 def test_uninstall_shim_record_only_progress():
@@ -169,18 +170,19 @@ def test_uninstall_shim_record_only_progress():
         "uninstall-shim",
         "--record",
         "/r",
+        "--json",
         "--progress",
     ]
 
 
 def test_uninstall_shim_record_only_path_dry_run():
     result = commands.command_for_uninstall_shim(record=Path("/r"), dry_run=True)
-    assert result == ["uninstall-shim", "--record", "/r", "--dry-run"]
+    assert result == ["uninstall-shim", "--record", "/r", "--json", "--dry-run"]
 
 
 def test_uninstall_shim_target_takes_precedence_over_record():
     result = commands.command_for_uninstall_shim(target="/x", record="/r")
-    assert result == ["uninstall-shim", "--target", "/x", "--progress"]
+    assert result == ["uninstall-shim", "--target", "/x", "--json", "--progress"]
 
 
 # ---------------------------------------------------------------------------

@@ -59,10 +59,13 @@ def command_for_install_shim(target: Path | str, *, dry_run: bool = False) -> li
     """Build argv to install a shim at `target`.
 
     `target` is stringified with `str()` only -- no `.resolve()`, no
-    `.expanduser()`, no other normalization.
+    `.expanduser()`, no other normalization. `--target` is a flag (not a
+    positional) in the `install-shim` CLI grammar, and `--json` is required
+    for the process to emit a parseable JSON payload on stdout -- both are
+    load-bearing for `CommandRunner.run_json`/`run_streaming`.
     """
     mode_flag = "--dry-run" if dry_run else "--progress"
-    return ["install-shim", str(target), mode_flag]
+    return ["install-shim", "--target", str(target), "--json", mode_flag]
 
 
 def command_for_uninstall_shim(
@@ -74,13 +77,16 @@ def command_for_uninstall_shim(
     """Build argv to uninstall a shim, identified by `target` or `record`.
 
     `target` takes precedence if both are given. Neither value is
-    normalized beyond `str()`.
+    normalized beyond `str()`. `--json` is required for the process to emit
+    a parseable JSON payload on stdout -- load-bearing for
+    `CommandRunner.run_json`/`run_streaming`.
     """
     argv = ["uninstall-shim"]
     if target is not None:
         argv.extend(["--target", str(target)])
     elif record is not None:
         argv.extend(["--record", str(record)])
+    argv.append("--json")
     argv.append("--dry-run" if dry_run else "--progress")
     return argv
 

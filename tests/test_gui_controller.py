@@ -1,0 +1,518 @@
+"""Tests for `Controller` (Task 19): the single `on_action` handler wiring
+every tray/window intent to `CommandRunner`/`ProgressDialog`.
+
+`Controller` is exercised against a stub runner (records every
+`run_json`/`run_background`/`run_streaming` call, returns injectable
+results) plus lightweight fake `Tray`/`SettingsWindow` doubles -- real
+`ProgressDialog`s are used since they're cheap, already-tested Qt widgets
+and the point of these tests is the wiring around them, not re-testing
+`ProgressDialog`/`ProgressModel` themselves (see
+`tests/test_gui_progress_dialog.py`/`tests/test_gui_progress_model.py`).
+"""
+
+from __future__ import annotations
+
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from pathlib import Path  # noqa: E402
+
+import pytest  # noqa: E402
+
+from claude_monkey.gui import commands  # noqa: E402
+from claude_monkey.gui.app import CommandBridge, Controller  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# Test doubles
+# ---------------------------------------------------------------------------
+
+
+class FakeHandle:
+    def __init__(self) -> None:
+        self.cancel_calls = 0
+
+    def cancel(self, grace_seconds: float = 5.0) -> None:
+        self.cancel_calls += 1
+
+
+class StubRunner:
+    """Records every call; `run_json` results are injectable by argv."""
+
+    def __init__(self) -> None:
+        self.logs_dir = Path("/tmp/fake-claude-monkey-logs")
+        self.run_json_calls: list[tuple[list[str], bool]] = []
+        self.run_json_results: dict[tuple[str, ...], dict | Exception] = {}
+        self.background_calls: list[tuple[str, list[str], bool]] = []
+        self.streaming_calls: list[tuple[str, list[str]]] = []
+        self.open_path_calls: list[Path] = []
+        self.handles: dict[str, FakeHandle] = {}
+
+    # -- injected defaults for refresh()'s four non-mutating calls --------
+
+    def _default(self, args: list[str]) -> dict:
+        key = args[0]
+        if key == "status":
+            return _status_raw()
+        if key == "list-patches":
+            return {"schemaVersion": 1, "patches": []}
+        if key == "list-prompts":
+            return {"schemaVersion": 1, "prompts": []}
+        if key == "list-options":
+            return {"schemaVersion": 1, "options": []}
+        raise AssertionError(f"unexpected run_json call: {args}")
+
+    def run_json(self, args: list[str], *, mutating: bool) -> dict:
+        self.run_json_calls.append((list(args), mutating))
+        key = tuple(args)
+        if key in self.run_json_results:
+            result = self.run_json_results[key]
+            if isinstance(result, Exception):
+                raise result
+            return result
+        return self._default(args)
+
+    def run_background(self, name: str, args: list[str], *, mutating: bool) -> None:
+        self.background_calls.append((name, list(args), mutating))
+
+    def run_streaming(self, name: str, args: list[str], *, on_event) -> FakeHandle:
+        self.streaming_calls.append((name, list(args)))
+        handle = FakeHandle()
+        self.handles[name] = handle
+        return handle
+
+    def open_path(self, path: Path) -> None:
+        self.open_path_calls.append(path)
+
+
+class FakeTray:
+    def __init__(self) -> None:
+        self.rendered: list = []
+
+    def render(self, model) -> None:
+        self.rendered.append(model)
+
+
+class FakeWindow:
+    def __init__(self) -> None:
+        self.rendered: list = []
+        self.banners: list[tuple[str, str]] = []
+
+    def render(self, state) -> None:
+        self.rendered.append(state)
+
+    def show_banner(self, page: str, message: str) -> None:
+        self.banners.append((page, message))
+
+    def show(self) -> None:
+        pass
+
+    def raise_(self) -> None:
+        pass
+
+    def activateWindow(self) -> None:
+        pass
+
+
+def _status_raw(**overrides) -> dict:
+    base = {
+        "schemaVersion": 1,
+        "status": "ok",
+        "rebuildRequired": False,
+        "stateDir": "/tmp/state",
+        "logsDir": "/tmp/state/logs",
+        "desiredPatchIds": [],
+        "activePatchIds": [],
+        "activeOptionIds": [],
+        "highRiskOptions": [],
+    }
+    base.update(overrides)
+    return base
+
+
+def _envelope(*, ok: bool = True, authorization_required: bool = False, **overrides) -> dict:
+    base = {
+        "schemaVersion": 1,
+        "ok": ok,
+        "status": "ok" if ok else "error",
+        "summary": "ok" if ok else "failed",
+        "reportPath": None,
+        "targetPath": None,
+        "authorizationRequired": authorization_required,
+        "authorizationMethod": None,
+        "dryRun": False,
+        "plannedActions": [],
+        "error": None if ok else {"message": "failed", "code": "command_failed"},
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.fixture
+def controller_parts():
+    runner = StubRunner()
+    bridge = CommandBridge()
+    tray = FakeTray()
+    window = FakeWindow()
+    confirm_calls: list[tuple[str, str]] = []
+    controller = Controller(
+        runner=runner,
+        bridge=bridge,
+        tray=tray,
+        window=window,
+        confirm_high_risk=lambda option_id, warning: confirm_calls.append(
+            (option_id, warning)
+        )
+        or True,
+        quit_callback=lambda: None,
+    )
+    return controller, runner, bridge, tray, window, confirm_calls
+
+
+# ---------------------------------------------------------------------------
+# Mandated Step-1 scenarios
+# ---------------------------------------------------------------------------
+
+
+def test_rebuild_opens_dialog_and_streams_on_confirm(qtbot, controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("rebuild", {})
+
+    assert controller._dialog is not None
+    qtbot.addWidget(controller._dialog)
+
+    controller._dialog.confirmed.emit()
+
+    assert runner.streaming_calls == [
+        ("rebuild", ["build", "--json", "--activate", "--progress"])
+    ]
+
+
+def test_toggle_patch_runs_background_and_banner_on_failure(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("toggle_patch", {"patch_id": "p1", "enabled": False})
+
+    assert runner.background_calls == [
+        ("toggle_patch", ["enable-patch", "p1", "--json"], True)
+    ]
+
+    bridge.command_finished.emit("toggle_patch", _envelope(ok=False, summary="boom"))
+
+    assert window.banners == [("patches", "boom")]
+    assert controller._busy_command is None
+
+
+def test_install_shim_authorization_required_disables_cancel(qtbot, controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+    target = Path("/usr/local/bin/claude")
+    controller.on_action("set_install_target", {"path": str(target)})
+
+    dry_key = tuple(commands.command_for_install_shim(target, dry_run=True))
+    runner.run_json_results[dry_key] = _envelope(
+        authorization_required=True,
+        summary="would install managed claude shim",
+        planned_actions=["install managed claude shim"],
+    )
+
+    controller.on_action("install_shim", {})
+
+    assert controller._dialog is not None
+    qtbot.addWidget(controller._dialog)
+    assert controller._dialog._cancel_allowed_during_run is False
+
+
+# ---------------------------------------------------------------------------
+# install_shim / uninstall_shim (long ops) -- additional coverage
+# ---------------------------------------------------------------------------
+
+
+def test_install_shim_authorization_not_required_allows_cancel(qtbot, controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+    target = Path("/tmp/managed/claude")
+    controller.on_action("set_install_target", {"path": str(target)})
+
+    dry_key = tuple(commands.command_for_install_shim(target, dry_run=True))
+    runner.run_json_results[dry_key] = _envelope(authorization_required=False)
+
+    controller.on_action("install_shim", {})
+
+    assert controller._dialog is not None
+    qtbot.addWidget(controller._dialog)
+    assert controller._dialog._cancel_allowed_during_run is True
+
+    controller._dialog.confirmed.emit()
+    real_key = ("install_shim", commands.command_for_install_shim(target, dry_run=False))
+    assert runner.streaming_calls == [real_key]
+
+
+def test_install_shim_dry_run_failure_shows_banner_and_no_dialog(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+    target = Path("/tmp/managed/claude")
+    controller.on_action("set_install_target", {"path": str(target)})
+
+    dry_key = tuple(commands.command_for_install_shim(target, dry_run=True))
+    runner.run_json_results[dry_key] = _envelope(
+        ok=False, summary="refusing to overwrite protected target"
+    )
+
+    controller.on_action("install_shim", {})
+
+    assert controller._dialog is None
+    assert window.banners == [("install", "refusing to overwrite protected target")]
+    assert controller._busy_command is None
+
+
+def test_uninstall_shim_uses_recorded_shim_target(qtbot, controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+    recorded = "/opt/homebrew/bin/claude"
+    runner.run_json_results[("status", "--json")] = _status_raw(shimTargetPath=recorded)
+    controller.refresh()
+
+    dry_key = tuple(
+        commands.command_for_uninstall_shim(target=Path(recorded), dry_run=True)
+    )
+    runner.run_json_results[dry_key] = _envelope(authorization_required=False)
+
+    controller.on_action("uninstall_shim", {})
+
+    assert controller._dialog is not None
+    qtbot.addWidget(controller._dialog)
+    real_key = (
+        "uninstall_shim",
+        commands.command_for_uninstall_shim(target=Path(recorded), dry_run=False),
+    )
+    controller._dialog.confirmed.emit()
+    assert runner.streaming_calls == [real_key]
+
+
+def test_second_long_op_ignored_while_one_is_open(qtbot, controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("rebuild", {})
+    first_dialog = controller._dialog
+    qtbot.addWidget(first_dialog)
+
+    controller.on_action("install_shim", {})
+
+    assert controller._dialog is first_dialog
+    assert runner.run_json_calls == [] or all(
+        call[0][0] != "install-shim" for call in runner.run_json_calls
+    )
+
+
+def test_cancel_during_running_calls_handle_cancel_not_dialog_finish(qtbot, controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("rebuild", {})
+    dialog = controller._dialog
+    qtbot.addWidget(dialog)
+    dialog.confirmed.emit()
+
+    dialog.cancel_requested.emit()
+
+    handle = runner.handles["rebuild"]
+    assert handle.cancel_calls == 1
+    # Dialog is still open/RUNNING -- cancelling doesn't fabricate a result.
+    assert controller._dialog is dialog
+    assert dialog._phase == "RUNNING"
+
+
+def test_cancel_during_confirm_tears_down_dialog(qtbot, controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("rebuild", {})
+    dialog = controller._dialog
+    qtbot.addWidget(dialog)
+
+    dialog.cancel_requested.emit()
+
+    assert controller._dialog is None
+    assert controller._busy_command is None
+    assert runner.streaming_calls == []
+
+
+def test_command_finished_always_finishes_dialog_even_on_malformed_payload(
+    qtbot, controller_parts
+):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("rebuild", {})
+    dialog = controller._dialog
+    qtbot.addWidget(dialog)
+    dialog.confirmed.emit()
+
+    # Malformed/missing-field result: no "ok", no "summary", nothing.
+    bridge.command_finished.emit("rebuild", {})
+
+    assert dialog._phase == "RESULT"
+    assert controller._dialog is None
+    assert controller._handle is None
+    assert controller._busy_command is None
+
+
+# ---------------------------------------------------------------------------
+# toggle_option per-emitter translation (hazard #1)
+# ---------------------------------------------------------------------------
+
+
+def test_toggle_option_window_confirmed_maps_to_confirm_true(controller_parts):
+    controller, runner, bridge, tray, window, confirm_calls = controller_parts
+
+    controller.on_action(
+        "toggle_option", {"option_id": "danger", "enabled": False, "confirmed": True}
+    )
+
+    assert runner.background_calls == [
+        ("toggle_option", ["enable-option", "danger", "--confirm", "--json"], True)
+    ]
+    assert confirm_calls == []  # window already ran its own confirm flow
+
+
+def test_toggle_option_window_unconfirmed_maps_to_confirm_false(controller_parts):
+    controller, runner, bridge, tray, window, confirm_calls = controller_parts
+
+    controller.on_action("toggle_option", {"option_id": "safe", "enabled": True})
+
+    assert runner.background_calls == [
+        ("toggle_option", ["disable-option", "safe", "--json"], True)
+    ]
+    assert confirm_calls == []
+
+
+def test_toggle_option_tray_high_risk_runs_confirm_and_proceeds(controller_parts):
+    controller, runner, bridge, tray, window, confirm_calls = controller_parts
+    controller._state = None  # no state fetched yet -- warning lookup must not crash
+
+    controller.on_action(
+        "toggle_option",
+        {"option_id": "danger", "enabled": False, "requires_confirmation": True},
+    )
+
+    assert confirm_calls == [("danger", "")]
+    assert runner.background_calls == [
+        ("toggle_option", ["enable-option", "danger", "--confirm", "--json"], True)
+    ]
+
+
+def test_toggle_option_tray_high_risk_declined_does_not_run_command(controller_parts):
+    runner = StubRunner()
+    bridge = CommandBridge()
+    tray = FakeTray()
+    window = FakeWindow()
+    controller = Controller(
+        runner=runner,
+        bridge=bridge,
+        tray=tray,
+        window=window,
+        confirm_high_risk=lambda option_id, warning: False,
+        quit_callback=lambda: None,
+    )
+
+    controller.on_action(
+        "toggle_option",
+        {"option_id": "danger", "enabled": False, "requires_confirmation": True},
+    )
+
+    assert runner.background_calls == []
+
+
+def test_toggle_option_tray_not_high_risk_skips_confirm(controller_parts):
+    controller, runner, bridge, tray, window, confirm_calls = controller_parts
+
+    controller.on_action(
+        "toggle_option",
+        {"option_id": "safe", "enabled": False, "requires_confirmation": False},
+    )
+
+    assert confirm_calls == []
+    assert runner.background_calls == [
+        ("toggle_option", ["enable-option", "safe", "--json"], True)
+    ]
+
+
+def test_toggle_option_tray_disabling_high_risk_skips_confirm(controller_parts):
+    # requires_confirmation only matters when turning an option ON
+    # (enabled=False means currently off); turning a high-risk option OFF
+    # (enabled=True) must never trigger the confirm prompt.
+    controller, runner, bridge, tray, window, confirm_calls = controller_parts
+
+    controller.on_action(
+        "toggle_option",
+        {"option_id": "danger", "enabled": True, "requires_confirmation": True},
+    )
+
+    assert confirm_calls == []
+    assert runner.background_calls == [
+        ("toggle_option", ["disable-option", "danger", "--json"], True)
+    ]
+
+
+# ---------------------------------------------------------------------------
+# refresh / quit / open_path / add & remove package routing
+# ---------------------------------------------------------------------------
+
+
+def test_refresh_success_renders_tray_and_window(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.refresh()
+
+    assert len(tray.rendered) == 1
+    assert len(window.rendered) == 1
+    assert window.rendered[0] is not None
+
+
+def test_refresh_failure_renders_none_state(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+    runner.run_json_results[("status", "--json")] = RuntimeError("boom")
+
+    controller.refresh()
+
+    assert window.rendered == [None]
+
+
+def test_quit_cancels_active_handle_and_calls_quit_callback(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+    quit_calls = []
+    controller._quit_callback = lambda: quit_calls.append(True)
+
+    controller.on_action("rebuild", {})
+    controller._dialog.confirmed.emit()
+    handle = runner.handles["rebuild"]
+
+    controller.on_action("quit", {})
+
+    assert handle.cancel_calls == 1
+    assert quit_calls == [True]
+
+
+def test_open_path_action_calls_runner_open_path(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("open_path", {"path": "/tmp/report.json"})
+
+    assert runner.open_path_calls == [Path("/tmp/report.json")]
+
+
+def test_add_package_routes_banner_by_kind(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("add_package", {"kind": "option", "path": "/tmp/opt"})
+    assert runner.background_calls == [
+        ("add_package", ["add-option", "/tmp/opt", "--json"], True)
+    ]
+    bridge.command_finished.emit("add_package", _envelope(ok=False, summary="bad package"))
+    assert window.banners == [("options", "bad package")]
+
+
+def test_remove_package_routes_banner_by_kind(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("remove_package", {"kind": "prompt", "package_id": "p1"})
+    assert runner.background_calls == [
+        ("remove_package", ["remove-prompt", "p1", "--json"], True)
+    ]
+    bridge.command_finished.emit("remove_package", _envelope(ok=False, summary="in use"))
+    assert window.banners == [("prompts", "in use")]

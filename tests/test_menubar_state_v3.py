@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from claude_monkey.menubar_state import parse_menu_state
 
 
@@ -71,6 +73,7 @@ def test_parse_menu_state_captures_v3_status_and_option_payloads():
                     "riskLevel": "high",
                     "requiresConfirmation": True,
                     "errors": [],
+                    "statusWarning": "Dangerous permissions enabled",
                 },
                 {
                     "id": "broken-option",
@@ -113,11 +116,13 @@ def test_parse_menu_state_captures_v3_status_and_option_payloads():
     assert first.risk_level == "high"
     assert first.requires_confirmation is True
     assert first.errors == ()
+    assert first.status_warning == "Dangerous permissions enabled"
     second = state.option_items[1]
     assert second.option_id == "broken-option"
     assert second.enabled is False
     assert second.valid is False
     assert second.errors == ("id_must_match_folder: different != broken-option",)
+    assert second.status_warning is None
 
     assert not hasattr(state, "launch_preview_action")
     assert not hasattr(state, "refresh_action")
@@ -175,18 +180,21 @@ def test_parse_menu_state_accepts_v3_patch_records_from_list_patches_payload():
     assert first.active_enabled is True
     assert first.available is True
     assert first.compatibility_status == "constrained"
+    assert first.errors == ()
 
     assert legacy_active.patch_id == "legacy-active"
     assert legacy_active.checked is False
     assert legacy_active.active_enabled is True
     assert legacy_active.available is True
     assert legacy_active.compatibility_status == "compatible"
+    assert legacy_active.errors == ()
 
     assert invalid.patch_id == "bad-patch"
     assert invalid.checked is True
     assert invalid.active_enabled is False
     assert invalid.available is False
     assert invalid.compatibility_status == "unknown"
+    assert invalid.errors == ("id_must_match_folder: different != bad-patch",)
 
 
 def test_parse_menu_state_accepts_v3_prompt_records_from_list_prompts_payload():
@@ -333,3 +341,46 @@ def test_parse_menu_state_rejects_malformed_options_payload():
         assert "enabled must be boolean" in str(exc)
     else:
         raise AssertionError("expected option enabled validation")
+
+
+def test_parse_menu_state_parses_last_managed_target_path_opportunistically():
+    # `lastManagedTargetPath` is a CLI-side field landing in a parallel
+    # worktree -- not present in today's real `status --json` output. It
+    # must parse when present (forward-compat) and default to None when
+    # absent (today's actual shape), never raising either way.
+    with_field = parse_menu_state(
+        base_status(lastManagedTargetPath="/tmp/state/bin/claude"),
+        {"schemaVersion": 1, "patches": []},
+        {"schemaVersion": 1, "prompts": []},
+        {"schemaVersion": 1, "options": []},
+    )
+    assert with_field.last_managed_target_path == Path("/tmp/state/bin/claude")
+
+    without_field = parse_menu_state(
+        base_status(),
+        {"schemaVersion": 1, "patches": []},
+        {"schemaVersion": 1, "prompts": []},
+        {"schemaVersion": 1, "options": []},
+    )
+    assert without_field.last_managed_target_path is None
+
+
+def test_parse_menu_state_parses_shim_locked_opportunistically():
+    # Shim lock feature: `shimLocked` is additive on the status payload.
+    # Must parse when present and default to False when absent, never
+    # raising either way (same pattern as `lastManagedTargetPath` above).
+    with_field = parse_menu_state(
+        base_status(shimLocked=True),
+        {"schemaVersion": 1, "patches": []},
+        {"schemaVersion": 1, "prompts": []},
+        {"schemaVersion": 1, "options": []},
+    )
+    assert with_field.shim_locked is True
+
+    without_field = parse_menu_state(
+        base_status(),
+        {"schemaVersion": 1, "patches": []},
+        {"schemaVersion": 1, "prompts": []},
+        {"schemaVersion": 1, "options": []},
+    )
+    assert without_field.shim_locked is False

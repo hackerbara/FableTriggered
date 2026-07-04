@@ -4,12 +4,28 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
+from claude_monkey import source_discovery
 from claude_monkey.install import (
+    _unlock_target,
     install_shim_transaction,
     restore_install_transaction,
     use_official,
 )
 from claude_monkey.shim import render_shim_script
+
+
+@pytest.fixture(autouse=True)
+def _tiny_plausible_official_size_floor(monkeypatch):
+    """This file's fake "previous"/pre-existing target binaries are tiny
+    fixtures, not real ~230MB Claude binaries. Patch the CMux-incident size
+    floor (`source_discovery.MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES`) down to 0
+    (no floor) so install-shim's new plausibility gate (Fix 1, requirement
+    4) doesn't refuse those fixtures here -- the real, unpatched 50MB floor
+    is exercised end-to-end by tests/test_plausible_official_size_floor.py.
+    """
+    monkeypatch.setattr(source_discovery, "MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES", 0)
 
 
 def test_install_records_previous_symlink_and_owner(tmp_path):
@@ -76,6 +92,12 @@ def test_restore_refuses_if_current_target_is_not_managed_shim(tmp_path):
     target = tmp_path / "claude"
     target.write_text("official")
     record = install_shim_transaction(target, tmp_path / "state", dry_run=False)
+    # Shim lock feature: lift the flag before directly overwriting the
+    # installed shim to simulate "someone else changed this" -- a real
+    # locked shim can't be clobbered this way at all (see
+    # tests/test_shim_lock.py); this keeps the pre-existing scenario here
+    # exercisable.
+    _unlock_target(target)
     target.write_text("someone else changed this")
     assert restore_install_transaction(target, record, force=False) is False
     assert target.read_text() == "someone else changed this"
@@ -87,6 +109,12 @@ def test_restore_file_record_does_not_follow_current_symlink(tmp_path):
     linked.write_bytes(b"official")
     target.write_bytes(b"previous")
     record = install_shim_transaction(target, tmp_path / "state", dry_run=False)
+    # Shim lock feature: lift the flag before directly manipulating the
+    # installed shim to simulate "someone else changed this" -- a real
+    # locked shim can't be clobbered this way at all (see
+    # tests/test_shim_lock.py); this keeps the pre-existing scenario here
+    # exercisable.
+    _unlock_target(target)
     target.unlink()
     target.symlink_to(linked)
     assert restore_install_transaction(target, record, force=True) is True

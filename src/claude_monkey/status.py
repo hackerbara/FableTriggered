@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from claude_monkey.config import ClaudeMonkeyConfig, LaunchProfile
-from claude_monkey.install import current_target_is_installed_shim
+from claude_monkey.install import (
+    OWNER_MARKER,
+    _version_from_path,
+    current_target_is_installed_shim,
+    shim_digest,
+    shim_target_is_locked,
+)
 from claude_monkey.launch_profile import load_active_launch_packages, select_launch_target
 from claude_monkey.package_model import (
     PackageKind,
@@ -20,7 +26,11 @@ from claude_monkey.package_model import (
 )
 from claude_monkey.paths import StatePaths
 from claude_monkey.smoke import run_command
-from claude_monkey.source_discovery import discover_official_claude
+from claude_monkey.source_discovery import (
+    discover_official_claude,
+    is_managed_launcher_path,
+    meets_plausible_official_size,
+)
 
 
 def _active_profile(config: ClaudeMonkeyConfig) -> LaunchProfile:
@@ -338,6 +348,142 @@ def _detected_claude_command_path() -> Path | None:
     return Path(found) if found else None
 
 
+def _shim_previously_managed(record: dict[str, Any] | None) -> bool:
+    """install-record.json exists for this target path with our owner marker.
+
+    This is a pure existence check, independent of whether the target
+    currently *is* the installed shim (see `_shim_is_installed`): a target
+    that was previously managed and is still intact is both
+    `shimPreviouslyManaged` and `shimInstalled`.
+    """
+    return (
+        record is not None
+        and record.get("owner") == OWNER_MARKER
+        and isinstance(record.get("targetPath"), str)
+    )
+
+
+def classify_plausible_official_source(target_path: Path, paths: StatePaths) -> Path | None:
+    """Best-effort "this is some other executable" classification.
+
+    Reuses the same primitives `source_discovery.py` already applies to
+    config/env/PATH candidates (resolve -> is_file -> X_OK -> not one of
+    ClaudeMonkey's own managed paths via `is_managed_launcher_path`). Per R8,
+    this proves the target is *not* one of our own managed binaries -- it is
+    not, and must never be presented as, verified-Anthropic provenance.
+
+    CMux incident fix: path-shape checks alone let *any* executable file
+    outside ClaudeMonkey's own managed paths through -- including an
+    unrelated tool's 8KB wrapper script, which is how that script got cached
+    and swapped in as "official" on a real machine. This now also requires
+    `meets_plausible_official_size` (see `source_discovery.py`'s
+    `MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES`): a cheap, offline `stat()`-only size
+    floor, generously below the real ~230MB Claude binary and generously
+    above any wrapper/shim script. Never executes `target_path` to check it
+    -- classification stays filesystem-metadata-only, by design.
+
+    Stage-2 (`repair.py`) reuses this exact function for its own
+    "current target classifies as plausible official" precondition rather
+    than re-deriving the classification -- see that module for the
+    additional, code-disambiguated refusal reasons it layers on top when
+    this returns `None`.
+    """
+    try:
+        resolved = target_path.resolve(strict=True)
+    except OSError:
+        return None
+    if not (resolved.is_file() and os.access(resolved, os.X_OK)):
+        return None
+    if is_managed_launcher_path(resolved, paths):
+        return None
+    if not meets_plausible_official_size(resolved):
+        return None
+    return resolved
+
+
+def _cheap_official_version(path: Path) -> str | None:
+    """Best-effort version extraction for a detected replacement target.
+
+    `path` here is reached only when the target's digest does NOT match the
+    managed shim -- i.e. exactly when an unverified binary sits at the
+    target path, with only `classify_plausible_official_source`'s path-shape
+    check as credential (not verified Anthropic provenance). Detection runs
+    on every `status --json`/GUI refresh (R5), so this must never execute
+    `path` -- see `install._version_from_path`'s docstring for the concrete
+    failure mode (running an intact shim's `--version` re-enters
+    `select_launch_target` and executes whatever `claude` resolves on PATH).
+    Per spec R7, extraction failure must not suppress detection -- callers
+    treat None as "version unknown", not as an error.
+    """
+    return _version_from_path(path)
+
+
+_NO_OFFICIAL_REPLACEMENT: dict[str, Any] = {
+    "targetReplacedByOfficial": False,
+    "detectedOfficialSha256": None,
+    "detectedOfficialVersion": None,
+    "shimRepairAvailable": False,
+    "rolloutRequired": False,
+}
+
+
+def _detect_official_replacement(
+    paths: StatePaths, record: dict[str, Any] | None, shim_installed: bool
+) -> dict[str, Any]:
+    """Stage-1 detection fields from the shim-update-resilience spec (§1).
+
+    Detection only: no cache-writing, no repair, no rollout. Computed fresh
+    on every status call (R5) -- one stat/resolve plus, at most, one file
+    hash and one subprocess probe, only when a replacement candidate is
+    actually found. No mtime/size gate: `status --json` is not called from a
+    hot loop anywhere in this codebase today (refresh is user/event
+    triggered), so the spec's own framing -- "cheap stat + hash of one
+    file" -- applies directly without needing the optional gate.
+    """
+    if not _shim_previously_managed(record):
+        return dict(_NO_OFFICIAL_REPLACEMENT)
+    assert record is not None
+    target_path = Path(record["targetPath"])
+    # Repair availability never depends on whether a replacement was
+    # detected -- an intact shim has nothing to repair. It also no longer
+    # depends on the OLD previous-source cache being valid (adjudication,
+    # controller decision): `restore_install_transaction` (install.py:368-
+    # 439) never reads `previousSourceCachePath`/`previousSourceSha256` --
+    # it restores from `previousType`/`previousTarget`/
+    # `previousContentBase64`/`previousMode`, and `repair_shim_action`
+    # overwrites all of those fields on success anyway (R4). Gating
+    # `shimRepairAvailable` on the old cache's validity only produced a bug:
+    # a corrupt old cache plus an otherwise-healthy replaced target made
+    # repair permanently unavailable even though repair never reads that
+    # cache. Kept intentionally pinned: `_install_record_source`
+    # (launch_profile.py) still returns None on a corrupt cache -- that is
+    # the separate launch-fallback safety gate (R9), untouched here.
+    repair_available = not shim_installed
+    if shim_installed:
+        return {**_NO_OFFICIAL_REPLACEMENT, "shimRepairAvailable": repair_available}
+    resolved = classify_plausible_official_source(target_path, paths)
+    if resolved is None:
+        return {**_NO_OFFICIAL_REPLACEMENT, "shimRepairAvailable": repair_available}
+    expected_shim_digest = shim_digest(paths.state_dir)
+    detected_digest = _file_sha256(resolved)
+    if detected_digest is None or detected_digest == expected_shim_digest:
+        return {**_NO_OFFICIAL_REPLACEMENT, "shimRepairAvailable": repair_available}
+    return {
+        "targetReplacedByOfficial": True,
+        "detectedOfficialSha256": detected_digest,
+        "detectedOfficialVersion": _cheap_official_version(resolved),
+        "shimRepairAvailable": repair_available,
+        # The active patched build was, by construction, built from the
+        # source the (now-replaced) managed shim pointed at -- not this
+        # newly detected digest -- so rollout is required whenever a
+        # replacement is detected. `discover_official_claude`/`source_identity`
+        # can't stand in for this: they deliberately exclude a candidate that
+        # resolves to the recorded managed target (see
+        # source_discovery.source_identity), which is exactly this target.
+        "rolloutRequired": True,
+    }
+
+
 def _patchset_path(active_patch_set: str | None) -> Path | None:
     if not active_patch_set:
         return None
@@ -430,6 +576,27 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
     current_executable = _current_executable_path(paths.current_path)
     install_record = _install_record_path(paths)
     shim_installed = _shim_is_installed(install_record)
+    install_record_data = _read_json_file(install_record)
+    shim_previously_managed = _shim_previously_managed(install_record_data)
+    # Shim lock feature: read-only, `st_flags`-only check (never touches
+    # file bytes) -- only meaningful while `shim_installed` is True, exactly
+    # like `shimTargetPath`/`installRecordPath` above/below. False on
+    # non-mac platforms or whenever the target isn't currently the installed
+    # shim at all. Reuses `install_record_data` (already loaded just above)
+    # instead of re-reading `install_record` from disk a third time; also
+    # guards against the record having vanished between that read and
+    # `_shim_is_installed`'s own earlier read (a real, if narrow, race) --
+    # without the `isinstance` check a missing/malformed `targetPath` would
+    # otherwise reach `Path(None)` and raise `TypeError`.
+    _shim_target_path = install_record_data.get("targetPath") if install_record_data else None
+    shim_locked = (
+        shim_target_is_locked(Path(_shim_target_path))
+        if shim_installed and isinstance(_shim_target_path, str)
+        else False
+    )
+    official_replacement = _detect_official_replacement(
+        paths, install_record_data, shim_installed
+    )
     installed = (
         (patched_active or shim_installed)
         if config.installMode == "shim"
@@ -515,6 +682,33 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
         "shimInstalled": shim_installed,
         "shimTargetPath": _shim_target_from_record(install_record) if shim_installed else None,
         "installRecordPath": str(install_record) if shim_installed else None,
+        # Shim lock feature: additive, read-only. True only when the target
+        # is currently the installed shim AND carries the macOS/BSD
+        # user-immutable flag (see install.py's `_lock_target`/
+        # `shim_target_is_locked`). False on non-mac platforms, when
+        # nothing is installed, or if chflags itself is unsupported/failed.
+        "shimLocked": shim_locked,
+        # Reverted-shim visibility gap fix: `shimTargetPath`/`installRecordPath`
+        # above stay gated on `shim_installed` exactly as before (existing
+        # consumers depend on that gating) -- this field is additive and is
+        # NOT gated on it, so a consumer can tell "never managed this
+        # machine" (None) apart from "managed but something -- e.g. the
+        # official Anthropic auto-updater -- reverted the shim since" (a
+        # non-None value while shimInstalled is False). Combine with
+        # `shimPreviouslyManaged and not shimInstalled` (both already exposed
+        # below/above) to detect that reverted-since-managed condition
+        # directly; no separate boolean is needed for it.
+        "lastManagedTargetPath": (
+            install_record_data.get("targetPath") if shim_previously_managed else None
+        ),
+        # Stage-1 shim-update-resilience detection fields (spec §1). Additive
+        # and optional for consumers; shimInstalled semantics are unchanged.
+        "shimPreviouslyManaged": shim_previously_managed,
+        "targetReplacedByOfficial": official_replacement["targetReplacedByOfficial"],
+        "detectedOfficialSha256": official_replacement["detectedOfficialSha256"],
+        "detectedOfficialVersion": official_replacement["detectedOfficialVersion"],
+        "shimRepairAvailable": official_replacement["shimRepairAvailable"],
+        "rolloutRequired": official_replacement["rolloutRequired"],
         "discoveredOfficialClaudePath": str(discover_official_claude(config, paths))
         if discover_official_claude(config, paths)
         else None,

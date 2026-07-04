@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from claude_monkey.builder_v15 import ValidationRequestV15, validate_package
-from claude_monkey.manifest_v2 import load_manifest_v2_dict
+from claude_monkey.builder_v15 import ValidationRequestV15, load_manifest_v2, validate_package
 from claude_monkey.payloads import load_payload_bytes
 from tests.claude_binary import claude_bin_candidates, claude_version_path
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_DIRS = [
+    ROOT / "packages" / "capybara-onsen",
     ROOT / "packages" / "fable-fallback",
     ROOT / "packages" / "hidden-context-drawer",
     ROOT / "packages" / "hotrod-dragons",
@@ -36,10 +36,13 @@ def source_for_identity(identity) -> Path | None:
     return None
 
 
-def test_reference_packages_are_v15_schema_v2_with_valid_payload_hashes():
+def test_reference_packages_are_v3_schema_with_v15_compatible_targets():
     for package_dir in PACKAGE_DIRS:
         manifest_data = json.loads((package_dir / "patch.json").read_text())
-        manifest = load_manifest_v2_dict(manifest_data)
+        assert manifest_data["schemaVersion"] == 1
+        assert manifest_data["kind"] == "patch"
+        assert manifest_data["patch"]["engine"] == "bun_graph_repack"
+        manifest = load_manifest_v2(package_dir)
         assert manifest.id == package_dir.name
         assert manifest.schema_version == 2
         for target in manifest.targets:
@@ -66,7 +69,7 @@ def test_reference_packages_are_v15_schema_v2_with_valid_payload_hashes():
 
 def test_reference_packages_validate_against_current_pinned_source():
     for package_dir in PACKAGE_DIRS:
-        manifest = load_manifest_v2_dict(json.loads((package_dir / "patch.json").read_text()))
+        manifest = load_manifest_v2(package_dir)
         identity = manifest.targets[0].source_identity
         source = source_for_identity(identity)
         if source is None:
@@ -179,7 +182,7 @@ def test_hidden_context_drawer_package_uses_footer_overlay_without_global_ijo_ca
     package_dir = ROOT / "packages" / "hidden-context-drawer"
     footer_drawers_dir = ROOT / "packages" / "footer-drawers"
     manifest_data = json.loads((package_dir / "patch.json").read_text())
-    operations = manifest_data["targets"][0]["modules"][0]["operations"]
+    operations = manifest_data["patch"]["targets"][0]["modules"][0]["operations"]
     payloads = {
         operation["opId"]: (package_dir / operation["replacement"]["path"]).read_text()
         for operation in operations

@@ -5,8 +5,11 @@ import hashlib
 import json
 import os
 import platform as platform_module
+import re
 import shutil
 import sys
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -28,8 +31,10 @@ from claude_monkey.cli_json import envelope_error, envelope_ok, print_json, to_j
 from claude_monkey.config import LaunchProfile, load_config, save_config
 from claude_monkey.install import (
     ProtectedTargetRestoreUnavailable,
+    TargetNotPlausibleOfficial,
     current_target_is_installed_shim,
     install_shim_transaction,
+    install_target_not_plausible_official,
     protected_install_requires_refusal,
     restore_install_transaction,
     use_official,
@@ -43,7 +48,19 @@ from claude_monkey.package_model import (
     manifest_digest,
     validate_package_id,
 )
+from claude_monkey.packages_admin import (
+    add_package,
+    invalid_package_error,
+    remove_package,
+    scaffold_prompt_package,
+)
 from claude_monkey.paths import StatePaths, default_paths
+from claude_monkey.repair import (
+    CacheSourceRefused,
+    RepairRefused,
+    cache_source_action,
+    repair_shim_action,
+)
 from claude_monkey.shim_entry import compute_launch_with_paths
 from claude_monkey.smoke import run_command
 from claude_monkey.source_discovery import discover_official_claude
@@ -92,6 +109,28 @@ def build_parser() -> argparse.ArgumentParser:
     clear_prompt = sub.add_parser("clear-prompt")
     clear_prompt.add_argument("--json", action="store_true")
 
+    add_patch = sub.add_parser("add-patch")
+    add_patch.add_argument("source_dir")
+    add_patch.add_argument("--json", action="store_true")
+    add_option = sub.add_parser("add-option")
+    add_option.add_argument("source_dir")
+    add_option.add_argument("--json", action="store_true")
+    add_prompt = sub.add_parser("add-prompt")
+    add_prompt.add_argument("path")
+    add_prompt.add_argument("--id")
+    add_prompt.add_argument("--name")
+    add_prompt.add_argument("--json", action="store_true")
+
+    remove_patch = sub.add_parser("remove-patch")
+    remove_patch.add_argument("patch_id")
+    remove_patch.add_argument("--json", action="store_true")
+    remove_option = sub.add_parser("remove-option")
+    remove_option.add_argument("option_id")
+    remove_option.add_argument("--json", action="store_true")
+    remove_prompt = sub.add_parser("remove-prompt")
+    remove_prompt.add_argument("prompt_id")
+    remove_prompt.add_argument("--json", action="store_true")
+
     inspect_binary = sub.add_parser("inspect-binary")
     inspect_binary.add_argument("--source", required=True)
     inspect_binary.add_argument("--json", action="store_true")
@@ -118,12 +157,14 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--json", action="store_true")
     build.add_argument("--dry-run", action="store_true")
     build.add_argument("--activate", action="store_true")
+    build.add_argument("--progress", action="store_true")
 
     install = sub.add_parser("install-shim")
     install.add_argument("--target")
     install.add_argument("--state-dir")
     install.add_argument("--dry-run", action="store_true")
     install.add_argument("--json", action="store_true")
+    install.add_argument("--progress", action="store_true")
 
     uninstall = sub.add_parser("uninstall-shim")
     uninstall.add_argument("--target")
@@ -132,6 +173,17 @@ def build_parser() -> argparse.ArgumentParser:
     uninstall.add_argument("--force", action="store_true")
     uninstall.add_argument("--dry-run", action="store_true")
     uninstall.add_argument("--json", action="store_true")
+    uninstall.add_argument("--progress", action="store_true")
+
+    cache_source_parser = sub.add_parser("cache-source")
+    cache_source_parser.add_argument("--target")
+    cache_source_parser.add_argument("--state-dir")
+    cache_source_parser.add_argument("--json", action="store_true")
+
+    repair_shim_parser = sub.add_parser("repair-shim")
+    repair_shim_parser.add_argument("--target")
+    repair_shim_parser.add_argument("--state-dir")
+    repair_shim_parser.add_argument("--json", action="store_true")
 
     rollback = sub.add_parser("rollback")
     rollback.add_argument("--target")
@@ -163,6 +215,22 @@ def emit(
     else:
         print(text, file=sys.stderr if error else sys.stdout)
     return 0
+
+
+def _progress_emitter(enabled: bool) -> Callable[[dict], None] | None:
+    """Return a stderr JSONL progress emitter when enabled, else None.
+
+    Each event is written as a single sorted-key JSON object per line to stderr,
+    flushed immediately. stdout is never touched, preserving the byte-identical
+    stdout contract between --progress and non-progress runs.
+    """
+    if not enabled:
+        return None
+
+    def emit_event(event: dict) -> None:
+        print(json.dumps(event, sort_keys=True), file=sys.stderr, flush=True)
+
+    return emit_event
 
 
 def _read_json_file(path: Path) -> dict[str, Any] | None:
@@ -768,6 +836,25 @@ def _dry_run_install_payload(
             dry_run=True,
             planned_actions=[action],
         )
+    if (
+        not uninstall
+        and state_dir is not None
+        and install_target_not_plausible_official(target, state_dir / "install-record.json")
+    ):
+        message = (
+            "refusing to install shim over a target that does not look like a real "
+            "Claude binary -- it looks too small to be a real Claude app, more like "
+            f"another program's launcher: {target}"
+        )
+        return envelope_error(
+            message,
+            code="target_not_plausible_official",
+            target_path=target,
+            authorization_required=needs_auth,
+            authorization_method=authorization_method_for_target(target),
+            dry_run=True,
+            planned_actions=[action],
+        )
     return envelope_ok(
         f"would {action}",
         target_path=target,
@@ -820,6 +907,10 @@ def _build_failure_summary(summary: str) -> str:
 
 
 def _build_report_json_payload(report: Any, report_path: Path | None = None) -> dict[str, Any]:
+    # NOTE: build_patchset_v15 no longer produces "manual_smoke_pending" (the
+    # manual-smoke activation gate is disabled — see builder_v15.py). This branch
+    # is kept as defensive/backward-compatible handling in case a report ever
+    # carries that status (e.g. an older cached build-report.json on disk).
     report_payload = dict(to_jsonable(report))
     ok = report_payload.get("status") in {"verified", "manual_smoke_pending"}
     if (
@@ -1015,6 +1106,7 @@ def handle_build(args: argparse.Namespace, paths: StatePaths, config) -> int:
             current_path=paths.current_path,
             manifest_digests=_manifest_digests_for_build(package_dirs),
             build_input_snapshot=_build_input_snapshot(config, package_dirs),
+            on_event=_progress_emitter(getattr(args, "progress", False)),
         )
     )
     if report.status == "verified" and report.activationStatus == "activated":
@@ -1029,6 +1121,124 @@ def handle_build(args: argparse.Namespace, paths: StatePaths, config) -> int:
 
 def _record_path(args: argparse.Namespace, state_dir: Path) -> Path:
     return Path(args.record).expanduser() if args.record else state_dir / "install-record.json"
+
+
+def _resolve_cache_or_repair_target(args: argparse.Namespace, state_dir: Path) -> Path | None:
+    """`--target` if given, else the current detection state: the install
+    record's own `targetPath` (the target ClaudeMonkey has previously
+    managed, which is what cache-source/repair-shim reason about by
+    default).
+    """
+    if args.target:
+        return Path(args.target).expanduser()
+    record_path = state_dir / "install-record.json"
+    if not record_path.exists():
+        return None
+    try:
+        raw = json.loads(record_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    target = raw.get("targetPath") if isinstance(raw, dict) else None
+    return Path(target).expanduser() if isinstance(target, str) else None
+
+
+def handle_cache_source(args: argparse.Namespace, paths: StatePaths) -> int:
+    state_dir = Path(args.state_dir).expanduser() if args.state_dir else paths.state_dir
+    target = _resolve_cache_or_repair_target(args, state_dir)
+    if target is None:
+        payload = envelope_error(
+            "cache-source requires --target or an install record with targetPath",
+            code="missing_target",
+        )
+        if args.json:
+            print_json(payload)
+        else:
+            print(payload.summary, file=sys.stderr)
+        return 2
+    try:
+        result = cache_source_action(target, state_dir, paths)
+    except CacheSourceRefused as exc:
+        payload = envelope_error(str(exc), code=exc.code, target_path=target)
+        if args.json:
+            print_json(payload)
+        else:
+            print(str(exc), file=sys.stderr)
+        return 1
+    envelope = envelope_ok(f"cached official source {result['sha256'][:8]}", target_path=target)
+    payload = to_jsonable(envelope)
+    payload["cachedSourcePath"] = result["cachedSourcePath"]
+    payload["sha256"] = result["sha256"]
+    payload["sizeBytes"] = result["sizeBytes"]
+    payload["version"] = result["version"]
+    payload["gcRemovedDigests"] = result["gcRemovedDigests"]
+    if args.json:
+        print_json(payload)
+    else:
+        print(f"cachedSourcePath={result['cachedSourcePath']}")
+    return 0
+
+
+def handle_repair_shim(args: argparse.Namespace, paths: StatePaths) -> int:
+    state_dir = Path(args.state_dir).expanduser() if args.state_dir else paths.state_dir
+    target = _resolve_cache_or_repair_target(args, state_dir)
+    if target is None:
+        payload = envelope_error(
+            "repair-shim requires --target or an install record with targetPath",
+            code="missing_target",
+        )
+        if args.json:
+            print_json(payload)
+        else:
+            print(payload.summary, file=sys.stderr)
+        return 2
+    try:
+        result = repair_shim_action(target, state_dir, paths)
+    except RepairRefused as exc:
+        auth_required = exc.code == "authorization_required"
+        payload = envelope_error(
+            str(exc),
+            code=exc.code,
+            target_path=target,
+            authorization_required=auth_required,
+            authorization_method=(
+                authorization_method_for_target(target) if auth_required else None
+            ),
+        )
+        if args.json:
+            print_json(payload)
+        else:
+            print(str(exc), file=sys.stderr)
+        return 1
+    reverted_immediately = result["revertedImmediately"]
+    if reverted_immediately:
+        # Fix 1: honest summary for the field-observed fast-revert loop --
+        # the swap genuinely succeeded (see `repaired` below), but something
+        # (observed: the official Claude installer's own self-heal) already
+        # replaced the target again within seconds, so "repaired" alone
+        # would read as a lie once the GUI's next refresh re-shows the
+        # notice. Say so up front instead of letting it go silently stale.
+        summary = (
+            "Shim installed, but another program replaced it again within seconds"
+            " -- likely the official Claude updater. It will keep doing this until"
+            " that updater is dealt with."
+        )
+    else:
+        summary = "repaired managed claude shim"
+    envelope = envelope_ok(summary, target_path=target)
+    payload = to_jsonable(envelope)
+    payload["repaired"] = result["repaired"]
+    payload["previousOfficialSha256"] = result["previousOfficialSha256"]
+    payload["newOfficialSha256"] = result["newOfficialSha256"]
+    payload["newOfficialVersion"] = result["newOfficialVersion"]
+    payload["cachedSourcePath"] = result["cachedSourcePath"]
+    payload["gcRemovedDigests"] = result["gcRemovedDigests"]
+    payload["revertedImmediately"] = reverted_immediately
+    payload["targetLocked"] = result["targetLocked"]
+    if args.json:
+        print_json(payload)
+    else:
+        print(f"repaired={str(result['repaired']).lower()}")
+    return 0
 
 
 def _target_from_args_or_record(args: argparse.Namespace, record_path: Path) -> Path | None:
@@ -1082,7 +1292,12 @@ def handle_restore(args: argparse.Namespace, paths: StatePaths) -> int:
             print("dryRun=true")
         return 0
     try:
-        restored = restore_install_transaction(target, record_path, force=args.force)
+        restored = restore_install_transaction(
+            target,
+            record_path,
+            force=args.force,
+            on_event=_progress_emitter(getattr(args, "progress", False)),
+        )
     except (AuthorizationRequired, AuthorizationDenied) as exc:
         code = (
             "authorization_denied"
@@ -1217,6 +1432,98 @@ def handle_launch_preview(args: argparse.Namespace, paths: StatePaths, config) -
     return 0
 
 
+def handle_add_package(args: argparse.Namespace, paths: StatePaths, kind: str) -> int:
+    source = Path(args.source_dir).expanduser()
+    result = add_package(source, kind, paths.state_dir)
+    if args.json:
+        print_json(result)
+    else:
+        print(result["summary"], file=sys.stdout if result["ok"] else sys.stderr)
+    return 0 if result["ok"] else 1
+
+
+def _profile_dict(config) -> dict:
+    profile = active_profile(config)
+    return {
+        "prompt": profile.prompt,
+        "patches": list(profile.patches),
+        "options": list(profile.options),
+    }
+
+
+def handle_remove_package(
+    args: argparse.Namespace, paths: StatePaths, config, kind: str, package_id: str
+) -> int:
+    result = remove_package(package_id, kind, paths.state_dir, _profile_dict(config))
+    if args.json:
+        print_json(result)
+    else:
+        print(result["summary"], file=sys.stdout if result["ok"] else sys.stderr)
+    return 0 if result["ok"] else 1
+
+
+def _slugify_prompt_stem(stem: str) -> str:
+    return re.sub(r"[^a-z0-9._-]+", "-", stem.lower()).strip("-")
+
+
+def handle_add_prompt(args: argparse.Namespace, paths: StatePaths) -> int:
+    source_path = Path(args.path).expanduser()
+    if not source_path.is_file():
+        # Important-3 fix: use the same 6-key packages_admin envelope / invalid_package
+        # code / exit 1 as every other add-* failure, not the 14-key CommandEnvelope
+        # with a bespoke missing_source_file code and exit 2.
+        message = f"prompt source file does not exist: {source_path}"
+        result = invalid_package_error(message)
+        if args.json:
+            print_json(result)
+        else:
+            print(message, file=sys.stderr)
+        return 1
+
+    package_id = args.id or _slugify_prompt_stem(source_path.stem)
+    try:
+        validate_package_id(package_id)
+    except PackageValidationError as exc:
+        # Critical-1/Critical-2 fix: validate the id (whether from --id or derived
+        # via slugify) BEFORE it is ever used to build a filesystem path. This
+        # rejects both path-traversal ids (e.g. "../evil") and ids that slugify to
+        # "" (e.g. a "###.md" source file, which previously made staging_dir equal
+        # the tempdir itself and crashed with a raw FileExistsError).
+        message = f"invalid package id {package_id!r} derived from {source_path.name!r}: {exc}"
+        result = invalid_package_error(message)
+        if args.json:
+            print_json(result)
+        else:
+            print(message, file=sys.stderr)
+        return 1
+
+    manifest = scaffold_prompt_package(source_path, package_id, args.name)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_root = Path(tmp).resolve()
+        staging_dir = tmp_root / package_id
+        # Defense-in-depth: validate_package_id above already guarantees package_id
+        # cannot escape tmp_root when joined, but refuse to proceed if it somehow did.
+        if not staging_dir.resolve(strict=False).is_relative_to(tmp_root):
+            result = invalid_package_error(f"invalid package id: {package_id!r}")
+            if args.json:
+                print_json(result)
+            else:
+                print(result["summary"], file=sys.stderr)
+            return 1
+        staging_dir.mkdir(parents=True)
+        (staging_dir / "manifest.json").write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+        )
+        shutil.copyfile(source_path, staging_dir / "prompt.md")
+        result = add_package(staging_dir, "prompt", paths.state_dir)
+
+    if args.json:
+        print_json(result)
+    else:
+        print(result["summary"], file=sys.stdout if result["ok"] else sys.stderr)
+    return 0 if result["ok"] else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -1304,6 +1611,18 @@ def main(argv: list[str] | None = None) -> int:
         active_profile(config).prompt = None
         save_config(paths.config_path, config)
         return emit(args, "cleared active prompt profile", envelope_ok("prompt cleared"))
+    if args.command == "add-patch":
+        return handle_add_package(args, paths, "patch")
+    if args.command == "add-option":
+        return handle_add_package(args, paths, "option")
+    if args.command == "add-prompt":
+        return handle_add_prompt(args, paths)
+    if args.command == "remove-patch":
+        return handle_remove_package(args, paths, config, "patch", args.patch_id)
+    if args.command == "remove-option":
+        return handle_remove_package(args, paths, config, "option", args.option_id)
+    if args.command == "remove-prompt":
+        return handle_remove_package(args, paths, config, "prompt", args.prompt_id)
     if args.command == "inspect-binary":
         source = Path(args.source).expanduser()
         payload = inspect_binary_bytes(source.read_bytes(), source_path=str(source))
@@ -1354,12 +1673,29 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     print(payload.summary, file=sys.stderr)
             return 0 if getattr(payload, "ok", False) else 1
+        install_kwargs: dict[str, Any] = {}
+        progress_emitter = _progress_emitter(getattr(args, "progress", False))
+        if progress_emitter is not None:
+            install_kwargs["on_event"] = progress_emitter
         try:
-            record = install_shim_transaction(target, state_dir, dry_run=False)
+            record = install_shim_transaction(target, state_dir, dry_run=False, **install_kwargs)
         except ProtectedTargetRestoreUnavailable as exc:
             payload = envelope_error(
                 str(exc),
                 code="protected_restore_unavailable",
+                target_path=target,
+                authorization_required=authorization_required,
+                authorization_method=authorization_method,
+            )
+            if args.json:
+                print_json(payload)
+            else:
+                print(str(exc), file=sys.stderr)
+            return 1
+        except TargetNotPlausibleOfficial as exc:
+            payload = envelope_error(
+                str(exc),
+                code="target_not_plausible_official",
                 target_path=target,
                 authorization_required=authorization_required,
                 authorization_method=authorization_method,
@@ -1394,7 +1730,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(str(exc), file=sys.stderr)
             return 1
         if args.json:
-            print_json(
+            payload = to_jsonable(
                 envelope_ok(
                     "installed managed claude shim",
                     target_path=target,
@@ -1402,12 +1738,23 @@ def main(argv: list[str] | None = None) -> int:
                     authorization_method=authorization_method,
                 )
             )
+            # Shim lock feature: additive `targetLocked` field. Read back
+            # from the install record itself rather than changing
+            # `install_shim_transaction`'s return type -- every existing
+            # caller/test relies on it returning `record_path` (a Path).
+            record_data = json.loads(record.read_text()) if record.exists() else {}
+            payload["targetLocked"] = record_data.get("targetLocked", False)
+            print_json(payload)
         else:
             print(f"installRecord={record}")
             print("dryRun=false")
         return 0
     if args.command in {"uninstall-shim", "rollback"}:
         return handle_restore(args, paths)
+    if args.command == "cache-source":
+        return handle_cache_source(args, paths)
+    if args.command == "repair-shim":
+        return handle_repair_shim(args, paths)
     if args.command == "use-official":
         if not args.official:
             message = "use-official requires --official"

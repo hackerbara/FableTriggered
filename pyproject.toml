@@ -12,16 +12,18 @@ dependencies = []
 [project.optional-dependencies]
 dev = [
   "pytest>=8.2",
-  "ruff>=0.5"
+  "pytest-qt>=4.4",
+  "ruff>=0.5",
+  "Pillow>=10.0"
 ]
 gui = [
-  "rumps>=0.4.0",
-  "pyobjc-framework-Cocoa>=10.0"
+  "PySide6>=6.7",
+  "pyobjc-framework-Cocoa>=10.0 ; sys_platform == 'darwin'"
 ]
 
 [project.scripts]
 claude-monkey = "claude_monkey.cli:main"
-claude-monkey-menubar = "claude_monkey.menubar:main"
+claude-monkey-menubar = "claude_monkey.gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

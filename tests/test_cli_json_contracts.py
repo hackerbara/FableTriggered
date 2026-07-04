@@ -2,8 +2,30 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sys
+import tempfile
+from pathlib import Path
 
+import pytest
+
+from claude_monkey import repair as repair_module
+from claude_monkey import source_discovery
 from claude_monkey.cli import main
+from claude_monkey.install import _unlock_target
+
+
+@pytest.fixture(autouse=True)
+def _tiny_plausible_official_size_floor(monkeypatch):
+    """This file's fake "official"/replacement binaries are tiny shell-script
+    fixtures, not real ~230MB Claude binaries. Patch the CMux-incident size
+    floor (`source_discovery.MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES`) down to 0
+    (no floor) so those fixtures classify as "plausible official" and
+    install-shim's plausibility gate doesn't refuse them here -- the real,
+    unpatched 50MB floor is exercised end-to-end by
+    tests/test_plausible_official_size_floor.py.
+    """
+    monkeypatch.setattr(source_discovery, "MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES", 0)
 
 
 def parse_json_output(capsys):
@@ -23,6 +45,126 @@ def test_status_json_contract(monkeypatch, tmp_path, capsys):
     assert isinstance(payload["activePatchIds"], list)
     assert "rebuildRequired" in payload
     assert payload["lastError"] is None or "message" in payload["lastError"]
+    # Additive shim-update-resilience stage 1 fields (spec §1): a fresh HOME
+    # with no install record was never managed by ClaudeMonkey, so every new
+    # field reports the empty/false/null case.
+    assert payload["shimPreviouslyManaged"] is False
+    assert payload["targetReplacedByOfficial"] is False
+    assert payload["detectedOfficialSha256"] is None
+    assert payload["detectedOfficialVersion"] is None
+    assert payload["shimRepairAvailable"] is False
+    assert payload["rolloutRequired"] is False
+    # Reverted-shim visibility gap fix: never managed this machine -> null.
+    assert payload["lastManagedTargetPath"] is None
+
+
+def test_status_json_contract_shim_replaced_by_official_is_additive(
+    monkeypatch, tmp_path, capsys
+):
+    """New detection fields must be additive and must not disturb existing
+    consumers of shimInstalled/status (test_cli_json_contracts guards this
+    per the spec's Non-goals + CLI/UI surfaces sections).
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    assert main(["status", "--json"]) == 0
+    payload_before = parse_json_output(capsys)
+    assert payload_before["shimInstalled"] is True
+    existing_keys = set(payload_before)
+
+    official = tmp_path / "official-source" / "claude"
+    official.parent.mkdir(parents=True)
+    official.write_text("#!/bin/sh\necho '2.1.201 (Claude Code)'\n")
+    official.chmod(official.stat().st_mode | 0o111)
+    # Shim lock feature: a real locked shim can't be clobbered by an
+    # external actor at all (that's the whole point -- see
+    # tests/test_shim_lock.py), so lift the flag first to keep simulating
+    # "already replaced" directly here.
+    _unlock_target(target)
+    target.unlink()
+    target.symlink_to(official)
+
+    assert main(["status", "--json"]) == 0
+    payload = parse_json_output(capsys)
+
+    # Existing consumers/fields are unaffected: same key set, and
+    # shimInstalled correctly flips to False (the target is no longer the
+    # bytes ClaudeMonkey installed) -- unchanged semantics per the task spec.
+    assert set(payload) == existing_keys
+    assert payload["shimInstalled"] is False
+
+    official_sha = hashlib.sha256(official.read_bytes()).hexdigest()
+    assert payload["shimPreviouslyManaged"] is True
+    assert payload["targetReplacedByOfficial"] is True
+    assert payload["detectedOfficialSha256"] == official_sha
+    assert payload["shimRepairAvailable"] is True
+    assert payload["rolloutRequired"] is True
+
+
+def test_status_json_last_managed_target_path_is_additive_and_survives_revert(
+    monkeypatch, tmp_path, capsys
+):
+    """Reverted-shim visibility gap fix: `lastManagedTargetPath` reports the
+    install record's `targetPath` whenever a valid, ClaudeMonkey-owned
+    install-record.json exists -- REGARDLESS of whether `shimInstalled` is
+    currently true -- so a consumer can distinguish "never managed this
+    machine" (null) from "managed but something (e.g. the official Anthropic
+    auto-updater) reverted the shim since" (non-null while shimInstalled is
+    False). Purely additive: `installRecordPath`/`shimTargetPath` keep their
+    existing `shimInstalled`-gated semantics unchanged.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    assert main(["status", "--json"]) == 0
+    payload_before = parse_json_output(capsys)
+    assert payload_before["shimInstalled"] is True
+    assert payload_before["lastManagedTargetPath"] == str(target)
+    assert payload_before["shimTargetPath"] == str(target)
+    assert payload_before["installRecordPath"] is not None
+    existing_keys = set(payload_before)
+
+    # The official Anthropic auto-updater (or anything else) reverts the
+    # shim: same target path, different bytes.
+    # Shim lock feature: a real locked shim can't be clobbered by an
+    # external actor at all (see tests/test_shim_lock.py), so lift the flag
+    # first to keep simulating the revert directly here.
+    _unlock_target(target)
+    target.unlink()
+    target.write_text("#!/bin/sh\necho 'reverted by official updater'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["status", "--json"]) == 0
+    payload_after = parse_json_output(capsys)
+
+    # Additive: same key set as before.
+    assert set(payload_after) == existing_keys
+    # Existing, shimInstalled-gated fields keep their exact prior semantics
+    # -- both go back to null the moment shimInstalled flips False.
+    assert payload_after["shimInstalled"] is False
+    assert payload_after["shimTargetPath"] is None
+    assert payload_after["installRecordPath"] is None
+    # The gap this closes: lastManagedTargetPath is NOT gated on
+    # shimInstalled, so it stays populated -- this machine WAS managed, even
+    # though something reverted the shim since.
+    assert payload_after["lastManagedTargetPath"] == str(target)
+    # This condition ("reverted since managed") is fully derivable from two
+    # already-existing fields with no new boolean needed:
+    assert payload_after["shimPreviouslyManaged"] is True
+    assert payload_after["shimInstalled"] is False
 
 
 def test_mutating_command_json_envelope(monkeypatch, tmp_path, capsys):
@@ -863,6 +1005,242 @@ def test_use_official_json_envelope(monkeypatch, tmp_path, capsys):
     assert status["sourceClaudePath"] == str(official.resolve())
 
 
+def test_add_patch_json_contract_installs_package(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    source = tmp_path / "demo-patch"
+    source.mkdir()
+    (source / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "patch",
+                "id": "demo-patch",
+                "label": "Demo",
+                "description": "d",
+                "patch": {"engine": "bun_graph_repack", "targets": []},
+            }
+        )
+    )
+
+    assert main(["add-patch", str(source), "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["schemaVersion"] == 1
+    assert payload["ok"] is True
+    assert isinstance(payload["status"], str)
+    assert isinstance(payload["summary"], str)
+    assert payload["error"] is None
+    assert isinstance(payload["warnings"], list)
+    installed = tmp_path / ".claude-monkey" / "patches" / "demo-patch" / "manifest.json"
+    assert installed.exists()
+
+
+def test_add_patch_json_contract_invalid_package(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    source = tmp_path / "bad-patch"
+    source.mkdir()
+    (source / "manifest.json").write_text("{not json")
+
+    assert main(["add-patch", str(source), "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_package"
+
+
+def test_add_prompt_json_contract_installs_and_is_not_active(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    source = tmp_path / "bare-prompt.md"
+    source.write_text("be helpful and concise")
+
+    assert main(["add-prompt", str(source), "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is True
+
+    prompt_path = tmp_path / ".claude-monkey" / "prompts" / "bare-prompt" / "prompt.md"
+    assert prompt_path.exists()
+    assert prompt_path.read_text() == "be helpful and concise"
+
+    assert main(["list-prompts", "--json"]) == 0
+    list_payload = parse_json_output(capsys)
+    records = [record for record in list_payload["prompts"] if record["id"] == "bare-prompt"]
+    assert len(records) == 1
+    assert records[0]["enabled"] is False
+
+
+def test_add_prompt_json_contract_empty_slug_stem_returns_invalid_package(
+    monkeypatch, tmp_path, capsys
+):
+    """Regression for Critical-2: a stem that slugifies to '' (e.g. '###.md') must
+    not crash with a raw FileExistsError traceback — it must return the standard
+    6-key invalid_package envelope."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    source = tmp_path / "###.md"
+    source.write_text("be helpful")
+
+    assert main(["add-prompt", str(source), "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert set(payload.keys()) == {"schemaVersion", "ok", "status", "summary", "error", "warnings"}
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_package"
+    assert not (tmp_path / ".claude-monkey" / "prompts").exists()
+
+
+def test_add_prompt_json_contract_traversal_id_returns_invalid_package(
+    monkeypatch, tmp_path, capsys
+):
+    """Regression for Critical-1 (add-prompt instance): an explicit --id containing
+    '..' must be rejected before any path construction, with no stray writes."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    # Pin the staging tempdir under tmp_path so a traversal leak (one directory
+    # above the tempdir) lands at a precise, assertable location.
+    staging_root = tmp_path / "staging-root"
+    staging_root.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(staging_root))
+    source = tmp_path / "notes.md"
+    source.write_text("be helpful")
+
+    assert main(["add-prompt", str(source), "--id", "../evil-y", "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_package"
+    assert not (tmp_path / ".claude-monkey" / "prompts").exists()
+    assert not (staging_root / "evil-y").exists()
+
+
+def test_add_prompt_json_contract_missing_source_file_envelope(monkeypatch, tmp_path, capsys):
+    """Regression for Important-3: missing source file must use the 6-key
+    packages_admin envelope with code invalid_package and exit 1, not the 14-key
+    CommandEnvelope with code missing_source_file and exit 2."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    missing = tmp_path / "does-not-exist.md"
+
+    assert main(["add-prompt", str(missing), "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert set(payload.keys()) == {"schemaVersion", "ok", "status", "summary", "error", "warnings"}
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_package"
+
+
+def test_remove_patch_json_contract_removes_uninstalled_package(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    installed = tmp_path / ".claude-monkey" / "patches" / "demo-patch"
+    installed.mkdir(parents=True)
+
+    assert main(["remove-patch", "demo-patch", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["schemaVersion"] == 1
+    assert payload["ok"] is True
+    assert payload["error"] is None
+    assert not installed.exists()
+
+
+def test_remove_patch_json_contract_refuses_profile_referenced_package(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    source = tmp_path / "demo-patch"
+    source.mkdir()
+    (source / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "patch",
+                "id": "demo-patch",
+                "label": "Demo",
+                "description": "d",
+                "patch": {"engine": "bun_graph_repack", "targets": []},
+            }
+        )
+    )
+    assert main(["add-patch", str(source), "--json"]) == 0
+    assert main(["enable-patch", "demo-patch", "--json"]) == 0
+    capsys.readouterr()  # drain add-patch/enable-patch output before the assertion below
+
+    assert main(["remove-patch", "demo-patch", "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "package_in_use"
+    installed = tmp_path / ".claude-monkey" / "patches" / "demo-patch"
+    assert installed.exists()
+
+
+def test_remove_patch_json_contract_missing_package(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert main(["remove-patch", "nope", "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "package_missing"
+
+
+def test_remove_option_json_contract_refuses_enabled_option(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    installed = tmp_path / ".claude-monkey" / "options" / "op1"
+    installed.mkdir(parents=True)
+    (installed / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "option",
+                "id": "op1",
+                "label": "Op1",
+                "description": "d",
+                "option": {},
+            }
+        )
+    )
+    assert main(["enable-option", "op1", "--json"]) == 0
+    capsys.readouterr()  # drain enable-option output before the assertion below
+
+    assert main(["remove-option", "op1", "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "package_in_use"
+    assert installed.exists()
+
+
+def test_remove_prompt_json_contract_refuses_active_prompt(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    installed = tmp_path / ".claude-monkey" / "prompts" / "pr1"
+    installed.mkdir(parents=True)
+    (installed / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "prompt",
+                "id": "pr1",
+                "label": "Pr1",
+                "description": "d",
+                "prompt": {"mode": "append", "source": {"path": "prompt.md"}},
+            }
+        )
+    )
+    (installed / "prompt.md").write_text("be helpful")
+    assert main(["set-prompt", "pr1", "--json"]) == 0
+    capsys.readouterr()  # drain set-prompt output before the assertion below
+
+    assert main(["remove-prompt", "pr1", "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "package_in_use"
+    assert installed.exists()
+
+
+def test_remove_patch_json_contract_traversal_id_returns_invalid_package(
+    monkeypatch, tmp_path, capsys
+):
+    """Regression: an unvalidated traversal id must never reach `shutil.rmtree`."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    outside_target = tmp_path / "evil-target"
+    outside_target.mkdir()
+    (outside_target / "keepme.txt").write_text("do not delete")
+
+    assert main(["remove-patch", "../evil-target", "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_package"
+    assert outside_target.exists()
+    assert (outside_target / "keepme.txt").exists()
+
+
 def test_use_official_json_missing_inputs_return_envelopes(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("HOME", str(tmp_path))
     assert main(["use-official", "--json"]) == 2
@@ -875,3 +1253,193 @@ def test_use_official_json_missing_inputs_return_envelopes(monkeypatch, tmp_path
     payload = parse_json_output(capsys)
     assert payload["ok"] is False
     assert payload["error"]["code"] == "missing_official"
+
+
+# -- shim-update-resilience stage 2: cache-source + repair-shim -------------
+#
+# docs/superpowers/specs/2026-07-04-claude-monkey-shim-update-resilience.md
+# Sec2/Sec3 + Refinements R1-R4, R6, R8, R9.
+
+
+def _replace_with_official(target, tmp_path, version="2.1.201"):
+    # `versions/<version>` mirrors the real official installer's own
+    # versioned-directory layout -- repair.py's `_version_from_path` (C1)
+    # parses this segment instead of executing the binary for `--version`.
+    official = tmp_path / "official-source" / "versions" / version / "claude"
+    official.parent.mkdir(parents=True)
+    official.write_text(f"#!/bin/sh\necho '{version} (Claude Code)'\n")
+    official.chmod(official.stat().st_mode | 0o111)
+    # Shim lock feature: a real locked shim can't be clobbered by an
+    # external actor at all (see tests/test_shim_lock.py), so lift the flag
+    # first to keep simulating "already replaced" directly here.
+    _unlock_target(target)
+    target.unlink()
+    target.symlink_to(official)
+    return official
+
+
+def test_cache_source_json_contract_via_cli(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    official = _replace_with_official(target, tmp_path)
+    official_sha = hashlib.sha256(official.read_bytes()).hexdigest()
+
+    assert main(["cache-source", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is True
+    assert payload["sha256"] == official_sha
+    assert Path(payload["cachedSourcePath"]).read_bytes() == official.read_bytes()
+    assert payload["version"] == "2.1.201"
+    assert isinstance(payload["gcRemovedDigests"], list)
+    # Never touches the target.
+    assert target.is_symlink()
+
+
+def test_cache_source_json_missing_target_returns_envelope(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert main(["cache-source", "--json"]) == 2
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "missing_target"
+
+
+def test_repair_shim_json_contract_via_cli(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    # Fix 1's post-swap revert re-check sleeps for real by default; keep this
+    # contract test fast by collapsing that bounded delay to 0.
+    monkeypatch.setattr(repair_module, "REPAIR_REVERT_RECHECK_DELAY_SECONDS", 0)
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    official = _replace_with_official(target, tmp_path)
+    official_sha = hashlib.sha256(official.read_bytes()).hexdigest()
+
+    assert main(["status", "--json"]) == 0
+    before = parse_json_output(capsys)
+    assert before["shimInstalled"] is False
+    assert before["targetReplacedByOfficial"] is True
+
+    assert main(["repair-shim", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is True
+    assert payload["repaired"] is True
+    assert payload["newOfficialSha256"] == official_sha
+    assert payload["newOfficialVersion"] == "2.1.201"
+    assert Path(payload["cachedSourcePath"]).read_bytes() == official.read_bytes()
+    # Fix 1: additive field -- honest about whether an external actor (the
+    # field-observed official-updater self-heal) already clobbered the
+    # target again within seconds of this successful swap. Nothing touches
+    # the target between the CLI's swap and this assertion, so it's False.
+    assert payload["revertedImmediately"] is False
+
+    assert main(["status", "--json"]) == 0
+    after = parse_json_output(capsys)
+    assert after["shimInstalled"] is True
+    assert after["targetReplacedByOfficial"] is False
+
+
+# -- shim lock: additive `targetLocked`/`shimLocked` fields ------------------
+#
+# Evidence (controlled experiment on a real machine, 2026-07-03/04): with
+# `chflags uchg` set on the shim, the official installer's own self-heal
+# leaves it untouched across fresh sessions (its own code swallows the
+# resulting EPERM silently); without it, the shim is clobbered within ~15s.
+
+
+def test_install_shim_json_contract_target_locked_is_additive(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    payload = parse_json_output(capsys)
+
+    assert payload["ok"] is True
+    assert isinstance(payload["targetLocked"], bool)
+    if sys.platform == "darwin" and hasattr(os, "chflags"):
+        assert payload["targetLocked"] is True
+
+
+def test_repair_shim_json_contract_target_locked_is_additive(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(repair_module, "REPAIR_REVERT_RECHECK_DELAY_SECONDS", 0)
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    _replace_with_official(target, tmp_path)
+
+    assert main(["repair-shim", "--json"]) == 0
+    payload = parse_json_output(capsys)
+
+    assert payload["ok"] is True
+    assert isinstance(payload["targetLocked"], bool)
+    if sys.platform == "darwin" and hasattr(os, "chflags"):
+        assert payload["targetLocked"] is True
+
+
+def test_status_json_contract_shim_locked_is_additive(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    assert main(["status", "--json"]) == 0
+    payload_before = parse_json_output(capsys)
+    existing_keys = set(payload_before)
+    assert "shimLocked" in existing_keys
+    assert isinstance(payload_before["shimLocked"], bool)
+    if sys.platform == "darwin" and hasattr(os, "chflags"):
+        assert payload_before["shimLocked"] is True
+
+    _replace_with_official(target, tmp_path)
+
+    assert main(["status", "--json"]) == 0
+    payload_after = parse_json_output(capsys)
+    assert set(payload_after) == existing_keys
+    assert payload_after["shimLocked"] is False
+
+
+def test_repair_shim_json_never_managed_target_returns_envelope(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["repair-shim", "--target", str(target), "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "no_install_record"
+    # No write attempted: target is exactly the fake binary, untouched.
+    assert "ClaudeMonkey" not in target.read_text()
+
+
+def test_repair_shim_json_missing_target_returns_envelope(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert main(["repair-shim", "--json"]) == 2
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "missing_target"

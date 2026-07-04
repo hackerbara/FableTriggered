@@ -45,6 +45,7 @@ class PatchMenuItem:
     available: bool
     compatibility_status: str
     compatibility_message: str | None = None
+    errors: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,7 @@ class OptionMenuItem:
     risk_level: str
     requires_confirmation: bool = False
     errors: tuple[str, ...] = ()
+    status_warning: str | None = None
 
 
 @dataclass(frozen=True)
@@ -118,6 +120,30 @@ class MenuState:
     live_validation_status: str = "unknown"
     compatibility_warnings: tuple[str, ...] = ()
     option_items: tuple[OptionMenuItem, ...] = ()
+    high_risk_warnings: tuple[str, ...] = ()
+    # shim-update-resilience stage 1 (spec 2026-07-04 section 1): additive,
+    # optional fields describing whether the managed shim target was
+    # replaced by an official Claude update. All default to the "nothing
+    # detected" shape so older/partial status payloads parse unchanged.
+    shim_previously_managed: bool = False
+    target_replaced_by_official: bool = False
+    detected_official_sha256: str | None = None
+    detected_official_version: str | None = None
+    shim_repair_available: bool = False
+    rollout_required: bool = False
+    # Opportunistic: `lastManagedTargetPath` is a CLI-side field landing in a
+    # parallel worktree (not present in this worktree's CLI output yet).
+    # Parsed here if present, tolerating absence, so the GUI can name the
+    # concrete repair target as soon as the CLI starts emitting it -- see
+    # `window_model.repair_target_path` / the GUI report's "repair target"
+    # investigation for why no *other* status field is a reliable stand-in
+    # today.
+    last_managed_target_path: Path | None = None
+    # Shim lock feature: additive, optional. Mirrors `shimInstalled`'s own
+    # opportunistic-parse pattern above -- defaults to False so status
+    # payloads from before this field existed (or from non-mac hosts) parse
+    # unchanged.
+    shim_locked: bool = False
 
 
 def _optional_path(value: Any) -> Path | None:
@@ -251,6 +277,10 @@ def _high_risk_options(raw: dict[str, Any]) -> tuple[HighRiskOptionSummary, ...]
     )
 
 
+def _high_risk_warnings(raw: dict[str, Any]) -> tuple[str, ...]:
+    return tuple(str(item["warning"]) for item in _dict_list(raw, "highRiskOptions"))
+
+
 def _prompt_source_path(item: dict[str, Any]) -> Path | None:
     if "sourcePath" not in item or item.get("sourcePath") in {None, ""}:
         return None
@@ -271,6 +301,7 @@ def _option_items(options_raw: dict[str, Any] | None) -> tuple[OptionMenuItem, .
             risk_level=str(item.get("riskLevel", "unknown")),
             requires_confirmation=_optional_bool(item, "requiresConfirmation", False),
             errors=_string_list(item, "errors"),
+            status_warning=str(item["statusWarning"]) if item.get("statusWarning") else None,
         )
         for item in _dict_list(options_raw, "options")
     )
@@ -340,6 +371,7 @@ def parse_menu_state(
             compatibility_message=str(item["compatibilityMessage"])
             if item.get("compatibilityMessage")
             else None,
+            errors=_string_list(item, "errors"),
         )
         for item in _dict_list(patches_raw, "patches")
     )
@@ -397,4 +429,13 @@ def parse_menu_state(
         live_validation_status=str(status_raw.get("liveValidationStatus", "unknown")),
         compatibility_warnings=_string_list(status_raw, "compatibilityWarnings"),
         option_items=_option_items(options_raw),
+        high_risk_warnings=_high_risk_warnings(status_raw),
+        shim_previously_managed=_optional_bool(status_raw, "shimPreviouslyManaged", False),
+        target_replaced_by_official=_optional_bool(status_raw, "targetReplacedByOfficial", False),
+        detected_official_sha256=status_raw.get("detectedOfficialSha256"),
+        detected_official_version=status_raw.get("detectedOfficialVersion"),
+        shim_repair_available=_optional_bool(status_raw, "shimRepairAvailable", False),
+        rollout_required=_optional_bool(status_raw, "rolloutRequired", False),
+        last_managed_target_path=_optional_path(status_raw.get("lastManagedTargetPath")),
+        shim_locked=_optional_bool(status_raw, "shimLocked", False),
     )

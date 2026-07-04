@@ -7,10 +7,29 @@ import platform as platform_module
 import sys
 from pathlib import Path
 
+import pytest
+
+from claude_monkey import source_discovery
 from claude_monkey.cli import main
 from claude_monkey.config import load_config
+from claude_monkey.install import _unlock_target, install_shim_transaction
 from claude_monkey.paths import StatePaths
 from claude_monkey.status import status_payload
+
+
+@pytest.fixture(autouse=True)
+def _tiny_plausible_official_size_floor(monkeypatch):
+    """This file's fake "official"/replacement/pre-existing-target binaries
+    are tiny shell-script fixtures (a handful of bytes), not real ~230MB
+    Claude binaries -- keeping the suite fast and disk-light. Patch the
+    CMux-incident size floor (`source_discovery.MIN_PLAUSIBLE_OFFICIAL_SIZE_
+    BYTES`) down to 0 (i.e. no floor) so those tiny fixtures still classify
+    as "plausible official" here, exactly as they did before Fix 1.
+
+    The real, unpatched 50MB floor is exercised end-to-end by
+    tests/test_plausible_official_size_floor.py instead.
+    """
+    monkeypatch.setattr(source_discovery, "MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES", 0)
 
 
 def write_json(path: Path, payload: dict) -> None:
@@ -398,3 +417,147 @@ def test_status_payload_keeps_invalid_desired_patch_visible(monkeypatch, tmp_pat
         "patch bad-patch skipped: invalid" in item for item in payload["compatibilityWarnings"]
     )
     assert payload["rebuildRequired"] is True
+
+
+# -- shim-update-resilience stage 1: replaced-managed-shim detection --------
+#
+# docs/superpowers/specs/2026-07-04-claude-monkey-shim-update-resilience.md
+# section 1 + "Refinements (controller review, 2026-07-04)".
+
+
+def seed_shim_target(tmp_path: Path) -> tuple[Path, Path]:
+    """Install a real managed shim over an existing binary at an external
+    target path (outside ClaudeMonkey's own managed bin/versions roots, like
+    the spec's `/Users/MAC/.local/bin/claude`). Returns (state_dir, target).
+    """
+    state = tmp_path / ".claude-monkey"
+    target = tmp_path / "local-bin" / "claude"
+    make_executable(target, "#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    install_shim_transaction(target, state, dry_run=False)
+    return state, target
+
+
+def replace_target_with_official(target: Path, tmp_path: Path, version: str = "2.1.201") -> Path:
+    """Simulate an official Claude updater clobbering the shim in place with
+    a symlink to a newly installed official binary (the spec's observed
+    failure mode: target path unchanged, target identity replaced).
+
+    The official binary lives under a `versions/<version>` path segment,
+    mirroring the real official installer's own versioned-directory layout
+    (spec "Observed failure mode": `.../claude/versions/2.1.201`) -- this is
+    also what `install._version_from_path` parses, since status detection
+    must never execute an unverified replacement target for `--version`
+    (see `test_status_detects_version_from_path_without_executing_target`).
+    """
+    official = make_executable(
+        tmp_path / "official-source" / "versions" / version / "claude",
+        f"#!/bin/sh\necho '{version} (Claude Code)'\n",
+    )
+    # Shim lock feature: a real locked shim can't actually be clobbered by
+    # an external actor (that's the whole point -- see
+    # tests/test_shim_lock.py) so lift the flag first here to keep
+    # simulating "already replaced" directly, exactly like these
+    # pre-existing tests always have.
+    _unlock_target(target)
+    target.unlink()
+    target.symlink_to(official)
+    return official
+
+
+def test_status_detects_target_replaced_by_official(tmp_path):
+    state, target = seed_shim_target(tmp_path)
+    official = replace_target_with_official(target, tmp_path)
+    official_sha = hashlib.sha256(official.read_bytes()).hexdigest()
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["shimInstalled"] is False
+    assert payload["shimPreviouslyManaged"] is True
+    assert payload["targetReplacedByOfficial"] is True
+    assert payload["detectedOfficialSha256"] == official_sha
+    assert payload["detectedOfficialVersion"] == "2.1.201"
+    assert payload["shimRepairAvailable"] is True
+    assert payload["rolloutRequired"] is True
+
+
+def test_status_detects_version_from_path_without_executing_target(tmp_path):
+    """Detection must extract `detectedOfficialVersion` from the target's own
+    `versions/<version>` path segment -- never by running `<target>
+    --version`. `status_payload` runs on every GUI refresh (R5), so a
+    replacement target sitting at the (previously shim-owned) path must not
+    become passive, automatic arbitrary-binary execution; the only
+    credential a replacement has is that it path-classifies as "plausible
+    official" (`classify_plausible_official_source`), which proves internal
+    consistency, not provenance. The fake binary below writes a marker file
+    and exits non-zero if it is ever actually run, so this test fails loudly
+    (via the marker assertion) if a future change reintroduces execution.
+    """
+    state, target = seed_shim_target(tmp_path)
+    marker = tmp_path / "executed.marker"
+    version = "2.1.201"
+    official = make_executable(
+        tmp_path / "official-source" / "versions" / version / "claude",
+        f"#!/bin/sh\ntouch '{marker}'\nexit 1\n",
+    )
+    _unlock_target(target)
+    target.unlink()
+    target.symlink_to(official)
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["targetReplacedByOfficial"] is True
+    assert payload["detectedOfficialVersion"] == version
+    assert not marker.exists()
+
+
+def test_status_never_managed_target_reports_all_new_fields_empty(tmp_path):
+    state = tmp_path / ".claude-monkey"
+    state.mkdir(parents=True)
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["shimPreviouslyManaged"] is False
+    assert payload["targetReplacedByOfficial"] is False
+    assert payload["detectedOfficialSha256"] is None
+    assert payload["detectedOfficialVersion"] is None
+    assert payload["shimRepairAvailable"] is False
+    assert payload["rolloutRequired"] is False
+
+
+def test_status_intact_shim_reports_no_replacement(tmp_path):
+    state, _target = seed_shim_target(tmp_path)
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["shimInstalled"] is True
+    assert payload["shimPreviouslyManaged"] is True
+    assert payload["targetReplacedByOfficial"] is False
+    assert payload["detectedOfficialSha256"] is None
+    assert payload["detectedOfficialVersion"] is None
+    assert payload["shimRepairAvailable"] is False
+    assert payload["rolloutRequired"] is False
+
+
+def test_status_corrupt_cache_keeps_repair_available_and_detecting_replacement(tmp_path):
+    """Adjudication (controller decision, findings.md): `shimRepairAvailable`
+    no longer depends on the OLD previous-source cache's validity.
+    `restore_install_transaction` never reads `previousSourceCachePath`/
+    `previousSourceSha256`, and `repair_shim_action` overwrites both on
+    success (R4) -- the old cache is not load-bearing for repair, so a
+    corrupt old cache must not disable repair availability (this replaces
+    the old test_status_corrupt_cache_disables_repair_but_keeps_detecting_
+    replacement, which asserted the pre-adjudication gated semantics).
+    """
+    state, target = seed_shim_target(tmp_path)
+    replace_target_with_official(target, tmp_path)
+
+    record_path = state / "install-record.json"
+    record = json.loads(record_path.read_text())
+    cache_path = Path(record["previousSourceCachePath"])
+    cache_path.write_bytes(b"corrupted-cache-bytes")
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["shimPreviouslyManaged"] is True
+    assert payload["targetReplacedByOfficial"] is True
+    assert payload["shimRepairAvailable"] is True

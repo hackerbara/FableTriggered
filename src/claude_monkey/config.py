@@ -29,9 +29,22 @@ def default_config() -> ClaudeMonkeyConfig:
 
 
 def _load_profile(value: dict) -> LaunchProfile:
+    # V3 renamed the old V2 profile fields but existing local installs may
+    # still carry the legacy shape. Treat that as an on-read migration so the
+    # GUI does not silently forget the user's active patch/prompt selection.
+    patches = value.get("patches")
+    if patches is None:
+        patches = value.get("enabledPatches")
+    if patches is None:
+        patches = value.get("patchIds")
+    if patches is None:
+        patches = []
+    prompt = value.get("prompt")
+    if prompt is None:
+        prompt = value.get("promptProfile")
     return LaunchProfile(
-        prompt=value.get("prompt"),
-        patches=list(value.get("patches", [])),
+        prompt=prompt,
+        patches=list(patches),
         options=list(value.get("options", [])),
     )
 

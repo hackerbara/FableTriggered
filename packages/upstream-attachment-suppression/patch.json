@@ -1,119 +1,126 @@
 {
-  "schemaVersion": 2,
-  "id": "upstream-attachment-suppression",
-  "name": "Upstream attachment suppression",
   "description": "Suppresses selected recurring reminder/accounting attachments before generator telemetry and transcript row creation.",
-  "packageVersion": "1.0.0",
-  "targets": [
-    {
-      "sourceIdentity": {
-        "arch": "arm64",
-        "claudeVersion": "2.1.199",
-        "platform": "darwin",
-        "sha256": "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0",
-        "sizeBytes": 232155536,
-        "versionOutput": "2.1.199 (Claude Code)"
-      },
-      "requiredEngine": "bun_graph_repack",
-      "requiredBinaryFormat": "bun_standalone_macho64",
-      "modules": [
-        {
-          "path": "/$bunfs/root/src/entrypoints/cli.js",
-          "contentSha256": "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55",
-          "contentLength": 18593981,
-          "operations": [
-            {
-              "opId": "ug-drop-denied-labels-2-1-199",
-              "label": "Drop denied attachment generator labels before generator execution and compute telemetry",
-              "type": "replace_between",
-              "startMarker": "async function ug(e,t){",
-              "endMarker": "async function XQt(e,t){",
-              "expectedStartMarkerCount": 1,
-              "expectedEndMarkerCount": 1,
-              "requireWithinRange": [
-                "let n=Date.now()",
-                "let r=await t()",
-                "G(\"tengu_attachment_compute_duration\""
-              ],
-              "oldRangeSha256": "4c0825d2dcf2d6188b1ff3607cd37398274af2217a4a2ada8a3c2fc274840533",
-              "oldRangeLength": 602,
-              "replacement": {
-                "path": "payloads/filter-labels-before-ug-2.1.199.js",
-                "sha256": "4c551eb16902a790b15fc4562a28e23bb1b221d88495e15d11734bb296cdbc17"
+  "id": "upstream-attachment-suppression",
+  "kind": "patch",
+  "label": "Upstream attachment suppression",
+  "patch": {
+    "engine": "bun_graph_repack",
+    "targets": [
+      {
+        "manualSmoke": {
+          "required": false
+        },
+        "modules": [
+          {
+            "contentLength": 18593981,
+            "contentSha256": "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55",
+            "operations": [
+              {
+                "endMarker": "async function XQt(e,t){",
+                "expectedEndMarkerCount": 1,
+                "expectedStartMarkerCount": 1,
+                "knownBehaviorChange": "Selected reminder/accounting attachment generators return an empty list before their generator function and compute-duration telemetry run.",
+                "label": "Drop denied attachment generator labels before generator execution and compute telemetry",
+                "oldRangeLength": 602,
+                "oldRangeSha256": "4c0825d2dcf2d6188b1ff3607cd37398274af2217a4a2ada8a3c2fc274840533",
+                "opId": "ug-drop-denied-labels-2-1-199",
+                "replacement": {
+                  "path": "payloads/filter-labels-before-ug-2.1.199.js",
+                  "sha256": "4c551eb16902a790b15fc4562a28e23bb1b221d88495e15d11734bb296cdbc17"
+                },
+                "requireWithinRange": [
+                  "let n=Date.now()",
+                  "let r=await t()",
+                  "G(\"tengu_attachment_compute_duration\""
+                ],
+                "startMarker": "async function ug(e,t){",
+                "type": "replace_between"
               },
-              "knownBehaviorChange": "Selected reminder/accounting attachment generators return an empty list before their generator function and compute-duration telemetry run."
-            },
-            {
-              "opId": "hze-filter-before-li-2-1-199",
-              "label": "Filter denied attachment objects before attachment telemetry and li row construction",
-              "type": "replace_between",
-              "startMarker": "async function*Hze(e,t,n,r,o,s,i,a){",
-              "endMarker": "async function i3l(e){",
-              "expectedStartMarkerCount": 1,
-              "expectedEndMarkerCount": 1,
-              "requireWithinRange": [
-                "let l=await W9l(e,t,n,r,s,i,a)",
-                "G(\"tengu_attachments\"",
-                "yield li(c,o)"
-              ],
-              "oldRangeSha256": "528f9c3051a2b003d01023e68c13af05bc7752d96639eb9a34edb272165a36e9",
-              "oldRangeLength": 180,
-              "replacement": {
-                "path": "payloads/filter-before-li-2.1.199.js",
-                "sha256": "14934fa13fcfbb326fbdebc44488ff4debb2d8eb25b3cd5b15c08825ed17c284"
-              },
-              "knownBehaviorChange": "Denied attachment objects are filtered before active attachment telemetry and before li(...) can create transcript rows."
-            }
-          ]
+              {
+                "endMarker": "async function i3l(e){",
+                "expectedEndMarkerCount": 1,
+                "expectedStartMarkerCount": 1,
+                "knownBehaviorChange": "Denied attachment objects are filtered before active attachment telemetry and before li(...) can create transcript rows.",
+                "label": "Filter denied attachment objects before attachment telemetry and li row construction",
+                "oldRangeLength": 180,
+                "oldRangeSha256": "528f9c3051a2b003d01023e68c13af05bc7752d96639eb9a34edb272165a36e9",
+                "opId": "hze-filter-before-li-2-1-199",
+                "replacement": {
+                  "path": "payloads/filter-before-li-2.1.199.js",
+                  "sha256": "14934fa13fcfbb326fbdebc44488ff4debb2d8eb25b3cd5b15c08825ed17c284"
+                },
+                "requireWithinRange": [
+                  "let l=await W9l(e,t,n,r,s,i,a)",
+                  "G(\"tengu_attachments\"",
+                  "yield li(c,o)"
+                ],
+                "startMarker": "async function*Hze(e,t,n,r,o,s,i,a){",
+                "type": "replace_between"
+              }
+            ],
+            "path": "/$bunfs/root/src/entrypoints/cli.js"
+          }
+        ],
+        "postconditions": [
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "function __codexUASDropLabel(e)"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "function __codexUASDropAttachment(e)"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "if(__codexUASDropLabel(e))return[];let n=Date.now()"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "l=l.filter((c)=>!__codexUASDropAttachment(c));if(l.length===0)return;G(\"tengu_attachments\""
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_not_contain",
+            "value": "async function ug(e,t){let n=Date.now();try{let r=await t()"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_not_contain",
+            "value": "async function*Hze(e,t,n,r,o,s,i,a){let l=await W9l(e,t,n,r,s,i,a);if(l.length===0)return;G(\"tengu_attachments\""
+          }
+        ],
+        "preconditions": [
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "async function ug(e,t){let n=Date.now();try{let r=await t()"
+          },
+          {
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "type": "module_must_contain",
+            "value": "async function*Hze(e,t,n,r,o,s,i,a){let l=await W9l(e,t,n,r,s,i,a);if(l.length===0)return;G(\"tengu_attachments\""
+          }
+        ],
+        "requiredBinaryFormat": "bun_standalone_macho64",
+        "requiredEngine": "bun_graph_repack",
+        "sourceIdentity": {
+          "arch": "arm64",
+          "claudeVersion": "2.1.199",
+          "platform": "darwin",
+          "sha256": "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0",
+          "sizeBytes": 232155536,
+          "versionOutput": "2.1.199 (Claude Code)"
         }
-      ],
-      "preconditions": [
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "async function ug(e,t){let n=Date.now();try{let r=await t()"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "async function*Hze(e,t,n,r,o,s,i,a){let l=await W9l(e,t,n,r,s,i,a);if(l.length===0)return;G(\"tengu_attachments\""
-        }
-      ],
-      "postconditions": [
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function __codexUASDropLabel(e)"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function __codexUASDropAttachment(e)"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "if(__codexUASDropLabel(e))return[];let n=Date.now()"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "l=l.filter((c)=>!__codexUASDropAttachment(c));if(l.length===0)return;G(\"tengu_attachments\""
-        },
-        {
-          "type": "module_must_not_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "async function ug(e,t){let n=Date.now();try{let r=await t()"
-        },
-        {
-          "type": "module_must_not_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "async function*Hze(e,t,n,r,o,s,i,a){let l=await W9l(e,t,n,r,s,i,a);if(l.length===0)return;G(\"tengu_attachments\""
-        }
-      ],
-      "manualSmoke": {
-        "required": false
       }
-    }
-  ]
+    ]
+  },
+  "risk": {
+    "level": "low"
+  },
+  "schemaVersion": 1,
+  "x-packageVersion": "1.0.0"
 }

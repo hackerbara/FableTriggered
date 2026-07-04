@@ -1,0 +1,115 @@
+"""Pure argv builder functions mapping GUI intents to CLI argv lists.
+
+This module is the single source of truth for every command the ClaudeMonkey
+v3 GUI runs. Every function here is a pure function: no side effects, no I/O,
+and no dependency on any GUI toolkit. `CommandRunner` (elsewhere) is
+responsible for prefixing the returned argv with the `claude-monkey`
+executable name before executing it.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+
+def command_for_patch_toggle(patch_id: str, *, enabled: bool) -> list[str]:
+    """Build argv to flip a patch's enabled state.
+
+    `enabled` describes the CURRENT state of the patch, so the command
+    performs the opposite action: enabled=True (currently on) -> disable;
+    enabled=False (currently off) -> enable.
+    """
+    action = "disable-patch" if enabled else "enable-patch"
+    return [action, patch_id, "--json"]
+
+
+def command_for_option_toggle(
+    option_id: str, *, enabled: bool, confirm: bool = False
+) -> list[str]:
+    """Build argv to flip an option's enabled state.
+
+    Same disable/enable direction as `command_for_patch_toggle`: `enabled`
+    describes the CURRENT state. `confirm` only applies when enabling
+    (enabled=False); it is ignored when disabling.
+    """
+    if enabled:
+        return ["disable-option", option_id, "--json"]
+    if confirm:
+        return ["enable-option", option_id, "--confirm", "--json"]
+    return ["enable-option", option_id, "--json"]
+
+
+def command_for_prompt(prompt_id: str | None) -> list[str]:
+    """Build argv to set or clear the active prompt.
+
+    `prompt_id` is an id, never a file path -- this function never emits
+    `--from-file` or does any path handling.
+    """
+    if prompt_id is None:
+        return ["clear-prompt", "--json"]
+    return ["set-prompt", prompt_id, "--json"]
+
+
+def command_for_rebuild_apply() -> list[str]:
+    """Build argv for a rebuild-and-activate run. Takes no arguments."""
+    return ["build", "--json", "--activate", "--progress"]
+
+
+def command_for_install_shim(target: Path | str, *, dry_run: bool = False) -> list[str]:
+    """Build argv to install a shim at `target`.
+
+    `target` is stringified with `str()` only -- no `.resolve()`, no
+    `.expanduser()`, no other normalization.
+    """
+    mode_flag = "--dry-run" if dry_run else "--progress"
+    return ["install-shim", str(target), mode_flag]
+
+
+def command_for_uninstall_shim(
+    *,
+    target: Path | str | None = None,
+    record: Path | str | None = None,
+    dry_run: bool = False,
+) -> list[str]:
+    """Build argv to uninstall a shim, identified by `target` or `record`.
+
+    `target` takes precedence if both are given. Neither value is
+    normalized beyond `str()`.
+    """
+    argv = ["uninstall-shim"]
+    if target is not None:
+        argv.extend(["--target", str(target)])
+    elif record is not None:
+        argv.extend(["--record", str(record)])
+    argv.append("--dry-run" if dry_run else "--progress")
+    return argv
+
+
+def command_for_add_package(path: Path | str, kind: str) -> list[str]:
+    """Build argv to add a patch or option package located at `path`."""
+    action = "add-patch" if kind == "patch" else "add-option"
+    return [action, str(path), "--json"]
+
+
+def command_for_remove_package(package_id: str, kind: str) -> list[str]:
+    """Build argv to remove a patch, option, or prompt package by id."""
+    action = {
+        "patch": "remove-patch",
+        "option": "remove-option",
+        "prompt": "remove-prompt",
+    }[kind]
+    return [action, package_id, "--json"]
+
+
+def command_for_add_prompt_file(
+    path: Path | str, package_id: str, name: str | None = None
+) -> list[str]:
+    """Build argv to register a prompt file under `package_id`.
+
+    `path` is stringified with `str()` only -- no expansion.
+    """
+    argv = ["add-prompt", str(path), "--id", package_id]
+    if name is not None:
+        argv.extend(["--name", name])
+    argv.append("--json")
+    return argv

@@ -1,0 +1,142 @@
+"""Install page: target picker (dropdown + Browse) and shim controls.
+
+Follows `settings_window.py`'s rendering discipline: `install_target_choices`
+and `InstallTargetSelection` (from `window_model.py`) decide the combo's
+choices and the remembered user selection, and `install_plan_for_target`
+(from `menubar_install.py`) decides the protected/user-writable status --
+this page never re-derives that logic Qt-side.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from claude_monkey.gui.pages.common import Banner
+from claude_monkey.gui.window_model import InstallTargetSelection, install_target_choices
+from claude_monkey.menubar_install import install_plan_for_target
+from claude_monkey.menubar_state import MenuState
+
+BROWSE_LABEL = "Browse…"
+
+
+class InstallPage(QWidget):
+    """Install-target picker plus shim install/uninstall controls.
+
+    Signals:
+        action(str, dict): "set_install_target" (combo selection changed or
+            "Browse…" picked a path -- payload is `{"path": str}`),
+            "install_shim" / "uninstall_shim" (buttons clicked -- empty
+            payload) -- bubbled through `SettingsWindow.action` by the
+            caller.
+    """
+
+    action = Signal(str, dict)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._state: MenuState | None = None
+        self._selection = InstallTargetSelection()
+
+        layout = QVBoxLayout(self)
+        self.banner = Banner()
+        layout.addWidget(self.banner)
+
+        self.target_combo = QComboBox()
+        self.target_combo.currentIndexChanged.connect(self._on_combo_index_changed)
+        layout.addWidget(self.target_combo)
+
+        self.status_label = QLabel()
+        layout.addWidget(self.status_label)
+
+        self.shim_status_label = QLabel()
+        layout.addWidget(self.shim_status_label)
+
+        buttons_row = QHBoxLayout()
+        self.install_button = QPushButton("Install")
+        self.install_button.clicked.connect(lambda: self.action.emit("install_shim", {}))
+        buttons_row.addWidget(self.install_button)
+        self.uninstall_button = QPushButton("Uninstall")
+        self.uninstall_button.clicked.connect(lambda: self.action.emit("uninstall_shim", {}))
+        buttons_row.addWidget(self.uninstall_button)
+        layout.addLayout(buttons_row)
+        layout.addStretch(1)
+
+        self.render(None)
+
+    def render(self, state: MenuState | None) -> None:
+        self._state = state
+        if state is None:
+            self.target_combo.blockSignals(True)
+            self.target_combo.clear()
+            self.target_combo.blockSignals(False)
+            self.status_label.setText("")
+            self.shim_status_label.setText("Not installed")
+            self.install_button.setEnabled(False)
+            self.uninstall_button.setEnabled(False)
+            return
+
+        choices = list(install_target_choices(state))
+        current_target = self._selection.target(state)
+        if current_target not in (target for _label, target in choices):
+            choices.append((f"Use {current_target}", current_target))
+
+        self.target_combo.blockSignals(True)
+        self.target_combo.clear()
+        for label, target in choices:
+            self.target_combo.addItem(f"{label}: {target}", target)
+        self.target_combo.addItem(BROWSE_LABEL, None)
+        current_index = next(
+            index for index, (_label, target) in enumerate(choices) if target == current_target
+        )
+        self.target_combo.setCurrentIndex(current_index)
+        self.target_combo.blockSignals(False)
+
+        self._render_status(state, current_target)
+
+        self.install_button.setEnabled(not state.shim_installed)
+        self.uninstall_button.setEnabled(state.shim_installed)
+
+    def _render_status(self, state: MenuState, target: Path) -> None:
+        plan = install_plan_for_target(target, state_dir=state.state_dir)
+        if plan.authorization_required:
+            self.status_label.setText(f"{plan.target} (protected -- {plan.authorization_reason})")
+        else:
+            self.status_label.setText(f"{plan.target} (user-writable)")
+
+        self.shim_status_label.setText(
+            f"Installed at {state.shim_target_path}" if state.shim_target_path else "Not installed"
+        )
+
+    def _on_combo_index_changed(self, index: int) -> None:
+        if self._state is None or index < 0:
+            return
+        if self.target_combo.itemText(index) == BROWSE_LABEL:
+            self._on_browse()
+            return
+        target = self.target_combo.itemData(index)
+        if target is None:
+            return
+        self._selection.select(target)
+        self.action.emit("set_install_target", {"path": str(target)})
+        self.render(self._state)
+
+    def _on_browse(self) -> None:
+        path, _selected_filter = QFileDialog.getSaveFileName(self, "Choose Install Target")
+        if not path:
+            self.render(self._state)  # revert the combo off the transient "Browse…" row
+            return
+        target = Path(path).expanduser()
+        self._selection.select(target)
+        self.action.emit("set_install_target", {"path": str(target)})
+        self.render(self._state)

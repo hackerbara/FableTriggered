@@ -560,3 +560,146 @@ def test_options_remove_button_disabled_with_reason_tooltip(qtbot, fake_state):
 
     assert window.options_page.remove_button.isEnabled() is False
     assert "dangerous-permissions" in window.options_page.remove_button.toolTip()
+
+
+# --- Install page (Task 18) ---------------------------------------------
+
+
+def test_install_page_shim_installed_disables_install_enables_uninstall(qtbot, tmp_path):
+    state = _state(tmp_path, shim_installed=True)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state)
+
+    assert window.install_page.install_button.isEnabled() is False
+    assert window.install_page.uninstall_button.isEnabled() is True
+
+
+def test_install_page_shim_not_installed_enables_install_disables_uninstall(qtbot, tmp_path):
+    state = _state(tmp_path, shim_installed=False)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state)
+
+    assert window.install_page.install_button.isEnabled() is True
+    assert window.install_page.uninstall_button.isEnabled() is False
+
+
+def test_install_button_emits_install_shim_action(qtbot, tmp_path):
+    state = _state(tmp_path, shim_installed=False)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render(state)
+
+    with qtbot.waitSignal(window.action, timeout=1000) as blocker:
+        qtbot.mouseClick(window.install_page.install_button, Qt.MouseButton.LeftButton)
+
+    assert blocker.args == ["install_shim", {}]
+
+
+def test_uninstall_button_emits_uninstall_shim_action(qtbot, tmp_path):
+    state = _state(tmp_path, shim_installed=True)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render(state)
+
+    with qtbot.waitSignal(window.action, timeout=1000) as blocker:
+        qtbot.mouseClick(window.install_page.uninstall_button, Qt.MouseButton.LeftButton)
+
+    assert blocker.args == ["uninstall_shim", {}]
+
+
+def test_install_target_combo_selection_emits_set_install_target(qtbot, tmp_path):
+    # `detected_claude_command_path` is the default selection (shim_target_path
+    # is unset), so picking a *different* combo row -- the managed user
+    # target, always listed first -- is what actually changes the selection.
+    detected = tmp_path / "detected" / "claude"
+    state = _state(tmp_path, detected_claude_command_path=detected)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render(state)
+
+    combo = window.install_page.target_combo
+    managed_target = combo.itemData(0)
+    assert managed_target != detected
+
+    with qtbot.waitSignal(window.action, timeout=1000) as blocker:
+        combo.setCurrentIndex(0)
+
+    assert blocker.args == ["set_install_target", {"path": str(managed_target)}]
+
+
+def test_install_page_protected_target_shows_protected_in_status_label(qtbot, tmp_path):
+    protected = Path("/usr/local/bin/claude")
+    state = _state(tmp_path, shim_target_path=protected)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state)
+
+    assert "protected" in window.install_page.status_label.text()
+
+
+def test_install_page_user_writable_target_status_label(qtbot, tmp_path):
+    writable = tmp_path / ".claude-monkey" / "bin" / "claude"
+    state = _state(tmp_path, shim_target_path=writable)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state)
+
+    assert "protected" not in window.install_page.status_label.text()
+
+
+def test_install_page_shim_status_line_reflects_shim_target_path(qtbot, tmp_path):
+    installed_path = tmp_path / ".claude-monkey" / "bin" / "claude"
+    state = _state(tmp_path, shim_target_path=installed_path)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state)
+    assert f"Installed at {installed_path}" in window.install_page.shim_status_label.text()
+
+    state_not_installed = _state(tmp_path, shim_target_path=None)
+    window.render(state_not_installed)
+    assert "Not installed" in window.install_page.shim_status_label.text()
+
+
+def test_install_target_browse_picks_path_and_emits_action(qtbot, monkeypatch, tmp_path):
+    state = _state(tmp_path)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render(state)
+
+    browsed = str(tmp_path / "browsed" / "claude")
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (browsed, ""))
+
+    combo = window.install_page.target_combo
+    browse_index = combo.count() - 1
+    assert combo.itemText(browse_index) == "Browse…"
+
+    with qtbot.waitSignal(window.action, timeout=1000) as blocker:
+        combo.setCurrentIndex(browse_index)
+
+    assert blocker.args == ["set_install_target", {"path": browsed}]
+
+
+def test_install_target_browse_cancelled_emits_nothing(qtbot, monkeypatch, tmp_path):
+    state = _state(tmp_path)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render(state)
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: ("", ""))
+
+    seen: list[tuple[str, dict]] = []
+    window.action.connect(lambda action_id, payload: seen.append((action_id, payload)))
+
+    combo = window.install_page.target_combo
+    browse_index = combo.count() - 1
+    combo.setCurrentIndex(browse_index)
+    qtbot.wait(50)
+
+    assert seen == []

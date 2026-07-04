@@ -45,6 +45,7 @@ class PatchMenuItem:
     available: bool
     compatibility_status: str
     compatibility_message: str | None = None
+    errors: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,7 @@ class OptionMenuItem:
     risk_level: str
     requires_confirmation: bool = False
     errors: tuple[str, ...] = ()
+    status_warning: str | None = None
 
 
 @dataclass(frozen=True)
@@ -129,6 +131,14 @@ class MenuState:
     detected_official_version: str | None = None
     shim_repair_available: bool = False
     rollout_required: bool = False
+    # Opportunistic: `lastManagedTargetPath` is a CLI-side field landing in a
+    # parallel worktree (not present in this worktree's CLI output yet).
+    # Parsed here if present, tolerating absence, so the GUI can name the
+    # concrete repair target as soon as the CLI starts emitting it -- see
+    # `window_model.repair_target_path` / the GUI report's "repair target"
+    # investigation for why no *other* status field is a reliable stand-in
+    # today.
+    last_managed_target_path: Path | None = None
 
 
 def _optional_path(value: Any) -> Path | None:
@@ -286,6 +296,7 @@ def _option_items(options_raw: dict[str, Any] | None) -> tuple[OptionMenuItem, .
             risk_level=str(item.get("riskLevel", "unknown")),
             requires_confirmation=_optional_bool(item, "requiresConfirmation", False),
             errors=_string_list(item, "errors"),
+            status_warning=str(item["statusWarning"]) if item.get("statusWarning") else None,
         )
         for item in _dict_list(options_raw, "options")
     )
@@ -355,6 +366,7 @@ def parse_menu_state(
             compatibility_message=str(item["compatibilityMessage"])
             if item.get("compatibilityMessage")
             else None,
+            errors=_string_list(item, "errors"),
         )
         for item in _dict_list(patches_raw, "patches")
     )
@@ -419,4 +431,5 @@ def parse_menu_state(
         detected_official_version=status_raw.get("detectedOfficialVersion"),
         shim_repair_available=_optional_bool(status_raw, "shimRepairAvailable", False),
         rollout_required=_optional_bool(status_raw, "rolloutRequired", False),
+        last_managed_target_path=_optional_path(status_raw.get("lastManagedTargetPath")),
     )

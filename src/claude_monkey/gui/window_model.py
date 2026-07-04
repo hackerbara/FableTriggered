@@ -17,6 +17,7 @@ from claude_monkey.menubar_state import MenuState, OptionMenuItem, PatchMenuItem
 COMMON_INSTALL_TARGETS = (
     Path("/usr/local/bin/claude"),
     Path("/opt/homebrew/bin/claude"),
+    Path("~/.local/bin/claude"),
 )
 
 
@@ -48,6 +49,13 @@ class TrayModel:
     patch_items: tuple[PatchMenuItem, ...]
     option_items: tuple[OptionMenuItem, ...]
     notice: NoticeModel | None = None
+    # Pending-rebuild feedback (spec: "no feedback that we need to rebuild
+    # to apply"): `rebuild_required` shows an extra, directly-clickable
+    # "Rebuild to apply changes" menu item (`Tray._add_action`'s existing
+    # "rebuild" action id); `icon_variant` picks which tray `QIcon` to show
+    # (see `tray_icon_variant`/`gui/icons.py`).
+    rebuild_required: bool = False
+    icon_variant: str = "normal"
 
 
 def _status_lines(state: MenuState) -> tuple[str, ...]:
@@ -102,6 +110,8 @@ def build_tray_model(
         patch_items=state.patch_items,
         option_items=state.option_items,
         notice=notice,
+        rebuild_required=state.rebuild_required,
+        icon_variant=tray_icon_variant(state),
     )
 
 
@@ -114,22 +124,73 @@ def _short_digest(digest: str | None) -> str | None:
     return digest[:8] if digest else None
 
 
+def abbreviate_home(path: Path) -> str:
+    """Render `path` home-relative (`~/...`) when it's under `Path.home()`.
+
+    Plain-language display helper (per the de-jargon discipline this module
+    already follows for status/compatibility text): every GUI surface that
+    shows a filesystem path to the user routes it through here instead of
+    printing the raw absolute path. Falls back to the path unchanged when it
+    isn't under the home directory (e.g. `/usr/local/bin/claude`).
+    """
+    expanded = path.expanduser()
+    home = Path.home()
+    try:
+        rel = expanded.relative_to(home)
+    except ValueError:
+        return str(expanded)
+    return f"~/{rel}" if str(rel) != "." else "~"
+
+
+def repair_target_path(state: MenuState | None) -> Path | None:
+    """Best-available path for "what will repair-shim act on", display-only.
+
+    Prefers the opportunistic `lastManagedTargetPath` status field
+    (`MenuState.last_managed_target_path` -- a CLI-side addition landing in
+    a parallel worktree; parsed if present, tolerating absence). Falls back
+    to `shim_target_path` (populated only while the shim is currently
+    installed, per `status.py`).
+
+    Deliberately does NOT fall back to `detected_claude_command_path`: that
+    field is a `shutil.which("claude")` PATH lookup -- a coincidental,
+    possibly *different* entry point (see the GUI report's repair-target
+    investigation), not the install record's actual target. Guessing with
+    it would repeat the exact "guessed wrong about what had happened"
+    complaint this fix exists to close.
+
+    Today's real `status --json` (before the parallel worktree's CLI change
+    lands) emits neither field in the `targetReplacedByOfficial` scenario --
+    a real, reported gap -- so this returns `None` there and callers render
+    generic, path-free text rather than inventing a path.
+    """
+    if state is None:
+        return None
+    return state.last_managed_target_path or state.shim_target_path
+
+
+def _target_clause(state: MenuState) -> str:
+    target = repair_target_path(state)
+    return f" (target: {abbreviate_home(target)})" if target is not None else ""
+
+
 def _repair_needed_message(state: MenuState) -> str:
+    clause = _target_clause(state)
     if state.detected_official_version:
-        return f"Claude {state.detected_official_version} available — shim repair needed"
+        return f"Claude {state.detected_official_version} available — shim repair needed{clause}"
     short = _short_digest(state.detected_official_sha256)
     if short:
-        return f"New Claude build available ({short}…) — shim repair needed"
-    return "New Claude build available — shim repair needed"
+        return f"New Claude build available ({short}…) — shim repair needed{clause}"
+    return f"New Claude build available — shim repair needed{clause}"
 
 
 def _rollout_message(state: MenuState) -> str:
+    clause = _target_clause(state)
     if state.detected_official_version:
-        return f"Claude {state.detected_official_version} available — rebuild to roll out"
+        return f"Claude {state.detected_official_version} available — rebuild to roll out{clause}"
     short = _short_digest(state.detected_official_sha256)
     if short:
-        return f"New Claude build available ({short}…) — rebuild to roll out"
-    return "New Claude build available — rebuild to roll out"
+        return f"New Claude build available ({short}…) — rebuild to roll out{clause}"
+    return f"New Claude build available — rebuild to roll out{clause}"
 
 
 def build_notice_model(
@@ -198,9 +259,14 @@ def repair_confirm_text(state: MenuState | None) -> str:
         detail = f"Claude {state.detected_official_version}"
     else:
         detail = f"Claude build {_short_digest(state.detected_official_sha256)}…"
+    target = repair_target_path(state)
+    target_sentence = (
+        f" The target is {abbreviate_home(target)}." if target is not None else ""
+    )
     return (
         f"Repair the ClaudeMonkey shim for {detail}?\n\n"
-        "This restores launches through PATH to go through ClaudeMonkey. "
+        "This restores launches through PATH to go through ClaudeMonkey."
+        f"{target_sentence} "
         "The newly detected official build is cached first so it can still "
         "be rolled out later."
     )
@@ -274,6 +340,34 @@ def compatibility_display(status: str, message: str | None = None) -> str:
     return message or _COMPATIBILITY_FALLBACK_TEXT
 
 
+def patch_notes(patch: PatchMenuItem) -> str:
+    """Text for the Patches table's Notes column.
+
+    `list-patches --json` emits an `errors` list per patch (currently always
+    empty in real usage, but a real, already-parsed field -- see
+    `PatchMenuItem.errors` / `menubar_state.parse_menu_state`). There is no
+    description/notes/summary field in the CLI's patch payload today (see
+    the GUI report's investigation); this renders exactly what exists
+    (validation errors, if any) rather than inventing copy. Blank when
+    there are none.
+    """
+    return "; ".join(patch.errors)
+
+
+def option_notes(option: OptionMenuItem) -> str:
+    """Text for the Options table's Notes column.
+
+    Prefers the CLI-supplied `statusWarning` (`OptionMenuItem.status_warning`,
+    parsed from `list-options --json`'s per-option `statusWarning` field --
+    e.g. "Dangerous permissions enabled" for the high-risk option in real
+    usage). Falls back to any validation `errors` when there's no status
+    warning. Blank when neither is present -- never invents copy.
+    """
+    if option.status_warning:
+        return option.status_warning
+    return "; ".join(option.errors)
+
+
 def patch_menu_label(patch: PatchMenuItem) -> str:
     if not patch.available:
         return f"{patch.label} — unavailable"
@@ -297,6 +391,33 @@ def option_item_enabled(option: OptionMenuItem, *, mutating_enabled: bool) -> bo
     # Enabling a requires_confirmation option is allowed here; the confirm
     # dialog (owned by a later task) handles the actual high-risk gate.
     return mutating_enabled and option.valid
+
+
+REBUILD_PENDING_MESSAGE = "Changes not active yet — rebuild to apply."
+
+
+def rebuild_pending_banner_visible(state: MenuState | None) -> bool:
+    """Whether the Patches/Options pages' pending-rebuild banner should show.
+
+    Purely `state.rebuild_required` -- the same flag `build_tray_model`
+    reads for `TrayModel.rebuild_required` and `tray_icon_variant` reads for
+    the pending tray-icon variant, so the tray and every window page always
+    agree about pending-rebuild state (the user's "no feedback that we need
+    to rebuild to apply" complaint).
+    """
+    return state is not None and state.rebuild_required
+
+
+def tray_icon_variant(state: MenuState | None) -> str:
+    """Which tray icon `QIcon` variant to render: "normal" or "pending".
+
+    "pending" whenever `state.rebuild_required` -- gives the pending-rebuild
+    state a menu-bar-visible cue beyond the menu text, per the user's ask to
+    "flash a color or invert the icon". macOS template icons are monochrome
+    (see `gui/icons.py`), so a badge/dot variant is the robust choice here
+    rather than a color change or inversion.
+    """
+    return "pending" if state is not None and state.rebuild_required else "normal"
 
 
 def rebuild_button_enabled(state: MenuState | None, *, mutating_enabled: bool) -> bool:
@@ -327,26 +448,68 @@ def default_install_target(state: MenuState | None = None) -> Path:
     return managed_user_target(state_dir)
 
 
-def install_target_choices(state: MenuState | None) -> tuple[tuple[str, Path], ...]:
+@dataclass(frozen=True)
+class InstallTargetChoice:
+    """One Install-page combo-box entry.
+
+    `detected` is True for entries backed by a real signal from `status`
+    (the managed user target ClaudeMonkey itself owns, a recorded install,
+    or a detected `claude` command) and False for a hardcoded
+    `COMMON_INSTALL_TARGETS` standard-location guess. The combo previously
+    rendered both the same way, which is exactly what the user couldn't
+    tell apart -- see `install_target_choice_label`, which turns this flag
+    (plus an on-disk existence check the Qt layer performs, since this
+    module never does I/O) into the actual label text.
+    """
+
+    label: str
+    target: Path
+    detected: bool
+
+
+def install_target_choices(state: MenuState | None) -> tuple[InstallTargetChoice, ...]:
     state_dir = state.state_dir if state else Path.home() / ".claude-monkey"
-    choices: list[tuple[str, Path]] = [
-        ("Use managed user target", managed_user_target(state_dir)),
+    choices: list[InstallTargetChoice] = [
+        InstallTargetChoice("Use managed user target", managed_user_target(state_dir), True),
     ]
     if state and state.shim_target_path:
-        choices.append(("Use recorded target", state.shim_target_path))
+        choices.append(InstallTargetChoice("Use recorded target", state.shim_target_path, True))
     if state and state.detected_claude_command_path:
-        choices.append(("Use detected claude command", state.detected_claude_command_path))
+        choices.append(
+            InstallTargetChoice(
+                "Use detected claude command", state.detected_claude_command_path, True
+            )
+        )
     for target in COMMON_INSTALL_TARGETS:
-        choices.append((f"Use {target}", target))
+        choices.append(InstallTargetChoice(f"Use {target}", target, False))
 
-    deduped: list[tuple[str, Path]] = []
+    deduped: list[InstallTargetChoice] = []
     seen: set[str] = set()
-    for label, target in choices:
-        key = str(target.expanduser())
+    for choice in choices:
+        key = str(choice.target.expanduser())
         if key not in seen:
-            deduped.append((label, target.expanduser()))
+            deduped.append(
+                InstallTargetChoice(choice.label, choice.target.expanduser(), choice.detected)
+            )
             seen.add(key)
     return tuple(deduped)
+
+
+def install_target_choice_label(choice: InstallTargetChoice, *, exists: bool | None = None) -> str:
+    """Combo-box label text for one install-target choice.
+
+    Detected entries (`choice.detected`) render plain -- `status` already
+    told us this path is real. Guesses get a short, plain-language suffix;
+    an `exists=True` on-disk hit (checked by the Qt layer, since this module
+    never performs I/O -- see `InstallPage._render_status`) is called out
+    too, since a guess that happens to exist is meaningfully more
+    trustworthy than one that doesn't.
+    """
+    if choice.detected:
+        return choice.label
+    if exists:
+        return f"{choice.label} (standard location, found on disk)"
+    return f"{choice.label} (standard location, not checked)"
 
 
 class InstallTargetSelection:

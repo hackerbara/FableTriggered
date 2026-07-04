@@ -393,13 +393,42 @@ def test_patches_compatibility_column_hides_internal_status_words(qtbot, tmp_pat
     window.render(state)
 
     table = window.patches_page.table
-    assert table.item(0, 2).text() == ""
-    assert table.item(1, 2).text() == ""
-    assert table.item(2, 2).text() == "targets 2.1.198"
-    assert table.item(3, 2).text() == "Not compatible with this Claude version"
+    compat_col = 3
+    assert table.item(0, compat_col).text() == ""
+    assert table.item(1, compat_col).text() == ""
+    assert table.item(2, compat_col).text() == "targets 2.1.198"
+    assert table.item(3, compat_col).text() == "Not compatible with this Claude version"
     for row in range(table.rowCount()):
-        text = table.item(row, 2).text()
+        text = table.item(row, compat_col).text()
         assert text not in {"unconstrained", "compatible", "version_mismatch", "sha_mismatch"}
+
+
+def test_patches_notes_column_shows_errors(qtbot, tmp_path):
+    state = _state(
+        tmp_path,
+        patch_items=(
+            PatchMenuItem("p1", "Fable", True, True, True, "unconstrained", None),
+            PatchMenuItem(
+                "p2",
+                "Broken",
+                False,
+                False,
+                False,
+                "unknown",
+                None,
+                errors=("id_must_match_folder: different != p2",),
+            ),
+        ),
+    )
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state)
+
+    table = window.patches_page.table
+    notes_col = 2
+    assert table.item(0, notes_col).text() == ""
+    assert table.item(1, notes_col).text() == "id_must_match_folder: different != p2"
 
 
 def test_patches_add_package_emits_action(qtbot, monkeypatch, fake_state, tmp_path):
@@ -474,6 +503,44 @@ def test_patches_remove_click_emits_action(qtbot, tmp_path):
         qtbot.mouseClick(window.patches_page.remove_button, Qt.MouseButton.LeftButton)
 
     assert blocker.args == ["remove_package", {"kind": "patch", "package_id": "p1"}]
+
+
+def test_patches_pending_rebuild_banner_hidden_when_not_required(qtbot, tmp_path):
+    state = _state(tmp_path, rebuild_required=False)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state)
+
+    assert window.patches_page.pending_rebuild_banner.isVisible() is False
+
+
+def test_patches_pending_rebuild_banner_shown_when_required(qtbot, tmp_path):
+    state = _state(tmp_path, rebuild_required=True)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.show()
+    window.stack.setCurrentWidget(window.patches_page)  # non-current pages report isVisible=False
+
+    window.render(state)
+
+    banner = window.patches_page.pending_rebuild_banner
+    assert banner.isVisible() is True
+    assert "rebuild" in banner.label.text().lower()
+
+
+def test_patches_pending_rebuild_banner_button_emits_rebuild(qtbot, tmp_path):
+    state = _state(tmp_path, rebuild_required=True)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render(state)
+
+    with qtbot.waitSignal(window.action, timeout=1000) as blocker:
+        qtbot.mouseClick(
+            window.patches_page.pending_rebuild_banner.rebuild_button, Qt.MouseButton.LeftButton
+        )
+
+    assert blocker.args == ["rebuild", {}]
 
 
 # --- Prompts page (Task 17) ---------------------------------------------
@@ -799,9 +866,87 @@ def test_options_compatibility_column_hides_internal_status_words(qtbot, tmp_pat
     window.render(state)
 
     table = window.options_page.table
-    assert table.item(0, 3).text() == ""
+    compat_col = 4
+    assert table.item(0, compat_col).text() == ""
     for row in range(table.rowCount()):
-        assert table.item(row, 3).text() not in {"unconstrained", "constrained"}
+        assert table.item(row, compat_col).text() not in {"unconstrained", "constrained"}
+
+
+def test_options_notes_column_shows_status_warning(qtbot, tmp_path):
+    state = _state(
+        tmp_path,
+        option_items=(
+            OptionMenuItem("o1", "Local proxy", True, True, "unconstrained", "low"),
+            OptionMenuItem(
+                "dangerous-permissions",
+                "Dangerous permissions",
+                True,
+                True,
+                "unconstrained",
+                "high",
+                True,
+                (),
+                "Dangerous permissions enabled",
+            ),
+        ),
+    )
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state)
+
+    table = window.options_page.table
+    notes_col = 3
+    assert table.item(0, notes_col).text() == ""
+    assert table.item(1, notes_col).text() == "Dangerous permissions enabled"
+
+
+def test_options_pending_rebuild_banner_hidden_when_not_required(qtbot, tmp_path):
+    state = _state(tmp_path, rebuild_required=False)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state)
+
+    assert window.options_page.pending_rebuild_banner.isVisible() is False
+
+
+def test_options_pending_rebuild_banner_shown_when_required(qtbot, tmp_path):
+    state = _state(tmp_path, rebuild_required=True)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.show()
+    window.stack.setCurrentWidget(window.options_page)  # non-current pages report isVisible=False
+
+    window.render(state)
+
+    banner = window.options_page.pending_rebuild_banner
+    assert banner.isVisible() is True
+    assert "rebuild" in banner.label.text().lower()
+
+
+def test_options_pending_rebuild_banner_button_emits_rebuild(qtbot, tmp_path):
+    state = _state(tmp_path, rebuild_required=True)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render(state)
+
+    with qtbot.waitSignal(window.action, timeout=1000) as blocker:
+        qtbot.mouseClick(
+            window.options_page.pending_rebuild_banner.rebuild_button, Qt.MouseButton.LeftButton
+        )
+
+    assert blocker.args == ["rebuild", {}]
+
+
+def test_options_pending_rebuild_banner_button_disabled_while_busy(qtbot, tmp_path):
+    state = _state(tmp_path, rebuild_required=True)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state, busy_command="toggle_option")
+
+    assert window.options_page.pending_rebuild_banner.rebuild_button.isEnabled() is False
 
 
 # --- Install page (Task 18) ---------------------------------------------

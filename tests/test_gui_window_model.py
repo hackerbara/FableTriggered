@@ -29,16 +29,21 @@ import pytest
 
 from claude_monkey.gui import window_model
 from claude_monkey.gui.window_model import (
+    COMMON_INSTALL_TARGETS,
+    InstallTargetChoice,
     InstallTargetSelection,
     NoticeModel,
     build_notice_model,
     build_tray_model,
     compatibility_display,
     default_install_target,
+    install_target_choice_label,
     install_target_choices,
     option_item_enabled,
+    option_notes,
     patch_item_enabled,
     patch_menu_label,
+    patch_notes,
     remove_enabled,
     repair_confirm_text,
     repair_refusal_display,
@@ -146,6 +151,24 @@ def test_tray_model_exposes_underlying_item_tuples(state_without_shim):
 def test_tray_hides_install_shim_when_installed(state_with_shim, state_without_shim):
     assert build_tray_model(state_with_shim, None).show_install_shim is False
     assert build_tray_model(state_without_shim, None).show_install_shim is True
+
+
+def test_tray_model_surfaces_rebuild_required_and_pending_icon(tmp_path):
+    pending = _state(tmp_path, rebuild_required=True)
+    model = build_tray_model(pending, None)
+    assert model.rebuild_required is True
+    assert model.icon_variant == "pending"
+
+    not_pending = _state(tmp_path, rebuild_required=False)
+    model = build_tray_model(not_pending, None)
+    assert model.rebuild_required is False
+    assert model.icon_variant == "normal"
+
+
+def test_tray_model_none_state_defaults_to_normal_icon_and_no_rebuild():
+    model = build_tray_model(None, None)
+    assert model.rebuild_required is False
+    assert model.icon_variant == "normal"
 
 
 def test_busy_disables_mutating_and_shows_running(state_without_shim):
@@ -297,6 +320,50 @@ def test_patch_item_enabled_true_when_unconstrained_and_unchecked():
 
 
 # ---------------------------------------------------------------------------
+# patch_notes / option_notes
+# ---------------------------------------------------------------------------
+
+
+def test_patch_notes_blank_when_no_errors():
+    patch = PatchMenuItem("p1", "Fable", True, True, True, "compatible", None)
+    assert patch_notes(patch) == ""
+
+
+def test_patch_notes_joins_errors():
+    patch = PatchMenuItem(
+        "p1", "Fable", True, True, True, "compatible", None, errors=("a", "b")
+    )
+    assert patch_notes(patch) == "a; b"
+
+
+def test_option_notes_prefers_status_warning():
+    option = OptionMenuItem(
+        "dangerous-permissions",
+        "Dangerous permissions",
+        True,
+        True,
+        "unconstrained",
+        "high",
+        True,
+        (),
+        "Dangerous permissions enabled",
+    )
+    assert option_notes(option) == "Dangerous permissions enabled"
+
+
+def test_option_notes_falls_back_to_errors_when_no_status_warning():
+    option = OptionMenuItem(
+        "o1", "Broken", False, False, "unknown", "low", False, ("bad thing",), None
+    )
+    assert option_notes(option) == "bad thing"
+
+
+def test_option_notes_blank_when_neither_present():
+    option = OptionMenuItem("o1", "Local proxy", False, True, "unconstrained", "low")
+    assert option_notes(option) == ""
+
+
+# ---------------------------------------------------------------------------
 # option_item_enabled
 # ---------------------------------------------------------------------------
 
@@ -357,6 +424,39 @@ def test_rebuild_button_enabled_true_when_not_busy(state_without_shim):
 
 def test_rebuild_button_enabled_false_when_state_none():
     assert window_model.rebuild_button_enabled(None, mutating_enabled=True) is False
+
+
+# ---------------------------------------------------------------------------
+# rebuild_pending_banner_visible / tray_icon_variant
+# ---------------------------------------------------------------------------
+
+
+def test_rebuild_pending_banner_visible_true_when_rebuild_required(tmp_path):
+    state = _state(tmp_path, rebuild_required=True)
+    assert window_model.rebuild_pending_banner_visible(state) is True
+
+
+def test_rebuild_pending_banner_visible_false_when_not_required(tmp_path):
+    state = _state(tmp_path, rebuild_required=False)
+    assert window_model.rebuild_pending_banner_visible(state) is False
+
+
+def test_rebuild_pending_banner_visible_false_when_state_none():
+    assert window_model.rebuild_pending_banner_visible(None) is False
+
+
+def test_tray_icon_variant_pending_when_rebuild_required(tmp_path):
+    state = _state(tmp_path, rebuild_required=True)
+    assert window_model.tray_icon_variant(state) == "pending"
+
+
+def test_tray_icon_variant_normal_when_not_required(tmp_path):
+    state = _state(tmp_path, rebuild_required=False)
+    assert window_model.tray_icon_variant(state) == "normal"
+
+
+def test_tray_icon_variant_normal_when_state_none():
+    assert window_model.tray_icon_variant(None) == "normal"
 
 
 def test_install_button_enabled_false_when_busy_even_if_not_installed(state_without_shim):
@@ -431,13 +531,15 @@ def test_default_install_target_fallback_agrees_with_install_target_choices_root
     # silently disagree with `install_target_choices[0]` for every real user.
     state = _state(tmp_path)  # shim_target_path=None, detected_claude_command_path=None
     assert default_install_target(state) == managed_user_target(state.state_dir)
-    assert default_install_target(state) == install_target_choices(state)[0][1]
+    assert default_install_target(state) == install_target_choices(state)[0].target
 
 
 def test_install_target_choices_starts_with_managed_user_target(tmp_path):
     state = _state(tmp_path)
     choices = install_target_choices(state)
-    assert choices[0] == ("Use managed user target", managed_user_target(tmp_path))
+    assert choices[0] == InstallTargetChoice(
+        "Use managed user target", managed_user_target(tmp_path), True
+    )
 
 
 def test_install_target_choices_includes_recorded_and_detected(tmp_path):
@@ -447,8 +549,30 @@ def test_install_target_choices_includes_recorded_and_detected(tmp_path):
 
     choices = install_target_choices(state)
 
-    assert ("Use recorded target", recorded) in choices
-    assert ("Use detected claude command", detected) in choices
+    assert InstallTargetChoice("Use recorded target", recorded, True) in choices
+    assert InstallTargetChoice("Use detected claude command", detected, True) in choices
+
+
+def test_install_target_choices_marks_common_targets_as_guesses(tmp_path):
+    # Fix: standard-location guesses (`COMMON_INSTALL_TARGETS`) must be
+    # distinguishable from genuinely detected entries -- the user couldn't
+    # tell them apart in the combo before this fix.
+    state = _state(tmp_path)
+    choices = install_target_choices(state)
+
+    guesses = [choice for choice in choices if not choice.detected]
+    assert guesses  # COMMON_INSTALL_TARGETS entries survive dedup in a fresh tmp_path
+    for choice in guesses:
+        assert choice.target in {t.expanduser() for t in COMMON_INSTALL_TARGETS}
+
+    detected = [choice for choice in choices if choice.detected]
+    assert all(choice.target not in {g.target for g in guesses} for choice in detected)
+
+
+def test_install_target_choices_includes_local_bin_claude_guess(tmp_path):
+    state = _state(tmp_path)
+    choices = install_target_choices(state)
+    assert Path("~/.local/bin/claude").expanduser() in {choice.target for choice in choices}
 
 
 def test_install_target_choices_deduplicates_paths(tmp_path):
@@ -456,7 +580,7 @@ def test_install_target_choices_deduplicates_paths(tmp_path):
 
     choices = install_target_choices(state)
 
-    targets = [target for _label, target in choices]
+    targets = [choice.target for choice in choices]
     assert len(targets) == len(set(targets))
 
 
@@ -464,7 +588,32 @@ def test_install_target_choices_none_state_uses_home_default(monkeypatch, tmp_pa
     monkeypatch.setenv("HOME", str(tmp_path))
     choices = install_target_choices(None)
     expected = managed_user_target(tmp_path / ".claude-monkey")
-    assert choices[0] == ("Use managed user target", expected)
+    assert choices[0] == InstallTargetChoice("Use managed user target", expected, True)
+
+
+# ---------------------------------------------------------------------------
+# install_target_choice_label
+# ---------------------------------------------------------------------------
+
+
+def test_install_target_choice_label_plain_when_detected():
+    choice = InstallTargetChoice("Use recorded target", Path("/tmp/claude"), True)
+    assert install_target_choice_label(choice) == "Use recorded target"
+    # exists is irrelevant for detected entries -- never suffixed either way.
+    assert install_target_choice_label(choice, exists=False) == "Use recorded target"
+
+
+def test_install_target_choice_label_marks_unchecked_guess():
+    choice = InstallTargetChoice("Use /usr/local/bin/claude", Path("/usr/local/bin/claude"), False)
+    label = install_target_choice_label(choice, exists=False)
+    assert "standard location" in label
+    assert "not checked" in label
+
+
+def test_install_target_choice_label_marks_guess_found_on_disk():
+    choice = InstallTargetChoice("Use /usr/local/bin/claude", Path("/usr/local/bin/claude"), False)
+    label = install_target_choice_label(choice, exists=True)
+    assert "found on disk" in label
 
 
 # ---------------------------------------------------------------------------
@@ -599,6 +748,20 @@ def test_build_notice_model_repair_needed_unknown_version(tmp_path):
     assert notice.actions == ("repair",)
 
 
+def test_build_notice_model_repair_needed_names_target_when_known(tmp_path):
+    # Fix: the update notice must name the concrete repair target when it's
+    # known (today only via the opportunistic `lastManagedTargetPath` field
+    # -- see `repair_target_path`'s docstring for why no other status field
+    # is a reliable stand-in).
+    state = _replaced_state(tmp_path, last_managed_target_path=tmp_path / "bin" / "claude")
+
+    notice = build_notice_model(state, frozenset())
+
+    target_display = window_model.abbreviate_home(tmp_path / "bin" / "claude")
+    assert notice is not None
+    assert f"(target: {target_display})" in notice.message
+
+
 def test_build_notice_model_no_actions_when_repair_not_available(tmp_path):
     # targetReplacedByOfficial can in principle be True while
     # shimRepairAvailable is False (e.g. a still-installed shim per
@@ -674,6 +837,65 @@ def test_repair_confirm_text_falls_back_to_digest(tmp_path):
 
 def test_repair_confirm_text_handles_none_state():
     assert repair_confirm_text(None) != ""
+
+
+def test_repair_confirm_text_names_target_when_known(tmp_path):
+    target = tmp_path / "bin" / "claude"
+    state = _replaced_state(tmp_path, last_managed_target_path=target)
+    text = repair_confirm_text(state)
+    assert window_model.abbreviate_home(target) in text
+
+
+def test_repair_confirm_text_omits_target_sentence_when_unknown(tmp_path):
+    # Today's real status--json gap (see repair_target_path's docstring):
+    # neither last_managed_target_path nor shim_target_path is populated in
+    # the targetReplacedByOfficial scenario, so no path is available -- the
+    # text must not invent one.
+    state = _replaced_state(tmp_path)
+    text = repair_confirm_text(state)
+    assert "The target is" not in text
+
+
+# ---------------------------------------------------------------------------
+# abbreviate_home / repair_target_path
+# ---------------------------------------------------------------------------
+
+
+def test_abbreviate_home_shortens_paths_under_home(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / ".local" / "bin" / "claude"
+    assert window_model.abbreviate_home(target) == "~/.local/bin/claude"
+
+
+def test_abbreviate_home_leaves_paths_outside_home_unchanged(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    outside = Path("/usr/local/bin/claude")
+    assert window_model.abbreviate_home(outside) == str(outside)
+
+
+def test_repair_target_path_prefers_last_managed_over_shim_target(tmp_path):
+    state = _state(
+        tmp_path,
+        last_managed_target_path=tmp_path / "managed" / "claude",
+        shim_target_path=tmp_path / "shim" / "claude",
+    )
+    assert window_model.repair_target_path(state) == tmp_path / "managed" / "claude"
+
+
+def test_repair_target_path_falls_back_to_shim_target(tmp_path):
+    state = _state(
+        tmp_path, last_managed_target_path=None, shim_target_path=tmp_path / "shim" / "claude"
+    )
+    assert window_model.repair_target_path(state) == tmp_path / "shim" / "claude"
+
+
+def test_repair_target_path_none_when_neither_field_available(tmp_path):
+    state = _state(tmp_path, last_managed_target_path=None, shim_target_path=None)
+    assert window_model.repair_target_path(state) is None
+
+
+def test_repair_target_path_handles_none_state():
+    assert window_model.repair_target_path(None) is None
 
 
 @pytest.mark.parametrize(

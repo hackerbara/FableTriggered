@@ -33,7 +33,7 @@
 ## Gates (in flight, user-driven)
 
 - [x] **G1 — footer-drawers lands.** ✅ Merged 2026-07-04 as `70c467d` (user landed it with port fix `fde46cc`). Note: it merged mid-flight against agent 1.6's working-tree edits — conflict resolution on the two drawer test files handled under 1.6.
-- [ ] **G2 — GUI rework lands.** `codex/claude-monkey-v3-gui` (canonical; `-sr1`/`-t16`/`-t17` are confirmed strict-subset earlier iterations). 41 commits behind main → **must rebase onto main after G1**, then land. Its `packages/` copies are stale — take main's/G1's for every package. **The branch is a full menubar replacement, not an addition** — its deletions and pyproject changes are intentional and must survive the rebase: deletes `src/claude_monkey/menubar.py` (rumps retired), repoints the menubar console script to `claude_monkey.gui.app:main`, swaps the `gui` extra from `rumps` to `PySide6>=6.7` (+ `pytest-qt`, `Pillow` dev deps), deletes `assets/claude-monkey-menubar-template.png`, adds `monkey-color-*.png` / `monkey-tray-*.png` assets (these ship).
+- [x] **G2 — GUI rework lands.** ✅ User merged it directly 2026-07-04 (`a982f08`, + dialog fix `da9f7b3`, dedup refactor `5f2effc`). PySide6 GUI, menubar.py retired, script repointed. *(Original rebase notes below kept for the record.)* `codex/claude-monkey-v3-gui` (canonical; `-sr1`/`-t16`/`-t17` are confirmed strict-subset earlier iterations). 41 commits behind main → **must rebase onto main after G1**, then land. Its `packages/` copies are stale — take main's/G1's for every package. **The branch is a full menubar replacement, not an addition** — its deletions and pyproject changes are intentional and must survive the rebase: deletes `src/claude_monkey/menubar.py` (rumps retired), repoints the menubar console script to `claude_monkey.gui.app:main`, swaps the `gui` extra from `rumps` to `PySide6>=6.7` (+ `pytest-qt`, `Pillow` dev deps), deletes `assets/claude-monkey-menubar-template.png`, adds `monkey-color-*.png` / `monkey-tray-*.png` assets (these ship).
 - [ ] **G3 — demo recorder tool ready.** In flight per `docs/superpowers/plans/2026-07-04-demo-recorder.md`. Independent of G1/G2; only blocks Phase 3 recording.
 
 ## Phase 1 — Content & cuts (after G1 + G2; old repo; system stays green after each step)
@@ -108,13 +108,14 @@
 - ~~G1 regression repair~~ **done** — commit `a6c28e7`: all 7 `test_reference_packages.py` failures retargeted to the migrated footer-drawers payload structure, guard-intent preserved (mojibake, scroll-step, flash, open/close wiring all re-anchored to their new payload homes). **Suite state: 456 passed, 2 skipped, 1 failed** — the single failure is `test_dvd_cursor_goblin.py` (pre-existing, package cut in 1.1). This is the expected-green baseline until 1.1 runs.
 - G3 (demo recorder) — **user's own in-flight work.**
 
-**G2 is NOT started deliberately:** the user may still have their own sub-agent doing final work on the GUI worktree (`codex/claude-monkey-v3-gui`). Rebasing a branch under a live agent invites chaos. **Ask the user to confirm their GUI work is complete before starting the G2 rebase.** G1's merge is one more thing the rebase must cross.
+**G2 landed** — user merged the GUI branch directly (`a982f08`). Both gates that blocked Phase 1 are now clear.
+
+**README status:** `HarnessMonkey-README.md` is committed and canonical (user cleanup snapshot + TK fill). All text TKs are resolved — install journey (verified against the real CLI: `enable-patch` is one package per call; codesign is stock, no Xcode), lessanxious-claude link, doctor/rollback/use-official troubleshooting, final 9-row package table. Doc is written **future-state** (harnessmonkey names, public clone URL) — the Phase 2 rename makes code match doc; 2.2's zero-grep done-condition must therefore EXCLUDE this file's intentional forward references (it contains no old names, so this is automatic). Remaining README gap: demo GIFs only (blocked on G3). Old `README.md` (FableTriggered) stays archive-only.
 
 **Next actions when resuming:**
-1. Verify 1.6 landed its commit and the post-merge test suite is green (`uv run pytest`).
-2. Confirm with the user that GUI final work is done → do the G2 rebase (highest-conflict step; instructions in the G2 gate above).
-3. After G2: Phase 1 tasks 1.1, 1.2, 1.4, 1.5, 1.7 in order.
-4. Remaining user-only items: PyPI token (4.1), creating `github.com/hackerbara/harnessmonkey` (4.3), G3 completion, GUI-work-done confirmation.
+1. Re-verify suite post-G2-merge (`uv run pytest`) — expected baseline 456+/2/1-known (dvd-goblin).
+2. Phase 1 in order: 1.1, 1.2, 1.3b (generator parity — fold into 1.5), 1.4, 1.5, 1.7.
+3. Remaining user-only items: PyPI token (4.1), creating `github.com/hackerbara/harnessmonkey` (4.3), G3 completion.
 
 ## Research appendix
 

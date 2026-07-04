@@ -3,7 +3,8 @@
 Generates two icon families under ``assets/``:
 
 - "tray" icons: opaque-black-on-transparent template masks (for the macOS
-  menu bar), sizes 18 and 36 px.
+  menu bar), sizes 18 and 36 px, plus a "-pending" badge variant of each
+  (shown while a rebuild is pending -- see `gui/window_model.tray_icon_variant`).
 - "color" icons: full-color application icons, sizes 128, 256, and 512 px.
 
 All shapes are drawn as hard-edged filled ellipses directly on an RGBA
@@ -38,6 +39,15 @@ EYE_RADIUS = 0.045
 NOSTRIL_CENTERS = ((0.46, 0.70), (0.54, 0.70))
 NOSTRIL_RADIUS = 0.02
 
+# Pending-rebuild badge (spec: tray icon must be visibly distinct while
+# `rebuildRequired` -- see `gui/window_model.tray_icon_variant`). macOS
+# template icons are monochrome (opaque black + alpha only), so this can't
+# be a color change -- instead a solid dot sits outside the head/ear
+# silhouette (bottom-right corner), changing the icon's overall alpha shape
+# enough to read as visually distinct at a glance.
+BADGE_CENTER = (0.86, 0.86)
+BADGE_RADIUS = 0.16
+
 
 Box = tuple[float, float, float, float]
 
@@ -67,6 +77,18 @@ def render_tray_icon(size: int) -> Image.Image:
     return img
 
 
+def render_tray_icon_pending(size: int) -> Image.Image:
+    """Same as `render_tray_icon` plus a solid corner-dot badge.
+
+    Used for the pending-rebuild tray-icon variant (see
+    `gui/window_model.tray_icon_variant`, `gui/icons.tray_icon`).
+    """
+    img = render_tray_icon(size)
+    draw = ImageDraw.Draw(img)
+    draw.ellipse(_circle_box(BADGE_CENTER, BADGE_RADIUS, size), fill=BLACK_OPAQUE)
+    return img
+
+
 def render_color_icon(size: int) -> Image.Image:
     """Render the full-color application icon."""
     img = Image.new("RGBA", (size, size), TRANSPARENT)
@@ -88,6 +110,10 @@ def main() -> None:
         path = ASSETS_DIR / f"monkey-tray-{size}.png"
         render_tray_icon(size).save(path)
         written.append(path)
+
+        pending_path = ASSETS_DIR / f"monkey-tray-{size}-pending.png"
+        render_tray_icon_pending(size).save(pending_path)
+        written.append(pending_path)
 
     for size in COLOR_SIZES:
         path = ASSETS_DIR / f"monkey-color-{size}.png"

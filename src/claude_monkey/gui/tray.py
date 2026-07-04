@@ -44,6 +44,7 @@ class Tray(QObject):
         self.icon.setContextMenu(self.menu)
 
     def render(self, model: TrayModel) -> None:
+        self.icon.setIcon(tray_icon(model.icon_variant))
         self.menu.clear()
 
         for line in model.status_lines:
@@ -51,6 +52,17 @@ class Tray(QObject):
         if model.running_label is not None:
             self._add_action(self.menu, model.running_label, enabled=False)
         self._add_notice(model)
+        if model.rebuild_required:
+            # Pending-rebuild feedback: a directly-clickable, prominently
+            # labeled entry near the top of the menu, distinct from the
+            # always-present "Rebuild / Apply…" item further down -- both
+            # emit the same "rebuild" action id.
+            self._add_action(
+                self.menu,
+                "Rebuild to apply changes",
+                action_id="rebuild",
+                enabled=model.mutating_enabled,
+            )
         self.menu.addSeparator()
 
         self._add_action(self.menu, "Open ClaudeMonkey…", action_id="open_window")

@@ -17,7 +17,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtGui import QAction  # noqa: E402
+from PySide6.QtGui import QAction, QIcon  # noqa: E402
 from PySide6.QtWidgets import QMenu  # noqa: E402
 
 from claude_monkey.gui.tray import Tray  # noqa: E402
@@ -132,6 +132,66 @@ def test_rebuild_action_triggers_on_action_with_no_kwargs(qapp):
     action.trigger()
 
     assert calls == [("rebuild", {})]
+
+
+# ---------------------------------------------------------------------------
+# Pending-rebuild feedback (fix: "no feedback that we need to rebuild")
+# ---------------------------------------------------------------------------
+
+
+def test_no_rebuild_required_item_when_model_says_not_required(qapp):
+    _, on_action = _recorder()
+    tray = Tray(on_action=on_action)
+    tray.render(_model(rebuild_required=False))
+
+    assert _find_action(tray.menu.actions(), "Rebuild to apply changes") is None
+
+
+def test_rebuild_required_item_shown_and_triggers_rebuild(qapp):
+    calls, on_action = _recorder()
+    tray = Tray(on_action=on_action)
+    tray.render(_model(rebuild_required=True))
+
+    action = _find_action(tray.menu.actions(), "Rebuild to apply changes")
+    assert action is not None
+    assert action.isEnabled() is True
+    action.trigger()
+
+    assert calls == [("rebuild", {})]
+
+
+def test_rebuild_required_item_disabled_while_busy(qapp):
+    _, on_action = _recorder()
+    tray = Tray(on_action=on_action)
+    tray.render(_model(rebuild_required=True, mutating_enabled=False))
+
+    action = _find_action(tray.menu.actions(), "Rebuild to apply changes")
+    assert action is not None
+    assert action.isEnabled() is False
+
+
+def test_icon_variant_picks_pending_asset(qapp, monkeypatch):
+    # `Tray.render` must ask `icons.tray_icon` for the model's chosen
+    # variant on every render -- the decision itself (which variant) lives
+    # in `window_model.tray_icon_variant`, this only checks the renderer
+    # relays it through.
+    import claude_monkey.gui.tray as tray_module
+
+    calls: list[str] = []
+
+    def fake_tray_icon(variant: str = "normal") -> QIcon:
+        calls.append(variant)
+        return QIcon()
+
+    monkeypatch.setattr(tray_module, "tray_icon", fake_tray_icon)
+    tray = Tray(on_action=lambda *_: None)
+    calls.clear()  # drop the __init__-time "normal" call
+
+    tray.render(_model(icon_variant="pending"))
+    assert calls == ["pending"]
+
+    tray.render(_model(icon_variant="normal"))
+    assert calls == ["pending", "normal"]
 
 
 # ---------------------------------------------------------------------------

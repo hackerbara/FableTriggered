@@ -161,8 +161,11 @@ eval(fs.readFileSync({str(bootstrap)!r}, "utf8"));
 
 def test_footer_drawers_bar_consumes_active_selection_and_renders_per_entry_hints() -> None:
     bar_payload = (FOOTER_DRAWERS / "payloads" / "10-footer-bar-var.js").read_text(encoding="utf-8")
+    bootstrap_payload = (FOOTER_DRAWERS / "payloads" / "01-bootstrap-and-overlay.js").read_text(encoding="utf-8")
     assert "__codexFDBar(FDs)" in bar_payload
     assert "children:__codexFDBarText()" not in bar_payload
+    assert "Xd.jsx(O1f,{selected:o.selected" in bootstrap_payload
+    assert 'color:o.selected?"background"' not in bootstrap_payload
 
     data = _run_footer_drawers_payload_js(
         """

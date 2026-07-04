@@ -32,7 +32,7 @@
               "oldRangeLength": 193,
               "replacement": {
                 "path": "payloads/01-bootstrap-and-overlay.js",
-                "sha256": "0a025cc0e09075e2c0f5820b69dc07e7cd7551db2df01c69356aeb082ac44b08"
+                "sha256": "1c233ecc01740d9b01f540896b11a98da4a7505f0fe8dcc96d90fca2ab1b580b"
               },
               "knownBehaviorChange": "Adds shared drawer registry helpers and renders the active registered drawer in the bottom overlay sibling."
             },

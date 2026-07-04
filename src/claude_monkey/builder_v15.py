@@ -651,10 +651,17 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
             blockers.append("smoke_skipped")
             tracker.skip("smoke", "smoke skipped")
         if manual_required:
-            blockers.append("manual_smoke_pending")
+            # manual-smoke gate disabled for now: no GUI affordance exists to perform
+            # manual smoke/activation, so requiring it made a successful build a dead
+            # end (build finishes but never activates, with no way to unblock it from
+            # the GUI). Per product decision, a successful build (automated validation
+            # passing) now activates directly instead of stalling here. Re-enable by
+            # restoring `blockers.append("manual_smoke_pending")` below once a rollout
+            # UX for manual smoke lands.
+            # blockers.append("manual_smoke_pending")
             report.manualSmoke = {
                 "required": True,
-                "status": "pending",
+                "status": "bypassed",
                 "reason": "; ".join(manual_reasons) if manual_reasons else None,
             }
         else:

@@ -886,6 +886,10 @@ def _build_failure_summary(summary: str) -> str:
 
 
 def _build_report_json_payload(report: Any, report_path: Path | None = None) -> dict[str, Any]:
+    # NOTE: build_patchset_v15 no longer produces "manual_smoke_pending" (the
+    # manual-smoke activation gate is disabled — see builder_v15.py). This branch
+    # is kept as defensive/backward-compatible handling in case a report ever
+    # carries that status (e.g. an older cached build-report.json on disk).
     report_payload = dict(to_jsonable(report))
     ok = report_payload.get("status") in {"verified", "manual_smoke_pending"}
     if (

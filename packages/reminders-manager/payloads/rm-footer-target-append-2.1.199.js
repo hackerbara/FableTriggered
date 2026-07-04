@@ -1,1 +1,0 @@
-var __rmI=ji.indexOf("hiddenContext");ji=__rmI>=0?[...ji.slice(0,__rmI+1),"reminders",...ji.slice(__rmI+1)]:["reminders",...ji];let Ly=Tt((Bt)=>Bt.footerSelection),Du=Ly&&ji.includes(Ly)?Ly:null;globalThis.__CODEX_REMINDERS_SELECTED_V1__=Du==="reminders";

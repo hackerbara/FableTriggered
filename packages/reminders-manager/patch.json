@@ -2,165 +2,76 @@
   "schemaVersion": 2,
   "id": "reminders-manager",
   "name": "Reminders Manager",
-  "description": "Runtime toggle drawer for suppressed reminder/accounting attachment families; a second footer drawer alongside Hidden Context. All families blocked by default, session-only, toggleable while running.",
-  "packageVersion": "0.1.0",
+  "description": "Runtime reminder/accounting suppression plus Footer Drawers registration for Claude Code 2.1.201.",
+  "packageVersion": "2.1.201-framework.1",
+  "requiresPackages": [
+    "footer-drawers"
+  ],
+  "conflictsWithPackages": [
+    "upstream-attachment-suppression"
+  ],
   "targets": [
     {
       "sourceIdentity": {
-        "arch": "arm64",
-        "claudeVersion": "2.1.199",
+        "claudeVersion": "2.1.201",
+        "versionOutput": "2.1.201 (Claude Code)",
+        "sha256": "a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd",
+        "sizeBytes": 231708784,
         "platform": "darwin",
-        "sha256": "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0",
-        "sizeBytes": 232155536,
-        "versionOutput": "2.1.199 (Claude Code)"
+        "arch": "arm64"
       },
       "requiredEngine": "bun_graph_repack",
       "requiredBinaryFormat": "bun_standalone_macho64",
       "modules": [
         {
           "path": "/$bunfs/root/src/entrypoints/cli.js",
-          "contentSha256": "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55",
-          "contentLength": 18593981,
+          "contentSha256": "46db617a7b13c062fb31595f6244819b11f7cdc6e6fed8e2c3f74a27fb6da1bd",
+          "contentLength": 18700756,
           "operations": [
             {
-              "opId": "rm-ug-runtime-deny-2-1-199",
-              "label": "Runtime-toggleable label gate before ug generator execution; defines RM state/UI helpers at module scope",
+              "opId": "rm-attachment-wrapper-deny",
+              "label": "Runtime deny gate for reminder attachment labels",
               "type": "replace_between",
-              "startMarker": "async function ug(e,t){",
-              "endMarker": "async function XQt(e,t){",
+              "startMarker": "async function _g(e,t){",
+              "endMarker": "async function len(e,t){",
               "expectedStartMarkerCount": 1,
               "expectedEndMarkerCount": 1,
-              "requireWithinRange": [
-                "let n=Date.now()",
-                "let r=await t()",
-                "G(\"tengu_attachment_compute_duration\""
-              ],
-              "oldRangeSha256": "4c0825d2dcf2d6188b1ff3607cd37398274af2217a4a2ada8a3c2fc274840533",
+              "oldRangeSha256": "8d9b098b1d2bcef25a34776a820ee94b7398fcc40de77cf9da68a4d72bffac0f",
               "oldRangeLength": 602,
               "replacement": {
-                "path": "payloads/rm-filter-labels-before-ug-2.1.199.js",
-                "sha256": "7e6584dda07e2f7f9683b61f98d2dd4ad1ca0e78a42263feb4de41a23284e674"
+                "path": "payloads/rm-attachment-wrapper-deny-2.1.201.js",
+                "sha256": "66c9928dad7cc23cf0e6ecafecb4faa2616708e8fcf5ff987f2e9fec531e203a"
               },
-              "knownBehaviorChange": "Reminder generators return an empty list when their family is denied in the runtime deny set; shared todo_reminders label is gated only when both todo and task rows are denied. Also defines __codexRMState/__codexRMUIState/__codexRMWrapActions/__codexRMPanel module-scope helpers."
+              "knownBehaviorChange": "Suppresses selected reminder/accounting attachment families before attachment generation."
             },
             {
-              "opId": "rm-hze-runtime-filter-2-1-199",
-              "label": "Runtime-toggleable attachment filter before li row construction",
+              "opId": "rm-xye-runtime-filter",
+              "label": "Runtime filter for reminder attachment objects",
               "type": "replace_between",
-              "startMarker": "async function*Hze(e,t,n,r,o,s,i,a){",
-              "endMarker": "async function i3l(e){",
+              "startMarker": "async function*XYe(e,t,n,r,o,s,i,a){",
+              "endMarker": "async function E5l(e){",
               "expectedStartMarkerCount": 1,
               "expectedEndMarkerCount": 1,
-              "requireWithinRange": [
-                "let l=await W9l(e,t,n,r,s,i,a)",
-                "G(\"tengu_attachments\"",
-                "yield li(c,o)"
-              ],
-              "oldRangeSha256": "528f9c3051a2b003d01023e68c13af05bc7752d96639eb9a34edb272165a36e9",
+              "oldRangeSha256": "3db820176d27dcac53b2a845322ca30fb882e7ebcf4e8c141ac5c6e423f208e6",
               "oldRangeLength": 180,
               "replacement": {
-                "path": "payloads/rm-filter-before-li-2.1.199.js",
-                "sha256": "51ca71f7192d7661390c7e64bf3b27fca294c09239962db10642a224a2b8097c"
+                "path": "payloads/rm-xye-runtime-filter-2.1.201.js",
+                "sha256": "5760e1f8fc1edfcd5db640a82590b7302c04e2c72d6233a72a082fdd629a6e1a"
               },
-              "knownBehaviorChange": "Denied attachment objects are filtered per-type before attachment telemetry and li row construction."
+              "knownBehaviorChange": "Filters selected reminder/accounting attachment objects before telemetry and transcript construction."
             },
             {
-              "opId": "rm-footer-target-append-2-1-199",
-              "label": "Append reminders footer target and publish selected flag",
-              "type": "replace_exact",
-              "exact": "let Ly=Tt((Bt)=>Bt.footerSelection),Du=Ly&&ji.includes(Ly)?Ly:null;",
-              "requireWithinRange": [],
-              "oldRangeSha256": "d6c201da691f2bcaadad8178ba7cf0e528e82142ec7ae9f229f6c8e7ac6a67bb",
-              "oldRangeLength": 67,
+              "opId": "rm-register-footer-drawer",
+              "label": "Register Reminders drawer with Footer Drawers framework",
+              "type": "insert_before",
+              "anchor": "var MXe,A_,Xd,GKo=2,pmr;",
+              "expectedAnchorCount": 1,
+              "insertOrder": 300,
               "replacement": {
-                "path": "payloads/rm-footer-target-append-2.1.199.js",
-                "sha256": "8c1219ae9a97c3af861c6c8c4fcf5077931937bbe0c21405c4791020a2a3c516"
+                "path": "payloads/rm-register-footer-drawer-2.1.201.js",
+                "sha256": "c76698729a8f1a4b04c9ee6c1feeb2856722a2c50022f74364910c560496fa43"
               },
-              "knownBehaviorChange": "Adds \"reminders\" to the footer targets list and sets globalThis.__CODEX_REMINDERS_SELECTED_V1__ each render."
-            },
-            {
-              "opId": "rm-wo-wrap-open-2-1-199",
-              "label": "Wrap footer actions object with reminders action interceptor (open paren)",
-              "type": "replace_exact",
-              "exact": "Wo({\"footer:up\":By,\"footer:down\":Jk,\"footer:next\":Uq,\"footer:previous\":AR,\"footer:openSelected\":()=>{",
-              "requireWithinRange": [],
-              "oldRangeSha256": "9efbe6c01a7671cebf441010c3e53739fdb438f6e149dfe9a1fb698802223fe1",
-              "oldRangeLength": 101,
-              "replacement": {
-                "path": "payloads/rm-wo-wrap-open-2.1.199.js",
-                "sha256": "8ff984b46be87e8f66f9c001ac3c8cbbaa6cc8e62cc7d1cea753eb501a9cbb31"
-              },
-              "knownBehaviorChange": "Footer action map is wrapped by __codexRMWrapActions so up/down/openSelected/close/clearSelection route to the reminders panel when it is the active target; all other targets delegate unchanged."
-            },
-            {
-              "opId": "rm-wo-wrap-close-2-1-199",
-              "label": "Wrap footer actions object with reminders action interceptor (close paren + selection arg)",
-              "type": "replace_exact",
-              "exact": "}},{context:\"Footer\",isActive:!!Du&&!oe});",
-              "requireWithinRange": [],
-              "oldRangeSha256": "597910853b640b1e3c484d65b1ad2dadd07918281845850547537543b747e8e8",
-              "oldRangeLength": 42,
-              "replacement": {
-                "path": "payloads/rm-wo-wrap-close-2.1.199.js",
-                "sha256": "22b50f8f06388b44a8771550d7f176c643457e3532ffb2fa69ba7e94cc7f7471"
-              },
-              "knownBehaviorChange": "Passes the active footer selection (Du) to __codexRMWrapActions and closes the wrapper call."
-            },
-            {
-              "opId": "rm-footer-space-binding-2-1-199",
-              "label": "Add space keybinding to the Footer context (space toggles like enter)",
-              "type": "replace_exact",
-              "exact": "{context:\"Footer\",bindings:{up:\"footer:up\",\"ctrl+p\":\"footer:up\",down:\"footer:down\",\"ctrl+n\":\"footer:down\",right:\"footer:next\",left:\"footer:previous\",enter:\"footer:openSelected\",escape:\"footer:clearSelection\",x:\"footer:close\"}}",
-              "requireWithinRange": [],
-              "oldRangeSha256": "f949623edd3b5bcb81a77dc3b23406ccb3a0556275fdec6d11ec6af8c111813d",
-              "oldRangeLength": 226,
-              "replacement": {
-                "path": "payloads/rm-footer-space-binding-2.1.199.js",
-                "sha256": "50fa96fe0f7f8de3056e85288056a09353839b90a0094e7dc21ad3cc3085d226"
-              },
-              "knownBehaviorChange": "Stock Footer context has no space binding; adds space:\"footer:openSelected\" so space toggles reminders rows."
-            },
-            {
-              "opId": "rm-bar-segment-2-1-199",
-              "label": "Push a Reminders availability-bar segment upstream of the bar render",
-              "type": "replace_exact",
-              "exact": "ue=x.map((Ne)=>pi.jsx(pDc,{link:Ne},Ne.key??Ne.url)),le=[...[]],de=n?VPf(s,F,W,M,R,O):[];",
-              "requireWithinRange": [],
-              "oldRangeSha256": "73493ffdf5126d81068615ee42cf5a5bab9541da8a47f30587ec39932b024ff9",
-              "oldRangeLength": 89,
-              "replacement": {
-                "path": "payloads/rm-bar-segment-2.1.199.js",
-                "sha256": "f3bffc2a25a9e5414ff6480e68c5643100dd6ce5546621311d343908f5a0aa3f"
-              },
-              "knownBehaviorChange": "Adds a dim \"Reminders\" segment (highlighted when selected) to the footer availability bar; renders under stock or drawer-patched downstream code."
-            },
-            {
-              "opId": "rm-overlay-default-2-1-199",
-              "label": "Render reminders panel sibling in the default layout overlay branch",
-              "type": "replace_exact",
-              "exact": "let Ee,ce;if(t[40]===Symbol.for(\"react.memo_cache_sentinel\"))Ee=zd.jsx($nc,{}),ce=zd.jsx(qnc,{}),t[40]=Ee,t[41]=ce;else Ee=t[40],ce=t[41];let ue;if(t[42]!==s)ue=zd.jsx(B,{flexDirection:\"column\",width:\"100%\",flexGrow:1,flexShrink:0,overflowY:\"hidden\",children:s}),t[42]=s,t[43]=ue;else ue=t[43];let le;if(t[44]!==w||t[45]!==ue)le=zd.jsxs(B,{flexDirection:\"column\",flexShrink:0,width:\"100%\",maxHeight:w,children:[Ee,ce,ue]}),t[44]=w,t[45]=ue,t[46]=le;else le=t[46];",
-              "requireWithinRange": [],
-              "oldRangeSha256": "3f971b7cb63cb8fbd2b4533d385ca06aa6a6438a92f2a0db9c13a3f1fcc3cdbe",
-              "oldRangeLength": 463,
-              "replacement": {
-                "path": "payloads/rm-overlay-default-2.1.199.js",
-                "sha256": "461111555a0cc9ca34a230e53da038998bc6b0c22a8e34a78c50cdbae980358e"
-              },
-              "knownBehaviorChange": "Injects zd.jsx(__codexRMPanel,{}) into the default layout overlay children; panel returns null unless the reminders drawer is open."
-            },
-            {
-              "opId": "rm-overlay-bde-2-1-199",
-              "label": "Render reminders panel sibling in the native-scroll-region layout overlay branch",
-              "type": "replace_exact",
-              "exact": "let J,Q;if(t[60]===Symbol.for(\"react.memo_cache_sentinel\"))J=zd.jsx($nc,{}),Q=zd.jsx(qnc,{}),t[60]=J,t[61]=Q;else J=t[60],Q=t[61];let Z;if(t[62]!==s)Z=zd.jsxs(zd.Fragment,{children:[J,Q,s]}),t[62]=s,t[63]=Z;else Z=t[63];",
-              "requireWithinRange": [],
-              "oldRangeSha256": "ee0bcabf6273d50aa2c3c052a3e4adb80290ceefd50c5f0452a7bbc7d5c1449c",
-              "oldRangeLength": 220,
-              "replacement": {
-                "path": "payloads/rm-overlay-bde-2.1.199.js",
-                "sha256": "e72f10de44abed5cca5bd11ae9c5099ee785b5b3f664e0313b9e6d818927ac0d"
-              },
-              "knownBehaviorChange": "Injects zd.jsx(__codexRMPanel,{}) into the bDe() native-scroll-region overlay children so the panel renders in both terminal modes."
+              "knownBehaviorChange": "Registers Reminders as an always-available framework drawer with row cursor/toggle handling."
             }
           ]
         }
@@ -169,27 +80,7 @@
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "async function ug(e,t){let n=Date.now();try{let r=await t()"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "async function*Hze(e,t,n,r,o,s,i,a){let l=await W9l(e,t,n,r,s,i,a);if(l.length===0)return;G(\"tengu_attachments\""
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "let Ly=Tt((Bt)=>Bt.footerSelection),Du=Ly&&ji.includes(Ly)?Ly:null;"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "Wo({\"footer:up\":By,\"footer:down\":Jk,\"footer:next\":Uq,\"footer:previous\":AR,\"footer:openSelected\":()=>{"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "enter:\"footer:openSelected\",escape:\"footer:clearSelection\",x:\"footer:close\"}}"
+          "value": "G(\"tengu_attachments\""
         }
       ],
       "postconditions": [
@@ -201,62 +92,22 @@
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function __codexRMWrapActions("
+          "value": "function __codexRMDenyLabel("
         },
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "function __codexRMPanel("
+          "value": "function __codexRMRegisterFooterDrawer("
         },
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "if(__codexRMDenyLabel(e))return[]"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "globalThis.__CODEX_REMINDERS_SELECTED_V1__=Du===\"reminders\""
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "var __rmI=ji.indexOf(\"hiddenContext\")"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "Wo(__codexRMWrapActions({"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "space:\"footer:openSelected\""
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "children:[Ee,ce,zd.jsx(__codexRMPanel,{}),ue]"
-        },
-        {
-          "type": "module_must_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "children:[J,Q,zd.jsx(__codexRMPanel,{}),s]"
-        },
-        {
-          "type": "module_must_not_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "async function ug(e,t){let n=Date.now();try{let r=await t()"
-        },
-        {
-          "type": "module_must_not_contain",
-          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "async function*Hze(e,t,n,r,o,s,i,a){let l=await W9l(e,t,n,r,s,i,a);if(l.length===0)return;G(\"tengu_attachments\""
+          "value": "id:\"reminders\""
         }
       ],
       "manualSmoke": {
         "required": true,
-        "reason": "The reminders drawer's row cursor, enter/space toggle, and tri-state master row are net-new keyboard interaction with no smoke-tested precedent; TUI footer/drawer layout and navigation require an interactive Claude Code session."
+        "reason": "Runtime reminders drawer rows/toggles require interactive footer smoke."
       }
     }
   ]

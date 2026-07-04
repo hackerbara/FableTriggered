@@ -198,7 +198,10 @@ def test_render_notice_hides_repair_button_when_no_repair_action(qtbot):
 
     assert window.overview_page.notice_label.isVisible() is True
     assert window.overview_page.notice_repair_button.isVisible() is False
-    assert window.overview_page.notice_dismiss_button.isVisible() is False
+    # Every notice is dismissable now, even a digest-less one (see
+    # window_model.notice_dismiss_key) -- there is no longer a "no digest ->
+    # no way to dismiss" gap.
+    assert window.overview_page.notice_dismiss_button.isVisible() is True
 
 
 def test_render_notice_none_hides_everything(qtbot):
@@ -245,6 +248,27 @@ def test_notice_dismiss_button_emits_dismiss_notice_with_digest(qtbot):
         )
 
     assert blocker.args == ["dismiss_notice", {"digest": "abcd1234"}]
+
+
+def test_notice_dismiss_button_emits_sentinel_key_for_digest_less_notice(qtbot):
+    # A digest-less notice (see NoticeModel.digest's docstring) must still be
+    # dismissable -- clicking Dismiss emits window_model's shared sentinel
+    # key rather than a raw `None` (which `Controller._action_dismiss_notice`
+    # would treat as falsy and silently do nothing with).
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.show()
+    window.render_notice(NoticeModel(message="rebuild to roll out", digest=None, actions=()))
+
+    assert window.overview_page.notice_dismiss_button.isVisible() is True
+    with qtbot.waitSignal(window.action, timeout=1000) as blocker:
+        qtbot.mouseClick(
+            window.overview_page.notice_dismiss_button, Qt.MouseButton.LeftButton
+        )
+
+    action_id, payload = blocker.args
+    assert action_id == "dismiss_notice"
+    assert payload["digest"]  # truthy sentinel, not None -- see app.py's dismiss handler
 
 
 def test_close_hides_instead_of_destroying(qtbot):

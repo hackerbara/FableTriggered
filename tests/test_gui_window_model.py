@@ -828,6 +828,25 @@ def test_build_notice_model_new_digest_re_raises(tmp_path):
     assert notice.digest == state.detected_official_sha256
 
 
+def test_build_notice_model_digest_less_notice_is_dismissable(tmp_path):
+    # A notice whose digest is None (theoretically reachable if the
+    # targetReplacedByOfficial-always-sets-a-digest invariant ever drifts,
+    # or independently for the rollout-informational branch, which reads
+    # the same detected_official_sha256 field) must still be dismissable --
+    # previously `digest is not None and digest in dismissed_digests` could
+    # never match a None digest, so it could never be found "dismissed".
+    state = _replaced_state(
+        tmp_path, detected_official_sha256=None, detected_official_version=None
+    )
+
+    notice = build_notice_model(state, frozenset())
+    assert notice is not None
+    assert notice.digest is None
+
+    key = window_model.notice_dismiss_key(notice)
+    assert build_notice_model(state, frozenset({key})) is None
+
+
 # ---------------------------------------------------------------------------
 # repair_confirm_text / repair_refusal_display
 # ---------------------------------------------------------------------------

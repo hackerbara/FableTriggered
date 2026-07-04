@@ -47,6 +47,7 @@ from claude_monkey.gui.window_model import (
     NoticeModel,
     build_tray_model,
     mutating_controls_enabled,
+    notice_dismiss_key,
     rebuild_button_enabled,
 )
 from claude_monkey.menubar_state import MenuState
@@ -210,7 +211,12 @@ class OverviewPage(QWidget):
         # rebuild button -- `notice_dismiss_button` is pure Controller state
         # (no CLI call), so it stays live regardless.
         self.notice_repair_button.setEnabled(mutating_enabled)
-        self.notice_dismiss_button.setVisible(notice.digest is not None)
+        # Every notice is dismissable now, regardless of whether it carries a
+        # real `digest` -- `notice_dismiss_key`/`_emit_dismiss_notice` supply
+        # a sentinel key for the digest-less case (see `NoticeModel.digest`'s
+        # docstring), so there is no longer a "no digest -> no Dismiss
+        # button" gap.
+        self.notice_dismiss_button.setVisible(True)
 
 
 class LogsPage(QWidget):
@@ -412,8 +418,8 @@ class SettingsWindow(QMainWindow):
 
     def _emit_dismiss_notice(self) -> None:
         notice = self.overview_page._notice
-        digest = notice.digest if notice is not None else None
-        self.action.emit("dismiss_notice", {"digest": digest})
+        key = notice_dismiss_key(notice) if notice is not None else None
+        self.action.emit("dismiss_notice", {"digest": key})
 
     def _open_overview_report(self) -> None:
         path = self.overview_page.report_path

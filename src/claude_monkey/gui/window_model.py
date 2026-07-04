@@ -28,11 +28,20 @@ class NoticeModel:
 
     `message` is already de-jargoned, ready to render verbatim. `digest` is
     the `detectedOfficialSha256` this notice is *about* -- the key the
-    Controller's dismissed-digest set (R5) tracks; it may be `None` for the
-    post-repair informational state, which has no digest to key on and
-    (being non-dismissable in practice, since it carries no action) does not
-    need one. `actions` is a subset of `("repair", "rollout")`, in the order
-    they should render; an empty tuple means informational-only -- no button.
+    Controller's dismissed-digest set (R5) tracks; it may be `None` (no
+    digest was available when the notice was built -- today only reachable
+    if the "targetReplacedByOfficial always sets a digest" invariant were to
+    drift, or independently for the rollout-informational branch, which
+    reads the same field). A `None` digest is still dismissable: use
+    `notice_dismiss_key(notice)`, never `notice.digest` directly, to get the
+    key to dismiss by or check against a dismissed set -- it substitutes a
+    shared sentinel key for `None` so a digest-less notice can be dismissed
+    at all (tradeoff: since the sentinel is shared, dismissing one
+    digest-less notice also suppresses any *other* digest-less notice until
+    a fresh GUI session -- R5's usual "per-digest, recurring" guarantee
+    degrades to "per-sentinel" in this one fallback case). `actions` is a
+    subset of `("repair", "rollout")`, in the order they should render; an
+    empty tuple means informational-only -- no button.
     """
 
     message: str
@@ -123,6 +132,27 @@ def build_tray_model(
 
 def _short_digest(digest: str | None) -> str | None:
     return digest[:8] if digest else None
+
+
+# Sentinel dismiss-key for a notice with no `digest` (see `NoticeModel.
+# digest`'s docstring for the tradeoff this shared key implies). Never
+# compared against a real digest directly -- always go through `_dismiss_key`/
+# `notice_dismiss_key`.
+_NO_DIGEST_DISMISS_KEY = "__no_digest__"
+
+
+def _dismiss_key(digest: str | None) -> str:
+    return digest if digest is not None else _NO_DIGEST_DISMISS_KEY
+
+
+def notice_dismiss_key(notice: NoticeModel) -> str:
+    """The key to dismiss `notice` by (R5), tolerating a `None` digest.
+
+    `settings_window.py` uses this instead of reading `notice.digest` raw
+    when emitting `dismiss_notice`, so a digest-less notice is dismissable
+    like any other (see `NoticeModel.digest`'s docstring).
+    """
+    return _dismiss_key(notice.digest)
 
 
 def abbreviate_home(path: Path) -> str:
@@ -227,14 +257,14 @@ def build_notice_model(
     """
     if state.target_replaced_by_official:
         digest = state.detected_official_sha256
-        if digest is not None and digest in dismissed_digests:
+        if _dismiss_key(digest) in dismissed_digests:
             return None
         actions = ("repair",) if state.shim_repair_available else ()
         return NoticeModel(message=_repair_needed_message(state), digest=digest, actions=actions)
 
     if state.rollout_required and state.shim_installed:
         digest = state.detected_official_sha256
-        if digest is not None and digest in dismissed_digests:
+        if _dismiss_key(digest) in dismissed_digests:
             return None
         return NoticeModel(message=_rollout_message(state), digest=digest, actions=())
 

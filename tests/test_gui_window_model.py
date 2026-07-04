@@ -172,19 +172,22 @@ def test_none_state_yields_error_model():
 
 @pytest.mark.parametrize(
     "status",
-    ["compatible", "unknown", "unconstrained"],
+    ["compatible", "unknown", "unconstrained", "constrained"],
 )
 def test_compatibility_display_healthy_statuses_are_blank(status):
     # Internal jargon like "unconstrained" must never reach the UI -- a
     # healthy/neutral status shows nothing, letting the row speak for
-    # itself via the package name alone.
+    # itself via the package name alone. "constrained" means the manifest
+    # merely *declares* a compatibility constraint -- it is not itself a
+    # failure (those surface as "version_mismatch"/"sha_mismatch"), so it
+    # belongs in the healthy/neutral bucket too.
     assert compatibility_display(status) == ""
     assert compatibility_display(status, "some message") == ""
 
 
 @pytest.mark.parametrize(
     "status",
-    ["version_mismatch", "sha_mismatch", "constrained", "incompatible", "some_future_status"],
+    ["version_mismatch", "sha_mismatch", "incompatible", "some_future_status"],
 )
 def test_compatibility_display_problem_status_uses_message_when_present(status):
     assert compatibility_display(status, "Human readable detail.") == "Human readable detail."
@@ -192,11 +195,11 @@ def test_compatibility_display_problem_status_uses_message_when_present(status):
 
 @pytest.mark.parametrize(
     "status",
-    ["version_mismatch", "sha_mismatch", "constrained", "incompatible", "some_future_status"],
+    ["version_mismatch", "sha_mismatch", "incompatible", "some_future_status"],
 )
 def test_compatibility_display_problem_status_falls_back_without_message(status):
-    # No raw status word (e.g. "sha_mismatch", "constrained") may pass
-    # through verbatim when the CLI didn't supply a message.
+    # No raw status word (e.g. "sha_mismatch") may pass through verbatim
+    # when the CLI didn't supply a message.
     display = compatibility_display(status)
     assert display != ""
     assert display != status

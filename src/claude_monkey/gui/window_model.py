@@ -66,7 +66,9 @@ def build_tray_model(state: MenuState | None, busy_command: str | None) -> TrayM
     )
 
 
-HEALTHY_COMPATIBILITY_STATUSES = frozenset({"compatible", "unknown", "unconstrained"})
+HEALTHY_COMPATIBILITY_STATUSES = frozenset(
+    {"compatible", "unknown", "unconstrained", "constrained"}
+)
 _COMPATIBILITY_FALLBACK_TEXT = "Not compatible with this Claude version"
 
 
@@ -79,7 +81,10 @@ def compatibility_display(status: str, message: str | None = None) -> str:
     makes sense to someone who understands ClaudeMonkey's internals.
 
     Healthy/neutral statuses render as an empty string: the row already
-    shows the package name, and that's enough. Anything else is a problem
+    shows the package name, and that's enough. ``constrained`` belongs in
+    this bucket -- it only means the manifest *declares* a compatibility
+    constraint, not that a check failed (actual failures surface as
+    ``version_mismatch``/``sha_mismatch``). Anything else is a problem
     status, so it renders the CLI-supplied, already human-phrased
     ``message`` when one is available, or a short generic fallback when it
     isn't. This is the single place every GUI surface routes compatibility

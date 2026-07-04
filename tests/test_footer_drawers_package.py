@@ -266,3 +266,88 @@ def test_reminders_conflicts_with_matching_uas_fixture_when_framework_is_present
     assert report.status == "failed"
     assert report.failureReason is not None
     assert "patch_conflict:package_conflict:reminders-manager:upstream-attachment-suppression" in report.failureReason
+import itertools
+
+
+def _build_packages(tmp_path: Path, name: str, packages: list[Path]):
+    source = _source_or_skip()
+    return build_patchset_v15(
+        BuildRequestV15(
+            source_path=source,
+            output_dir=tmp_path / name,
+            package_dirs=packages,
+            source_version="2.1.201",
+            source_version_output="2.1.201 (Claude Code)",
+            platform="darwin",
+            arch="arm64",
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "packages"),
+    [
+        ("framework-thinking", [FOOTER_DRAWERS, THINKING]),
+        ("framework-hidden", [FOOTER_DRAWERS, HC]),
+        ("framework-reminders", [FOOTER_DRAWERS, REMINDERS]),
+        ("framework-hidden-thinking", [FOOTER_DRAWERS, HC, THINKING]),
+        ("framework-hidden-reminders", [FOOTER_DRAWERS, HC, REMINDERS]),
+        ("framework-thinking-reminders", [FOOTER_DRAWERS, THINKING, REMINDERS]),
+        ("framework-all", [FOOTER_DRAWERS, HC, THINKING, REMINDERS]),
+    ],
+)
+def test_footer_drawers_successful_composition_matrix(tmp_path, name, packages) -> None:
+    report = _build_packages(tmp_path, name, packages)
+    assert report.automatedStatus == "passed", report.failureReason
+    assert report.status == "manual_smoke_pending"
+    assert report.activationEligible is False
+    assert report.enabledPatches == [p.name for p in packages]
+    if name == "framework-all":
+        registrations = [
+            (op["packageId"], op["opId"], op["insertOrder"], op.get("insertionVerified"))
+            for op in report.operationsApplied
+            if op["opId"] in {
+                "hidden-context-register-footer-drawer",
+                "thinking-register-footer-drawer",
+                "rm-register-footer-drawer",
+            }
+        ]
+        assert registrations == [
+            ("hidden-context-drawer", "hidden-context-register-footer-drawer", 100, True),
+            ("thinking-text-drawer", "thinking-register-footer-drawer", 200, True),
+            ("reminders-manager", "rm-register-footer-drawer", 300, True),
+        ]
+
+
+@pytest.mark.parametrize(("name", "package_dir"), [("hc", HC), ("thinking", THINKING), ("reminders", REMINDERS)])
+def test_thin_drawer_without_framework_fails_required_package_missing(tmp_path, name, package_dir) -> None:
+    report = _build_packages(tmp_path, f"missing-framework-{name}", [package_dir])
+    assert report.status == "failed"
+    assert report.failureReason is not None
+    assert "patch_conflict:required_package_missing" in report.failureReason
+    assert f":{package_dir.name}:footer-drawers" in report.failureReason
+
+def test_old_direct_footer_owner_with_framework_fails_closed(tmp_path) -> None:
+    source = _source_or_skip()
+    stale = tmp_path / "thinking-text-drawer"
+    stale.mkdir()
+    exact = 'ss=wo.useMemo(()=>[Ui&&"tasks",po&&"workflows",Fn&&"tmux",_e&&"bagel",Tr&&"bridge",Ne&&"frame"].filter(Boolean),[Ui,po,Fn,_e,Tr,Ne])'
+    replacement = exact.replace('[Ui&&"tasks"', '["thinking",Ui&&"tasks"')
+    manifest = {
+        "schemaVersion": 2,
+        "id": "stale-direct-thinking",
+        "name": "Stale Direct Thinking",
+        "description": "Fixture direct footer owner",
+        "packageVersion": "0.0.0",
+        "targets": [{
+            "sourceIdentity": {"claudeVersion":"2.1.201","versionOutput":"2.1.201 (Claude Code)","sha256":EXPECTED_BINARY_SHA,"sizeBytes":EXPECTED_BINARY_SIZE,"platform":"darwin","arch":"arm64"},
+            "requiredEngine": "bun_graph_repack",
+            "requiredBinaryFormat": "bun_standalone_macho64",
+            "modules": [{"path":MODULE_PATH,"contentSha256":EXPECTED_MODULE_SHA,"contentLength":EXPECTED_MODULE_LENGTH,"operations":[{"opId":"stale-footer-target","label":"Stale footer target","type":"replace_exact","exact":exact,"requireWithinRange":[],"oldRangeSha256":hashlib.sha256(exact.encode()).hexdigest(),"oldRangeLength":len(exact.encode()),"replacement":{"inline":replacement}}]}],
+        }],
+    }
+    (stale / "patch.json").write_text(json.dumps(manifest))
+    report = build_patchset_v15(BuildRequestV15(source_path=source, output_dir=tmp_path / "stale", package_dirs=[FOOTER_DRAWERS, stale], source_version="2.1.201", source_version_output="2.1.201 (Claude Code)", platform="darwin", arch="arm64"))
+    assert report.status == "failed"
+    assert report.failureReason is not None
+    assert "patch_conflict" in report.failureReason

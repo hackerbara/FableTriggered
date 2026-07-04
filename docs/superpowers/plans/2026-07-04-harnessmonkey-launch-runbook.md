@@ -63,7 +63,7 @@
 
 ## Phase 4 — Publish
 
-- [ ] 4.1 PyPI: user claims `harnessmonkey` (in progress); stub `0.0.1` pointing at the GitHub repo. Optional: also claim `harness-monkey` as a pointer.
+- [ ] 4.1 PyPI: **stubs built and ready** at `.development/pypi-stub/{harnessmonkey,harness-monkey}/dist/` (0.0.1, MIT, pointing at the GitHub repo). User has the account; publish with an API token: `cd .development/pypi-stub/harnessmonkey && uv publish --token <pypi-token>` (repeat in `harness-monkey/` for the pointer claim). Names verified free on PyPI 2026-07-04.
 - [ ] 4.2 Final hygiene sweep in the new tree: zero `/Users/MAC` hits, zero secrets/emails, no dev-doc leakage, `.gitignore` correct, LICENSE present (see open questions).
 - [ ] 4.2a **PII scan (hard gate):** mechanical case-insensitive scan of the entire fresh repo (tracked files *and* full new git history) for `alex` and `bernson` — zero hits required before push. These stay strictly in the local historical repo. Include word-boundary-free match (catches emails/handles); manually review any hit before deciding it's a false positive. Known false positive as of 2026-07-04: the minified identifier `apiRefusalExplanation` (contains "alEx") in `packages/fable-fallback/payloads/gcm-assistant-case.js` — scanned today, zero true hits in the ship set, zero `bernson` hits anywhere. **Text scan cannot inspect images** — additionally eyeball every shipped image (`assets/`, `packages/*/preview.png`, all GIFs) for leaked screen content before push; this is how the `fabletriggered-screenshot.jpeg` leak was caught.
 - [ ] 4.3 User creates `github.com/hackerbara/harnessmonkey`; `git init`, single commit, push.
@@ -89,6 +89,27 @@
 
 1. ~~LICENSE~~ → **MIT** (user decision). Added as task 2.5.
 2. ~~Header GIF~~ → **capy-onsen scene** (`capyclaude.gif`), confirmed.
+
+## State of play — handoff for a fresh-context session
+
+*Last updated 2026-07-04, session 1. A fresh agent should read this runbook top to bottom, then this section, then check `git log --oneline -15` and the task states below before doing anything.*
+
+**Done:**
+- All design decisions locked (tables above are signed off by the user — do not re-litigate names, schema, or repo contents).
+- Adversarial review folded in (commit `0331f76`); the G2 gate description, 2.2 rename scope, and PII gate reflect its findings.
+- PyPI stubs built (see 4.1) — awaiting user's API token to publish. Names verified free.
+- PII scan baseline: zero true `alex`/`bernson` hits in ship set (known false positive documented in 4.2a).
+
+**In flight (sub-agents dispatched 2026-07-04, check `git log` for their commits):**
+- 1.3 examples/ curation — agent copying + scrubbing the capy/dragons generator pipelines from `.development/` into `examples/*-generator/`.
+- 1.6 test-path parameterization — agent replacing `/Users/MAC` literals with an env-var + home-relative discovery helper; dvd test files deliberately skipped (they're cut in 1.1).
+- G1 (footer-drawers), G3 (demo recorder) — **user's own in-flight work**, not agent tasks. Do not start G2 (GUI rebase) until the user lands G1.
+
+**Next actions when resuming:**
+1. Verify the two sub-agent commits landed and tests are green (`uv run pytest`).
+2. Ask the user about G1/G3 status. When G1 lands → immediately do the G2 rebase (highest-conflict step; instructions in the G2 gate above).
+3. After G1+G2: Phase 1 tasks 1.1, 1.2, 1.4, 1.5, 1.7 in order.
+4. Remaining user-only items: PyPI token (4.1), creating `github.com/hackerbara/harnessmonkey` (4.3), G1/G3 completion.
 
 ## Research appendix
 

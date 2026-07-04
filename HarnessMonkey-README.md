@@ -42,21 +42,14 @@ Requires: a Mac on Apple Silicon, [uv](https://docs.astral.sh/uv/) (brings its o
 git clone https://github.com/hackerbara/harnessmonkey
 cd harnessmonkey
 uv sync
-uv run harnessmonkey doctor
+uv run harnessmonkey install
 ```
 
-Then copy all the scripts into your home dir, pick what you want on, and build:
+That's it — the monkey lands in your menubar (and comes back on login), with all the scripts loaded and switched off. From there, the three steps below.
 
-```sh
-uv run harnessmonkey add-all
-uv run harnessmonkey enable-patch capybara-onsen
-uv run harnessmonkey build --activate
-uv run harnessmonkey install-shim
-```
+Prefer a terminal-only life? `uv run harnessmonkey install --cli` skips the menubar app; everything it does has a CLI verb (`uv run harnessmonkey --help`).
 
-(`add-all` copies every script from the repo into `~/.harnessmonkey/patches/` — they're inert until you enable them.)
-
-For the GUI and menubar manager: `uv sync --extra gui`, then `uv run harnessmonkey-gui`.
+Changed your mind? `uv run harnessmonkey uninstall` takes the menubar app back out.
 
 ## How do I use it?
 

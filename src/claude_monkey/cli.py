@@ -5,8 +5,10 @@ import hashlib
 import json
 import os
 import platform as platform_module
+import re
 import shutil
 import sys
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -44,6 +46,7 @@ from claude_monkey.package_model import (
     manifest_digest,
     validate_package_id,
 )
+from claude_monkey.packages_admin import add_package, scaffold_prompt_package
 from claude_monkey.paths import StatePaths, default_paths
 from claude_monkey.shim_entry import compute_launch_with_paths
 from claude_monkey.smoke import run_command
@@ -92,6 +95,18 @@ def build_parser() -> argparse.ArgumentParser:
     set_prompt.add_argument("--from-file", action="store_true")
     clear_prompt = sub.add_parser("clear-prompt")
     clear_prompt.add_argument("--json", action="store_true")
+
+    add_patch = sub.add_parser("add-patch")
+    add_patch.add_argument("source_dir")
+    add_patch.add_argument("--json", action="store_true")
+    add_option = sub.add_parser("add-option")
+    add_option.add_argument("source_dir")
+    add_option.add_argument("--json", action="store_true")
+    add_prompt = sub.add_parser("add-prompt")
+    add_prompt.add_argument("path")
+    add_prompt.add_argument("--id")
+    add_prompt.add_argument("--name")
+    add_prompt.add_argument("--json", action="store_true")
 
     inspect_binary = sub.add_parser("inspect-binary")
     inspect_binary.add_argument("--source", required=True)
@@ -1243,6 +1258,48 @@ def handle_launch_preview(args: argparse.Namespace, paths: StatePaths, config) -
     return 0
 
 
+def handle_add_package(args: argparse.Namespace, paths: StatePaths, kind: str) -> int:
+    source = Path(args.source_dir).expanduser()
+    result = add_package(source, kind, paths.state_dir)
+    if args.json:
+        print_json(result)
+    else:
+        print(result["summary"], file=sys.stdout if result["ok"] else sys.stderr)
+    return 0 if result["ok"] else 1
+
+
+def _slugify_prompt_stem(stem: str) -> str:
+    return re.sub(r"[^a-z0-9._-]+", "-", stem.lower()).strip("-")
+
+
+def handle_add_prompt(args: argparse.Namespace, paths: StatePaths) -> int:
+    source_path = Path(args.path).expanduser()
+    if not source_path.is_file():
+        message = f"prompt source file does not exist: {source_path}"
+        if args.json:
+            print_json(envelope_error(message, code="missing_source_file"))
+        else:
+            print(message, file=sys.stderr)
+        return 2
+
+    package_id = args.id or _slugify_prompt_stem(source_path.stem)
+    manifest = scaffold_prompt_package(source_path, package_id, args.name)
+    with tempfile.TemporaryDirectory() as tmp:
+        staging_dir = Path(tmp) / package_id
+        staging_dir.mkdir(parents=True)
+        (staging_dir / "manifest.json").write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+        )
+        shutil.copyfile(source_path, staging_dir / "prompt.md")
+        result = add_package(staging_dir, "prompt", paths.state_dir)
+
+    if args.json:
+        print_json(result)
+    else:
+        print(result["summary"], file=sys.stdout if result["ok"] else sys.stderr)
+    return 0 if result["ok"] else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -1330,6 +1387,12 @@ def main(argv: list[str] | None = None) -> int:
         active_profile(config).prompt = None
         save_config(paths.config_path, config)
         return emit(args, "cleared active prompt profile", envelope_ok("prompt cleared"))
+    if args.command == "add-patch":
+        return handle_add_package(args, paths, "patch")
+    if args.command == "add-option":
+        return handle_add_package(args, paths, "option")
+    if args.command == "add-prompt":
+        return handle_add_prompt(args, paths)
     if args.command == "inspect-binary":
         source = Path(args.source).expanduser()
         payload = inspect_binary_bytes(source.read_bytes(), source_path=str(source))

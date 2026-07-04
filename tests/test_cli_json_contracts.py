@@ -863,6 +863,67 @@ def test_use_official_json_envelope(monkeypatch, tmp_path, capsys):
     assert status["sourceClaudePath"] == str(official.resolve())
 
 
+def test_add_patch_json_contract_installs_package(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    source = tmp_path / "demo-patch"
+    source.mkdir()
+    (source / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "patch",
+                "id": "demo-patch",
+                "label": "Demo",
+                "description": "d",
+                "patch": {"engine": "bun_graph_repack", "targets": []},
+            }
+        )
+    )
+
+    assert main(["add-patch", str(source), "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["schemaVersion"] == 1
+    assert payload["ok"] is True
+    assert isinstance(payload["status"], str)
+    assert isinstance(payload["summary"], str)
+    assert payload["error"] is None
+    assert isinstance(payload["warnings"], list)
+    installed = tmp_path / ".claude-monkey" / "patches" / "demo-patch" / "manifest.json"
+    assert installed.exists()
+
+
+def test_add_patch_json_contract_invalid_package(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    source = tmp_path / "bad-patch"
+    source.mkdir()
+    (source / "manifest.json").write_text("{not json")
+
+    assert main(["add-patch", str(source), "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_package"
+
+
+def test_add_prompt_json_contract_installs_and_is_not_active(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    source = tmp_path / "bare-prompt.md"
+    source.write_text("be helpful and concise")
+
+    assert main(["add-prompt", str(source), "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is True
+
+    prompt_path = tmp_path / ".claude-monkey" / "prompts" / "bare-prompt" / "prompt.md"
+    assert prompt_path.exists()
+    assert prompt_path.read_text() == "be helpful and concise"
+
+    assert main(["list-prompts", "--json"]) == 0
+    list_payload = parse_json_output(capsys)
+    records = [record for record in list_payload["prompts"] if record["id"] == "bare-prompt"]
+    assert len(records) == 1
+    assert records[0]["enabled"] is False
+
+
 def test_use_official_json_missing_inputs_return_envelopes(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("HOME", str(tmp_path))
     assert main(["use-official", "--json"]) == 2

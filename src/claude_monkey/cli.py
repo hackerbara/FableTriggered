@@ -31,8 +31,10 @@ from claude_monkey.cli_json import envelope_error, envelope_ok, print_json, to_j
 from claude_monkey.config import LaunchProfile, load_config, save_config
 from claude_monkey.install import (
     ProtectedTargetRestoreUnavailable,
+    TargetNotPlausibleOfficial,
     current_target_is_installed_shim,
     install_shim_transaction,
+    install_target_not_plausible_official,
     protected_install_requires_refusal,
     restore_install_transaction,
     use_official,
@@ -828,6 +830,24 @@ def _dry_run_install_payload(
         return envelope_error(
             message,
             code="protected_restore_unavailable",
+            target_path=target,
+            authorization_required=needs_auth,
+            authorization_method=authorization_method_for_target(target),
+            dry_run=True,
+            planned_actions=[action],
+        )
+    if (
+        not uninstall
+        and state_dir is not None
+        and install_target_not_plausible_official(target, state_dir / "install-record.json")
+    ):
+        message = (
+            "refusing to install shim over a target that does not look like a real "
+            f"Claude binary (below the plausibility size floor): {target}"
+        )
+        return envelope_error(
+            message,
+            code="target_not_plausible_official",
             target_path=target,
             authorization_required=needs_auth,
             authorization_method=authorization_method_for_target(target),
@@ -1645,6 +1665,19 @@ def main(argv: list[str] | None = None) -> int:
             payload = envelope_error(
                 str(exc),
                 code="protected_restore_unavailable",
+                target_path=target,
+                authorization_required=authorization_required,
+                authorization_method=authorization_method,
+            )
+            if args.json:
+                print_json(payload)
+            else:
+                print(str(exc), file=sys.stderr)
+            return 1
+        except TargetNotPlausibleOfficial as exc:
+            payload = envelope_error(
+                str(exc),
+                code="target_not_plausible_official",
                 target_path=target,
                 authorization_required=authorization_required,
                 authorization_method=authorization_method,

@@ -14,6 +14,7 @@ from time import time
 from claude_monkey import authorization
 from claude_monkey.progress import StageTracker
 from claude_monkey.shim import write_shim
+from claude_monkey.source_discovery import meets_plausible_official_size
 
 OWNER_MARKER = "ClaudeMonkey managed shim"
 
@@ -26,6 +27,16 @@ SHIM_STAGES: tuple[tuple[str, str], ...] = (
 
 class ProtectedTargetRestoreUnavailable(RuntimeError):
     pass
+
+
+class TargetNotPlausibleOfficial(RuntimeError):
+    """Raised by `install_shim_transaction` when `target_path` currently
+    holds a real, readable, executable file that is too small to plausibly
+    be a real Claude binary (CMux incident: install-shim previously had no
+    classification gate at all here, so pointing it at an unrelated small
+    wrapper script silently cached that script as "the official source" to
+    preserve/restore -- see `_install_target_fails_plausibility`).
+    """
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -333,6 +344,52 @@ def protected_install_requires_refusal(target_path: Path, record_path: Path) -> 
     return True
 
 
+def _install_target_fails_plausibility(target_path: Path) -> bool:
+    """True when `target_path` currently resolves to a readable, executable
+    file that is too small to plausibly be a real Claude binary.
+
+    Only meaningful when there is no existing ClaudeMonkey-managed record
+    for this exact target (see `install_shim_transaction`'s
+    `existing_record` check, which runs first): a legitimate re-install over
+    our own already-managed shim is always allowed, no matter how small the
+    rendered shim script itself is. A target that is missing or a dangling
+    symlink has nothing to validate -- that is the normal first-install
+    bootstrap case and is left alone.
+
+    Deliberately does not reuse the full
+    `status.classify_plausible_official_source` (which would also exclude
+    ClaudeMonkey's own managed bin/versions roots -- an unrelated concern for
+    an install-over target, and importing it here would create a circular
+    import: `status.py` already imports from this module at load time).
+    Reuses the same size-only primitive
+    (`source_discovery.meets_plausible_official_size`) instead.
+    """
+    if not (target_path.exists() or target_path.is_symlink()):
+        return False
+    try:
+        resolved = target_path.resolve(strict=True)
+    except OSError:
+        return False
+    if not (resolved.is_file() and os.access(resolved, os.X_OK)):
+        return False
+    return not meets_plausible_official_size(resolved)
+
+
+def install_target_not_plausible_official(target_path: Path, record_path: Path) -> bool:
+    """Public precondition check shared by `install_shim_transaction` and the
+    CLI's `install-shim --dry-run` preview (`cli._dry_run_install_payload`):
+    would install-shim currently refuse `target_path` because its existing
+    content doesn't look like a real Claude binary (CMux incident fix, see
+    `_install_target_fails_plausibility`)?
+
+    Always False when `target_path` already has a ClaudeMonkey-managed
+    record (a legitimate re-install over our own shim is always allowed).
+    """
+    if _existing_managed_record(record_path, target_path) is not None:
+        return False
+    return _install_target_fails_plausibility(target_path)
+
+
 def install_shim_transaction(
     target_path: Path,
     state_dir: Path,
@@ -351,6 +408,11 @@ def install_shim_transaction(
                 f"{target_path}"
             )
         existing_record = _existing_managed_record(record_path, target_path)
+        if existing_record is None and _install_target_fails_plausibility(target_path):
+            raise TargetNotPlausibleOfficial(
+                "refusing to install shim over a target that does not look like a real "
+                f"Claude binary (below the plausibility size floor): {target_path}"
+            )
         previous = (
             {
                 key: value
@@ -360,7 +422,7 @@ def install_shim_transaction(
             if existing_record is not None
             else describe_existing(target_path)
         )
-    except ProtectedTargetRestoreUnavailable as exc:
+    except (ProtectedTargetRestoreUnavailable, TargetNotPlausibleOfficial) as exc:
         tracker.fail(str(exc))
         raise
     tracker.done()

@@ -25,7 +25,11 @@ from claude_monkey.package_model import (
 )
 from claude_monkey.paths import StatePaths
 from claude_monkey.smoke import run_command
-from claude_monkey.source_discovery import discover_official_claude, is_managed_launcher_path
+from claude_monkey.source_discovery import (
+    discover_official_claude,
+    is_managed_launcher_path,
+    meets_plausible_official_size,
+)
 
 
 def _active_profile(config: ClaudeMonkeyConfig) -> LaunchProfile:
@@ -367,6 +371,16 @@ def classify_plausible_official_source(target_path: Path, paths: StatePaths) -> 
     this proves the target is *not* one of our own managed binaries -- it is
     not, and must never be presented as, verified-Anthropic provenance.
 
+    CMux incident fix: path-shape checks alone let *any* executable file
+    outside ClaudeMonkey's own managed paths through -- including an
+    unrelated tool's 8KB wrapper script, which is how that script got cached
+    and swapped in as "official" on a real machine. This now also requires
+    `meets_plausible_official_size` (see `source_discovery.py`'s
+    `MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES`): a cheap, offline `stat()`-only size
+    floor, generously below the real ~230MB Claude binary and generously
+    above any wrapper/shim script. Never executes `target_path` to check it
+    -- classification stays filesystem-metadata-only, by design.
+
     Stage-2 (`repair.py`) reuses this exact function for its own
     "current target classifies as plausible official" precondition rather
     than re-deriving the classification -- see that module for the
@@ -380,6 +394,8 @@ def classify_plausible_official_source(target_path: Path, paths: StatePaths) -> 
     if not (resolved.is_file() and os.access(resolved, os.X_OK)):
         return None
     if is_managed_launcher_path(resolved, paths):
+        return None
+    if not meets_plausible_official_size(resolved):
         return None
     return resolved
 
@@ -649,6 +665,19 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
         "shimInstalled": shim_installed,
         "shimTargetPath": _shim_target_from_record(install_record) if shim_installed else None,
         "installRecordPath": str(install_record) if shim_installed else None,
+        # Reverted-shim visibility gap fix: `shimTargetPath`/`installRecordPath`
+        # above stay gated on `shim_installed` exactly as before (existing
+        # consumers depend on that gating) -- this field is additive and is
+        # NOT gated on it, so a consumer can tell "never managed this
+        # machine" (None) apart from "managed but something -- e.g. the
+        # official Anthropic auto-updater -- reverted the shim since" (a
+        # non-None value while shimInstalled is False). Combine with
+        # `shimPreviouslyManaged and not shimInstalled` (both already exposed
+        # below/above) to detect that reverted-since-managed condition
+        # directly; no separate boolean is needed for it.
+        "lastManagedTargetPath": (
+            install_record_data.get("targetPath") if shim_previously_managed else None
+        ),
         # Stage-1 shim-update-resilience detection fields (spec §1). Additive
         # and optional for consumers; shimInstalled semantics are unchanged.
         "shimPreviouslyManaged": shim_previously_managed,

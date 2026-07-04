@@ -45,16 +45,16 @@ uv sync
 uv run harnessmonkey doctor
 ```
 
-Then copy the scripts you want into your home dir and build:
+Then copy all the scripts into your home dir, pick what you want on, and build:
 
 ```sh
-mkdir -p ~/.harnessmonkey/patches
-cp -r packages/capybara-onsen packages/fable-fallback ~/.harnessmonkey/patches/
+uv run harnessmonkey add-all
 uv run harnessmonkey enable-patch capybara-onsen
-uv run harnessmonkey enable-patch fable-fallback
 uv run harnessmonkey build --activate
 uv run harnessmonkey install-shim
 ```
+
+(`add-all` copies every script from the repo into `~/.harnessmonkey/patches/` — they're inert until you enable them.)
 
 For the GUI and menubar manager: `uv sync --extra gui`, then `uv run harnessmonkey-gui`.
 

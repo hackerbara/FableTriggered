@@ -280,3 +280,26 @@ def test_replace_substring_within_requires_markers():
 def test_replace_substring_within_rejects_insert_order():
     with pytest.raises(ManifestV2Error, match="not allowed on replace_substring_within"):
         load_manifest_v2_dict(_manifest_with_op(_subspan_op(insertOrder=5)))
+
+
+
+def test_relationship_metadata_parses():
+    data = _manifest_with_op(_insert_op())
+    data["requiresPackages"] = ["footer-drawers"]
+    data["conflictsWithPackages"] = ["upstream-attachment-suppression"]
+    manifest = load_manifest_v2_dict(data)
+    assert manifest.requires_packages == ("footer-drawers",)
+    assert manifest.conflicts_with_packages == ("upstream-attachment-suppression",)
+
+
+def test_relationship_metadata_defaults_empty():
+    manifest = load_manifest_v2_dict(_manifest_with_op(_insert_op()))
+    assert manifest.requires_packages == ()
+    assert manifest.conflicts_with_packages == ()
+
+
+def test_relationship_metadata_rejects_non_string_list():
+    data = _manifest_with_op(_insert_op())
+    data["requiresPackages"] = "footer-drawers"
+    with pytest.raises(ManifestV2Error, match="requiresPackages"):
+        load_manifest_v2_dict(data)

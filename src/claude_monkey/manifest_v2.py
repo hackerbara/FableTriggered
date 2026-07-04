@@ -109,6 +109,8 @@ class ManifestV2:
     package_version: str
     targets: tuple[TargetV2, ...]
     raw: dict[str, Any]
+    requires_packages: tuple[str, ...] = ()
+    conflicts_with_packages: tuple[str, ...] = ()
 
 
 def require_mapping(value: Any, label: str) -> dict[str, Any]:
@@ -150,6 +152,13 @@ def optional_non_negative_int(obj: dict[str, Any], field: str) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ManifestV2Error(f"{field} must be a non-negative integer")
     return value
+
+
+def optional_string_list(obj: dict[str, Any], field: str) -> tuple[str, ...]:
+    value = obj.get(field, [])
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ManifestV2Error(f"{field} must be a list of strings")
+    return tuple(value)
 
 
 def require_sha256(value: Any, field: str) -> str:
@@ -405,4 +414,6 @@ def load_manifest_v2_dict(data: dict[str, Any]) -> ManifestV2:
         package_version=require_string(top, "packageVersion"),
         targets=parsed_targets,
         raw=data,
+        requires_packages=optional_string_list(top, "requiresPackages"),
+        conflicts_with_packages=optional_string_list(top, "conflictsWithPackages"),
     )

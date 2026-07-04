@@ -139,6 +139,11 @@ class PatchesPage(QWidget):
         self.remove_button.setToolTip("" if can_remove else reason)
 
     def _on_add_clicked(self) -> None:
+        # Deferred import to avoid a circular import with `gui/app.py` (see
+        # `activate_app_for_window`'s docstring).
+        from claude_monkey.gui.app import activate_app_for_window
+
+        activate_app_for_window()
         path = QFileDialog.getExistingDirectory(self, "Add Patch Package")
         if not path:
             return

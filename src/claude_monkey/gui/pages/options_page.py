@@ -142,8 +142,13 @@ class OptionsPage(QWidget):
         )
 
     def _confirm_and_emit(self, item: QTableWidgetItem, option: OptionMenuItem) -> None:
+        # Deferred import to avoid a circular import with `gui/app.py` (see
+        # `activate_app_for_window`'s docstring).
+        from claude_monkey.gui.app import activate_app_for_window
+
         warning = self._high_risk_warning_by_id.get(option.option_id, "")
         message = f"{option.label}\n\n{warning}" if warning else option.label
+        activate_app_for_window()
         answer = QMessageBox.question(
             self,
             "Confirm high-risk option",
@@ -184,6 +189,11 @@ class OptionsPage(QWidget):
         self.remove_button.setToolTip("" if can_remove else reason)
 
     def _on_add_clicked(self) -> None:
+        # Deferred import to avoid a circular import with `gui/app.py` (see
+        # `activate_app_for_window`'s docstring).
+        from claude_monkey.gui.app import activate_app_for_window
+
+        activate_app_for_window()
         path = QFileDialog.getExistingDirectory(self, "Add Option Package")
         if not path:
             return

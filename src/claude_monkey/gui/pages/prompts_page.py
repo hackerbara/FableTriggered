@@ -135,11 +135,19 @@ class PromptsPage(QWidget):
         self.remove_button.setToolTip("" if can_remove else reason)
 
     def _on_add_clicked(self) -> None:
+        # Deferred import: `gui/app.py` imports `settings_window.py`, which
+        # imports this page, so a module-level import here would be
+        # circular -- see `activate_app_for_window`'s docstring for why
+        # every window/dialog presentation needs this call.
+        from claude_monkey.gui.app import activate_app_for_window
+
+        activate_app_for_window()
         path, _selected_filter = QFileDialog.getOpenFileName(self, "Add Prompt")
         if not path:
             return
         stem = Path(path).stem
         dialog = _AddPromptDialog(self, default_id=slugify(stem), default_name=stem)
+        activate_app_for_window()
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         package_id = dialog.id_value()

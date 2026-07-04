@@ -8,6 +8,11 @@ via `CommandBridge`. It also owns `Controller`, the single `on_action`
 handler that wires every tray/window intent to `CommandRunner` and the
 `ProgressDialog`, and `main()`, which assembles all of the above into a
 running application (see `Controller`'s docstring for the wiring contract).
+
+Because the app runs under the accessory activation policy, every
+window/dialog presentation must also call `activate_app_for_window` first
+(see its docstring) -- otherwise newly-shown windows can silently open
+behind whatever app currently has focus.
 """
 
 from __future__ import annotations
@@ -108,6 +113,33 @@ def apply_macos_accessory_policy() -> None:
         app = NSApplication.sharedApplication()
         if app is not None and app.activationPolicy() != NSApplicationActivationPolicyAccessory:
             app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+    except Exception:
+        pass
+
+
+def activate_app_for_window() -> None:
+    """Force this process to the foreground before presenting a window.
+
+    Companion to `apply_macos_accessory_policy`: an accessory-policy app has
+    no Dock icon and, critically, is not "active" by default, so Qt's own
+    `show()`/`raise_()`/`activateWindow()` on a window are not enough --
+    they only reorder windows *within* an already-inactive app and the new
+    window can still open behind whatever app currently has focus. Calling
+    `NSApplication.activateIgnoringOtherApps_(True)` immediately before any
+    such Qt call is what actually brings the process (and thus its window)
+    in front of every other app. Same darwin-guard/try-except shape as
+    `apply_macos_accessory_policy` for the same reasons.
+    """
+    if sys.platform != "darwin":
+        return
+    try:
+        from AppKit import NSApplication  # type: ignore[import-not-found]
+    except Exception:
+        return
+    try:
+        app = NSApplication.sharedApplication()
+        if app is not None:
+            app.activateIgnoringOtherApps_(True)
     except Exception:
         pass
 
@@ -230,6 +262,16 @@ class Controller:
       - `open_path` -> `runner.open_path`. `quit` cancels any live
         streaming handle and calls `quit_callback` (defaults to
         `QApplication.quit`).
+
+    Every window/dialog `Controller` presents (`show_window`,
+    `_show_dialog_foreground`'s `ProgressDialog`, `_default_confirm_high_risk`'s
+    `QMessageBox`) calls `activate_app_for_window()` immediately beforehand,
+    then still does the Qt-side `show()`/`raise_()`/`activateWindow()` (or,
+    for a `QMessageBox`/`QFileDialog` static call, relies on Qt's own modal
+    foregrounding) -- the AppKit activation is what makes those Qt calls
+    actually land in front of other apps rather than behind them, and
+    `ProgressDialog`'s modality is `WindowModal` when parented to `window`,
+    `ApplicationModal` otherwise.
     """
 
     def __init__(
@@ -398,6 +440,7 @@ class Controller:
         self.window.render(state)
 
     def show_window(self) -> None:
+        activate_app_for_window()
         self.window.show()
         self.window.raise_()
         self.window.activateWindow()
@@ -409,6 +452,7 @@ class Controller:
         return active_window if isinstance(active_window, QWidget) else None
 
     def _show_dialog_foreground(self, dialog: QWidget) -> None:
+        activate_app_for_window()
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
@@ -571,6 +615,7 @@ class Controller:
     def _default_confirm_high_risk(self, option_id: str, warning: str) -> bool:
         parent = self._dialog_parent()
         message = warning or "This option is high-risk."
+        activate_app_for_window()
         answer = QMessageBox.question(
             parent,
             "Confirm high-risk option",

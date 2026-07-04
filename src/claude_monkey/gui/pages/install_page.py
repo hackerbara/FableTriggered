@@ -132,6 +132,11 @@ class InstallPage(QWidget):
         self.render(self._state)
 
     def _on_browse(self) -> None:
+        # Deferred import to avoid a circular import with `gui/app.py` (see
+        # `activate_app_for_window`'s docstring).
+        from claude_monkey.gui.app import activate_app_for_window
+
+        activate_app_for_window()
         path, _selected_filter = QFileDialog.getSaveFileName(self, "Choose Install Target")
         if not path:
             self.render(self._state)  # revert the combo off the transient "Browse…" row

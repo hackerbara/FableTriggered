@@ -21,6 +21,7 @@ import pytest  # noqa: E402
 from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox  # noqa: E402
 
+import claude_monkey.gui.app as app_module  # noqa: E402
 from claude_monkey.gui.settings_window import SettingsWindow  # noqa: E402
 from claude_monkey.menubar_state import (  # noqa: E402
     HighRiskOptionSummary,
@@ -323,6 +324,28 @@ def test_patches_add_package_emits_action(qtbot, monkeypatch, fake_state, tmp_pa
     assert blocker.args == ["add_package", {"kind": "patch", "path": fake_dir}]
 
 
+def test_patches_add_activates_app_before_file_dialog(qtbot, monkeypatch, fake_state, tmp_path):
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render(fake_state)
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        app_module, "activate_app_for_window", lambda: calls.append("activate_app")
+    )
+    fake_dir = str(tmp_path / "new-patch")
+
+    def fake_get_existing_directory(*_args, **_kwargs):
+        calls.append("dialog")
+        return fake_dir
+
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", fake_get_existing_directory)
+
+    qtbot.mouseClick(window.patches_page.add_button, Qt.MouseButton.LeftButton)
+
+    assert calls == ["activate_app", "dialog"]
+
+
 def test_patches_remove_button_disabled_with_reason_tooltip(qtbot, fake_state):
     # Default fake_state has desired_patch_ids=("p1",) -- p1 is referenced by
     # the active profile, so remove_enabled refuses it.
@@ -422,6 +445,35 @@ def test_add_prompt_emits_add_prompt_file_and_never_set_prompt(
     ]
 
 
+def test_add_prompt_activates_app_before_file_dialog_and_before_dialog_exec(
+    qtbot, monkeypatch, fake_state, tmp_path
+):
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render(fake_state)
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        app_module, "activate_app_for_window", lambda: calls.append("activate_app")
+    )
+    fake_path = str(tmp_path / "My Research Notes.md")
+
+    def fake_get_open_file_name(*_args, **_kwargs):
+        calls.append("file_dialog")
+        return (fake_path, "")
+
+    def fake_exec(self):
+        calls.append("dialog_exec")
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", fake_get_open_file_name)
+    monkeypatch.setattr(QDialog, "exec", fake_exec)
+
+    qtbot.mouseClick(window.prompts_page.add_button, Qt.MouseButton.LeftButton)
+
+    assert calls == ["activate_app", "file_dialog", "activate_app", "dialog_exec"]
+
+
 def test_add_prompt_cancelled_file_picker_emits_nothing(qtbot, monkeypatch, fake_state):
     window = SettingsWindow()
     qtbot.addWidget(window)
@@ -513,6 +565,30 @@ def test_high_risk_option_confirm_yes_emits_confirmed_true(qtbot, monkeypatch, t
     assert "Dangerous permissions" in seen_messages[0]
 
 
+def test_high_risk_option_confirm_activates_app_before_message_box(qtbot, monkeypatch, tmp_path):
+    state = _high_risk_state(tmp_path, enabled=False)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render(state)
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        app_module, "activate_app_for_window", lambda: calls.append("activate_app")
+    )
+
+    def fake_question(*_args, **_kwargs):
+        calls.append("question")
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "question", fake_question)
+
+    checkbox_item = window.options_page.table.item(0, 0)
+    with qtbot.waitSignal(window.action, timeout=1000):
+        checkbox_item.setCheckState(Qt.CheckState.Checked)
+
+    assert calls == ["activate_app", "question"]
+
+
 def test_high_risk_option_confirm_no_emits_nothing_and_reverts_checkbox(
     qtbot, monkeypatch, tmp_path
 ):
@@ -590,6 +666,28 @@ def test_options_remove_button_disabled_with_reason_tooltip(qtbot, fake_state):
 
     assert window.options_page.remove_button.isEnabled() is False
     assert "dangerous-permissions" in window.options_page.remove_button.toolTip()
+
+
+def test_options_add_activates_app_before_file_dialog(qtbot, monkeypatch, fake_state, tmp_path):
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render(fake_state)
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        app_module, "activate_app_for_window", lambda: calls.append("activate_app")
+    )
+    fake_dir = str(tmp_path / "new-option")
+
+    def fake_get_existing_directory(*_args, **_kwargs):
+        calls.append("dialog")
+        return fake_dir
+
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", fake_get_existing_directory)
+
+    qtbot.mouseClick(window.options_page.add_button, Qt.MouseButton.LeftButton)
+
+    assert calls == ["activate_app", "dialog"]
 
 
 def test_options_compatibility_column_hides_internal_status_words(qtbot, tmp_path):
@@ -736,6 +834,31 @@ def test_install_target_browse_picks_path_and_emits_action(qtbot, monkeypatch, t
         combo.setCurrentIndex(browse_index)
 
     assert blocker.args == ["set_install_target", {"path": browsed}]
+
+
+def test_install_target_browse_activates_app_before_file_dialog(qtbot, monkeypatch, tmp_path):
+    state = _state(tmp_path)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render(state)
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        app_module, "activate_app_for_window", lambda: calls.append("activate_app")
+    )
+    browsed = str(tmp_path / "browsed" / "claude")
+
+    def fake_get_save_file_name(*_args, **_kwargs):
+        calls.append("dialog")
+        return (browsed, "")
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", fake_get_save_file_name)
+
+    combo = window.install_page.target_combo
+    browse_index = combo.count() - 1
+    combo.setCurrentIndex(browse_index)
+
+    assert calls == ["activate_app", "dialog"]
 
 
 def test_install_target_browse_cancelled_emits_nothing(qtbot, monkeypatch, tmp_path):

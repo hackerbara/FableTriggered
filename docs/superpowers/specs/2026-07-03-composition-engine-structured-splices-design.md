@@ -123,26 +123,27 @@ Add insertion operations that claim a zero-width point, not a whole span:
 - `insert_before`
 - `insert_after`
 
-Both locate a unique anchor string in the original module. The insertion point is either the anchor start or anchor end. Multiple packages may insert at the same point if their order is deterministic and non-conflicting.
+Both locate a unique anchor string in the original module. The insertion point is either the anchor start or anchor end. Multiple packages may insert at the same point if their order is deterministic and non-conflicting. Insertions may also be context-bounded with `startMarker` / `endMarker`; in that case the anchor must be unique inside the resolved context, and the insertion claims only the zero-width point.
 
 Suggested manifest fields:
 
 ```json
 {
-  "opId": "append-hidden-context-target",
-  "label": "Append hiddenContext to footer target array",
+  "opId": "append-reminders-target",
+  "label": "Append reminders to footer target array",
   "type": "insert_after",
   "anchor": "Oe&&\"frame\"",
   "expectedAnchorCount": 1,
-  "insertOrder": 100,
-  "replacement": { "inline": ",__codexHiddenContextFrame?.visible&&\"hiddenContext\"" },
-  "knownBehaviorChange": "Adds hiddenContext as a footer target when the current render frame is visible."
+  "insertOrder": 200,
+  "replacement": { "inline": ",\"reminders\"" },
+  "knownBehaviorChange": "Adds reminders as a footer target."
 }
 ```
 
 Rules:
 
 - `anchor` must resolve exactly `expectedAnchorCount` times; default should be 1.
+- If context markers are supplied, context must resolve first, and anchor uniqueness is evaluated inside that context.
 - `moduleStart == moduleEnd` in the planned operation.
 - `oldLen == 0`, `oldSha256` is the SHA-256 of empty bytes or omitted by explicit report convention.
 - `insertOrder` is required for shared insertion points.
@@ -181,14 +182,14 @@ Rules:
 - The outer range gives context but is not claimed.
 - Only the inner `subExact` byte range is claimed.
 - `oldRangeSha256` and `oldRangeLength` apply to the claimed subspan, not the outer context.
-- The outer context may optionally have its own context hash in a new field such as `contextSha256`, but a context hash mismatch should produce a precise diagnostic rather than being confused with claimed-range mismatch.
+- The outer context may optionally have its own context hash in a new field such as `contextSha256`. If supplied during a build, it is hard-fail evidence: a mismatch fails the build. During retarget diagnostics, the same mismatch may be reported as evidence without accepting the candidate.
 - If the inner substring is not unique inside the outer range, fail closed.
 
-This operation handles “change one clause without owning siblings” while still keeping the implementation as Python byte searching.
+This operation handles “change one owned clause without owning siblings” while still keeping the implementation as Python byte searching. It is not the preferred primitive for additive clauses that multiple packages may want to extend. For additive cases, use context-bounded `insert_before` / `insert_after` so packages can share the same anchor point without claiming the same non-zero subspan.
 
 ### Optional structured helper operations
 
-Phase 1 may include only the primitives above. If helper operations are added, they must compile down to explicit byte splices and remain small.
+Phase 1 should include only the primitives above. Helper operations are explicitly deferred. If helper operations are added later, they must compile down to explicit byte splices and remain small.
 
 Potential helpers:
 
@@ -218,7 +219,7 @@ Validation rules:
 6. All operations resolve against original module bytes, never sequentially patched bytes.
 7. Rendering remains a single sorted pass over original bytes.
 
-The conflict errors should name the operation graph problem, not just say `overlap`:
+The conflict errors should name the operation graph problem, not just say `overlap`. Prefer structured report errors with a stable `code` plus package/op/module fields; CLI text can be derived from those structured errors. Example codes:
 
 - `patch_conflict:range_overlap:<pkgA>:<opA>:<pkgB>:<opB>`
 - `patch_conflict:insert_order_duplicate:<modulePath>:<offset>:<order>`
@@ -227,6 +228,21 @@ The conflict errors should name the operation graph problem, not just say `overl
 - `patch_conflict:package_conflict:<pkgA>:<pkgB>`
 
 The CLI can still map these to friendly messages, but the report should preserve the precise code.
+
+
+### Planned operation shape
+
+The planned operation record must carry enough information for validation and rendering to use the same order. At minimum it should include:
+
+- `kind`: `replacement`, `insertion`, or `subspan_replacement`;
+- `modulePath`;
+- claimed `moduleStart` / `moduleEnd`;
+- optional `contextStart` / `contextEnd`;
+- `insertOrder` for insertions;
+- `seamHint` and context evidence when supplied;
+- a normalized `renderOrder` tuple.
+
+`render_changed_module()` must sort by the normalized render order, not merely by `moduleStart`. Same-offset insertions are therefore rendered in exactly the order that validation accepted. This is a core invariant, not report decoration.
 
 ## Package relationship metadata
 
@@ -243,12 +259,12 @@ Add optional package-level metadata:
 }
 ```
 
-Phase-1 minimum:
+Relationship metadata minimum once this phase is implemented:
 
 - `requiresPackages`
 - `conflictsWithPackages`
 
-`provides` and `consumes` are useful for future named seams but can stay informational at first.
+`provides` and `consumes` are useful for future named seams but can stay informational at first. Package relationships are intentionally Phase 2 in the phased delivery below; Phase 1 stays focused on splice primitives, deterministic rendering, reports, and tests.
 
 Rules:
 
@@ -285,6 +301,8 @@ When a source or module identity changes, package validation should offer better
 Suggested `validate-package --json` behavior:
 
 - If source identity mismatches, report current source SHA/version/size as today.
+- For diagnostic mode only, the validator may select at most one package target that matches the current platform, architecture, package id, and intended module path even though full source identity failed. If more than one plausible diagnostic target exists, diagnostics must stop as ambiguous.
+- Diagnostic target selection never makes validation successful: the result remains `ok: false`, and no build path may consume candidate offsets.
 - If module SHA mismatches but the module path still exists, optionally attempt read-only operation diagnostics against the current module.
 - For each operation, report:
   - anchor found/missing;
@@ -299,8 +317,9 @@ Example diagnostic:
 
 ```json
 {
-  "opId": "append-hidden-context-target",
+  "opId": "append-reminders-target",
   "status": "candidate_found_context_hash_changed",
+  "ok": false,
   "anchorCount": 1,
   "candidateModuleStart": 15099551,
   "contextSha256Matched": false,
@@ -347,11 +366,14 @@ For `replace_substring_within`, reports should distinguish context range from cl
 
 Reports should preserve enough detail to answer: did this package own a stock range, insert beside a stock range, or change one subspan inside a context?
 
+Report schema compatibility should be explicit. These operation fields are additive if existing report consumers tolerate unknown fields. If a consumer requires a strict schema, bump `BuildReportV2.schemaVersion` and document the new report contract before shipping the engine change.
+
 ## Footer drawer implications
 
 With structured splices, a future footer framework can avoid the worst current compromises:
 
 - Drawer packages can append to a shared footer target insertion point instead of replacing the whole `ji` statement or reconstructing it downstream.
+- Dynamic React `useMemo` insertions must update paired dependency-array seams or carry an explicit invariant/postcondition proving no new dependency is required.
 - A package can add one selection flag without restating all stock sibling flags.
 - A framework package can own genuinely shared behavior while thin drawer packages contribute small registration and content seams.
 - If a drawer depends on the framework, that dependency can be explicit instead of implied by marker presence.
@@ -371,6 +393,8 @@ Possible compatibility stance:
 - Existing manifests need no change.
 
 If the team wants a cleaner marker, use `schemaVersion: 2` plus `requiredEngineVersion` or `minimumEngineFeatures`, but do not create a V3 manifest unless a real incompatibility appears.
+
+There are two manifest surfaces to keep aligned. Direct schema-v2 `patch.json` files can carry additive fields at the manifest top level. Common package/envelope manifests parsed through `package_model.py` and bridged by `_v3_manifest_as_v2_dict()` need explicit allowlist/dataclass/bridge updates so package relationships survive into the V1.5 builder instead of being rejected or dropped.
 
 ## Testing plan
 
@@ -398,6 +422,19 @@ Add tests for:
 - explicit `requiresPackages` failure;
 - explicit `conflictsWithPackages` failure;
 - build report serializes operation type, insertion order, seam hint, and context range.
+- report schema compatibility is explicit: additive fields are tolerated or schema version is bumped.
+
+
+### Retarget diagnostic tests
+
+Add `validate-package --json` tests for:
+
+- source identity mismatch still returns `ok: false` while reporting current source identity;
+- diagnostic-only target selection chooses at most one same platform/arch/package target;
+- ambiguous diagnostic target selection returns no candidates;
+- module identity mismatch with existing module path can report operation-level diagnostics;
+- missing anchor, ambiguous anchor, and unique candidate with context hash mismatch are distinguished;
+- candidate offsets are never accepted by `build` and never make validation `ok: true`.
 
 ### Package/reference tests
 
@@ -455,7 +492,7 @@ Use this to model known alternatives and future framework dependencies.
 Migrate selected current packages away from fragile workarounds:
 
 1. Replace downstream `ji` reassignment in `reminders-manager` with ordered insertion if the data-flow design supports it.
-2. Replace Hidden Context selection flag whole-statement restatement with `replace_substring_within`.
+2. Replace additive Hidden Context flag/target restatements with context-bounded insertions where possible; use `replace_substring_within` only for genuinely owned subspan edits.
 3. Revisit footer framework design only after these migrations prove the engine primitives.
 
 ### Phase 4 — named seam layer design
@@ -468,9 +505,8 @@ The named seam layer can map stable names such as `footer.targets.afterFrame` to
 
 1. Should duplicate `insertOrder` at the same point always fail, or should package ID be an accepted tie-breaker? Recommendation: fail.
 2. Should `oldRangeSha256` be allowed to be omitted for zero-width insertions? Recommendation: yes, because the claimed range is empty; use anchor/context evidence instead.
-3. Should `contextSha256` be warning-only or hard-fail? Recommendation: hard-fail during build, diagnostic-only during retarget analysis.
-4. Should package relationship metadata live top-level or per target? Recommendation: top-level for package relationships; target-level only if source-version-specific relationships become necessary.
-5. Should retarget diagnostics run automatically on identity mismatch? Recommendation: only in `validate-package`, not normal `build`, to keep build failure simple and fail-closed.
+3. Should package relationship metadata live top-level or per target? Recommendation: top-level for package relationships; target-level only if source-version-specific relationships become necessary.
+4. Should retarget diagnostics run automatically on identity mismatch? Recommendation: only in `validate-package`, not normal `build`, to keep build failure simple and fail-closed.
 
 ## Final stance
 

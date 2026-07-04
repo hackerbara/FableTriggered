@@ -120,3 +120,15 @@ def test_stage_message_clears_on_status_only_transition():
     m.apply_event({"event": "stage", "id": "a", "status": "done"})
     assert m.rows[0].status == "done"
     assert m.rows[0].message is None
+
+
+def test_apply_result_ok_clears_message_on_resolved_running_row():
+    m = ProgressModel()
+    m.apply_event(PLAN)
+    m.apply_event({"event": "stage", "id": "a", "status": "running", "message": "retrying"})
+    # No terminal "done" event arrives for "a", but the process succeeds
+    # overall. The force-resolved row should not keep the stale in-flight
+    # message — it never actually reached "done" with that message.
+    m.apply_result({"ok": True, "summary": "built"})
+    assert m.rows[0].status == "done"
+    assert m.rows[0].message is None

@@ -107,10 +107,14 @@ class ProgressModel:
             self.outcome = "success"
             # A dropped terminal "done" event can leave a row stuck at
             # "running" even though the process reported overall success.
-            # Reconcile every such row so the checklist doesn't lie.
+            # Reconcile every such row so the checklist doesn't lie. Also
+            # clear any leftover in-flight message (e.g. "retrying") — it
+            # described a stage that was still running, not one that
+            # finished successfully, so keeping it would mislead the GUI.
             for row in self.rows:
                 if row.status == "running":
                     row.status = "done"
+                    row.message = None
             return
 
         self.outcome = "failure"
@@ -118,7 +122,11 @@ class ProgressModel:
             return
 
         # Process died mid-stage with no explicit failure reported: force-fail
-        # whichever row was still running so the checklist doesn't lie.
+        # whichever row was still running so the checklist doesn't lie. The
+        # result payload carries no per-stage detail (just "died"), so we
+        # deliberately keep the row's last in-flight message rather than
+        # clearing it — it's the only clue left about what the stage was
+        # doing when the process went away.
         for row in self.rows:
             if row.status == "running":
                 row.status = "failed"

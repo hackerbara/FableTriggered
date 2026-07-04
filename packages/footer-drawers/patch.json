@@ -32,7 +32,7 @@
               "oldRangeLength": 193,
               "replacement": {
                 "path": "payloads/01-bootstrap-and-overlay.js",
-                "sha256": "1c233ecc01740d9b01f540896b11a98da4a7505f0fe8dcc96d90fca2ab1b580b"
+                "sha256": "a0886c13e31fabb825f8b57392626ff1fd3b539e42ec8e313dc51bf1049a6346"
               },
               "knownBehaviorChange": "Adds shared drawer registry helpers and renders the active registered drawer in the bottom overlay sibling."
             },
@@ -160,6 +160,20 @@
               "knownBehaviorChange": "Maps space to footer:openSelected for drawer row toggles/opening."
             },
             {
+              "opId": "fd-footer-bar-selection-state",
+              "label": "Read Footer Drawers selected state in status bar hook cluster",
+              "type": "replace_exact",
+              "exact": "k=Tt((Me)=>!1)",
+              "requireWithinRange": [],
+              "oldRangeSha256": "7c97dd72d37a838ebd7e328afbd5342533067c7f2e953dc40132d555c5b5a507",
+              "oldRangeLength": 14,
+              "replacement": {
+                "path": "payloads/14-footer-bar-selection-state.js",
+                "sha256": "dfa32339cca2453823f3cc4b83e73f8073c7293092b7d3a924233237f5806d33"
+              },
+              "knownBehaviorChange": "Makes the status-bar drawer segment read the actual drawers footer selection instead of a colliding global symbol."
+            },
+            {
               "opId": "fd-footer-bar-var",
               "label": "Compute Footer Drawers status-bar segment",
               "type": "replace_exact",
@@ -169,7 +183,7 @@
               "oldRangeLength": 89,
               "replacement": {
                 "path": "payloads/10-footer-bar-var.js",
-                "sha256": "1e268877603845e766e5efa47a94ca89502be2beeddf50dd9987869d549e6747"
+                "sha256": "668887899ff52bbcb40477e557241120a694847f1da77a2b591992d3e479f56f"
               },
               "knownBehaviorChange": "Computes a compact registry-rendered drawer toolbar segment."
             },

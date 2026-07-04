@@ -38,6 +38,7 @@ FRAMEWORK_OP_IDS = {
     "fd-footer-bar-shortcuts-condition",
     "fd-footer-bar-null-condition",
     "fd-footer-bar-render",
+    "fd-footer-bar-selection-state",
 }
 
 MOVED_THINKING_OP_IDS = {
@@ -134,7 +135,7 @@ def test_footer_drawers_payload_defines_registry_lifecycle_contract() -> None:
     assert "footer:clearSelection" in text
     clear_handler = text.split('r["footer:clearSelection"]=', 1)[1].split(';return r}', 1)[0]
     assert 'if(a){if(__codexFDSafe(()=>a.onKey?.("clearSelection")' in clear_handler
-    assert 'return e["footer:clearSelection"]?.()' in clear_handler
+    assert 'l();return}return e["footer:clearSelection"]?.()' in clear_handler
     assert "__codexFDClose(\"escape\")" not in text
     assert "__codexFDClose(\"x\")" in text
 
@@ -161,8 +162,12 @@ eval(fs.readFileSync({str(bootstrap)!r}, "utf8"));
 
 def test_footer_drawers_bar_consumes_active_selection_and_renders_per_entry_hints() -> None:
     bar_payload = (FOOTER_DRAWERS / "payloads" / "10-footer-bar-var.js").read_text(encoding="utf-8")
+    selection_payload = (FOOTER_DRAWERS / "payloads" / "14-footer-bar-selection-state.js").read_text(encoding="utf-8")
     bootstrap_payload = (FOOTER_DRAWERS / "payloads" / "01-bootstrap-and-overlay.js").read_text(encoding="utf-8")
-    assert "__codexFDBar(FDs)" in bar_payload
+    assert "FDsel=Tt((Me)=>Me.footerSelection===\"drawers\")" in selection_payload
+    assert "Tt((Me)=>Me.footerSelection" not in bar_payload
+    assert "__codexFDBar(FDsel)" in bar_payload
+    assert "__codexFDBar(FDs)" not in bar_payload
     assert "children:__codexFDBarText()" not in bar_payload
     assert "Xd.jsx(O1f,{selected:o.selected" in bootstrap_payload
     assert 'color:o.selected?"background"' not in bootstrap_payload
@@ -188,6 +193,37 @@ console.log(JSON.stringify({
     assert [item["hintKind"] for item in data["inactive"]] == ["arrow", "arrow", "arrow"]
     assert [item["selected"] for item in data["inactive"]] == [False, False, False]
 
+
+
+def test_footer_drawers_landing_resets_hover_only_when_toolbar_becomes_active() -> None:
+    data = _run_footer_drawers_payload_js(
+        """
+__codexFDDrawers().entries = [];
+__codexFDRegister({id:"hidden",order:100,available:()=>true,label:()=>"Hidden"});
+__codexFDRegister({id:"thinking",order:200,available:()=>true,label:()=>"Thinking"});
+__codexFDRegister({id:"reminders",order:300,available:()=>true,label:()=>"Reminders"});
+let state = __codexFDDrawers();
+let inactiveItems = __codexFDBarItems(false);
+let hoverBefore = state.hoverId;
+__codexFDSetActive(true);
+let afterLanding = {hoverId: state.hoverId, items: __codexFDBarItems(true)};
+__codexFDMove(1);
+let afterRight = {hoverId: state.hoverId, items: __codexFDBarItems(true)};
+__codexFDSetActive(false);
+__codexFDSetActive(true);
+let afterReenter = {hoverId: state.hoverId, items: __codexFDBarItems(true)};
+console.log(JSON.stringify({hoverBefore, inactiveItems, afterLanding, afterRight, afterReenter}));
+"""
+    )
+
+    assert data["hoverBefore"] is None
+    assert [item["selected"] for item in data["inactiveItems"]] == [False, False, False]
+    assert data["afterLanding"]["hoverId"] == "hidden"
+    assert [item["hintKind"] for item in data["afterLanding"]["items"]] == ["enter", "arrow", "arrow"]
+    assert data["afterRight"]["hoverId"] == "thinking"
+    assert [item["hintKind"] for item in data["afterRight"]["items"]] == ["arrow", "enter", "arrow"]
+    assert data["afterReenter"]["hoverId"] == "hidden"
+    assert [item["hintKind"] for item in data["afterReenter"]["items"]] == ["enter", "arrow", "arrow"]
 
 def test_footer_drawers_open_clear_selection_delegates_without_closing_and_x_keeps_drawers_selected() -> None:
     data = _run_footer_drawers_payload_js(
@@ -219,7 +255,7 @@ console.log(JSON.stringify({
 """
     )
 
-    assert data["afterClear"] == {"openId": "hidden", "stockClear": 1, "selected": ["drawers"]}
+    assert data["afterClear"] == {"openId": "hidden", "stockClear": 0, "selected": ["drawers"]}
     assert data["afterClose"] == {
         "openId": None,
         "closedReason": "x",

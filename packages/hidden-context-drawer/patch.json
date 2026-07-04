@@ -61,7 +61,7 @@
               "insertOrder": 100,
               "replacement": {
                 "path": "payloads/17-register-footer-drawer.js",
-                "sha256": "f305390066032558171cb28d0e7c7f15628ccfd44884f7effb4519292684a7d6"
+                "sha256": "d2e7029d609498c1bb67ba9b5f3542817f78e914a47cb7ad95d13b5a8cda1c4b"
               },
               "knownBehaviorChange": "Registers Hidden Context as an x-close framework drawer without owning footer key routing."
             }

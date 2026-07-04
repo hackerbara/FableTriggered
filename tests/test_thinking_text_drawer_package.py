@@ -12,7 +12,24 @@ EXPECTED_BINARY_SHA = "a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be9
 EXPECTED_BINARY_SIZE = 231708784
 EXPECTED_MODULE_SHA = "46db617a7b13c062fb31595f6244819b11f7cdc6e6fed8e2c3f74a27fb6da1bd"
 EXPECTED_MODULE_LENGTH = 18700756
-EXPECTED_MIN_OPERATIONS = 16
+EXPECTED_OPERATION_IDS = {
+    "thinking-helpers-before-ypr",
+    "thinking-message-start-turn-collector",
+    "thinking-message-stop-turn-collector",
+    "thinking-live-delta-collector",
+    "thinking-signature-collector",
+    "thinking-parent-structured-collector",
+    "thinking-footer-open-state",
+    "thinking-footer-target",
+    "thinking-footer-selection-flag",
+    "thinking-footer-action-wrap-open",
+    "thinking-footer-action-wrap-close",
+    "thinking-selected-overlay-globals",
+    "thinking-bottom-overlay-renderer",
+    "thinking-footer-status-bar",
+    "thinking-system-token-estimate",
+    "thinking-cancel-salvage-collector",
+}
 
 
 def read_rel(path: str) -> str:
@@ -41,7 +58,24 @@ def test_thinking_text_drawer_targets_claude_2_1_201() -> None:
     assert module["path"] == "/$bunfs/root/src/entrypoints/cli.js"
     assert module["contentSha256"] == EXPECTED_MODULE_SHA
     assert module["contentLength"] == EXPECTED_MODULE_LENGTH
-    assert len(module["operations"]) >= EXPECTED_MIN_OPERATIONS
+    assert {op["opId"] for op in module["operations"]} == EXPECTED_OPERATION_IDS
+    assert len(module["operations"]) == len(EXPECTED_OPERATION_IDS)
+    postcondition_values = {item["value"] for item in target["postconditions"]}
+    for value in [
+        "__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__",
+        "__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__",
+        "__CODEX_THINKING_TEXT_DRAWER_TURN_V1__",
+        "No thinking captured yet",
+        "x closes",
+        "thinking-available",
+        "__codexTTDRecordLiveThinking",
+        "__codexTTDRecordStructuredThinking",
+        "__codexTTDRecordSalvagedThinking",
+        "__codexTTDRecordThinkingSignature",
+        "__codexTTDRecordThinkingEstimate",
+        "__codexTTDRecordRedactedThinking",
+    ]:
+        assert value in postcondition_values
 
     if LIVE_2_1_201.exists():
         assert hashlib.sha256(LIVE_2_1_201.read_bytes()).hexdigest() == EXPECTED_BINARY_SHA
@@ -51,13 +85,13 @@ def test_manifest_operations_match_source_and_payload_hashes() -> None:
     manifest = json.loads((PACKAGE / "patch.json").read_text(encoding="utf-8"))
     module = manifest["targets"][0]["modules"][0]
     source_path = ROOT / ".development" / "artifacts" / "claude-2.1.201-thinking-text-drawer-source-module0.js"
-    if source_path.exists():
-        source = source_path.read_text(encoding="utf-8")
-        for op in module["operations"]:
-            exact = op["exact"]
-            assert source.count(exact) == 1, op["opId"]
-            assert op["oldRangeLength"] == len(exact.encode("utf-8")), op["opId"]
-            assert op["oldRangeSha256"] == hashlib.sha256(exact.encode("utf-8")).hexdigest(), op["opId"]
+    assert source_path.exists(), source_path
+    source = source_path.read_text(encoding="utf-8")
+    for op in module["operations"]:
+        exact = op["exact"]
+        assert source.count(exact) == 1, op["opId"]
+        assert op["oldRangeLength"] == len(exact.encode("utf-8")), op["opId"]
+        assert op["oldRangeSha256"] == hashlib.sha256(exact.encode("utf-8")).hexdigest(), op["opId"]
     for op in module["operations"]:
         payload = PACKAGE / op["replacement"]["path"]
         assert payload.exists(), op["opId"]
@@ -147,6 +181,20 @@ def test_helper_fixture_merge_and_secondary_sources() -> None:
     subprocess.run(["node", "-e", script], check=True)
 
 
+def test_operations_stay_out_of_request_and_persistence_surfaces() -> None:
+    manifest = json.loads((PACKAGE / "patch.json").read_text(encoding="utf-8"))
+    op_ids = {op["opId"] for op in manifest["targets"][0]["modules"][0]["operations"]}
+    assert op_ids == EXPECTED_OPERATION_IDS
+    forbidden_op_fragments = ["request-assembly", "jsonl", "transcript-persist", "prompt-context"]
+    for op_id in op_ids:
+        assert not any(fragment in op_id for fragment in forbidden_op_fragments), op_id
+    payload_text = payloads_text()
+    assert "messages.push" not in payload_text
+    assert "appendFile" not in payload_text
+    assert "writeFile" not in payload_text
+    assert "transcript" not in payload_text.lower()
+
+
 def test_helper_fixture_review_regressions() -> None:
     helper = read_rel("payloads/01-thinking-text-helpers.js")
     helper_prefix = helper.split("\nfunction Ypr(e){", 1)[0]
@@ -167,6 +215,15 @@ def test_helper_fixture_review_regressions() -> None:
         assert(frame.entries.some(e => e.turnKey === 'turn-b'), 'turn-b missing');
 
         globalThis.__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__ = undefined;
+        __codexTTDBeginTurn('msg-1');
+        __codexTTDRecordLiveThinking({{text:'abc', streamKey:0}});
+        __codexTTDRecordStructuredThinking({{thinking:'abcdef final', messageId:'msg-1', requestId:'req-1', blockHash:'h-msg'}});
+        frame = __codexTTDDrawerFrame();
+        assert(frame.entries.length === 1, 'live and structured for same message should merge even when requestId exists');
+        assert(frame.entries[0].source === 'structured' && frame.entries[0].sources.includes('live'), 'merged entry should preserve live provenance');
+        assert(frame.entries[0].messageId === 'msg-1', 'merged entry should keep assistant message id');
+
+        globalThis.__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__ = undefined;
         __codexTTDRecordLiveThinking({{text:'partial', streamKey:'s1', turnKey:'turn'}});
         __codexTTDRecordStructuredThinking({{thinking:'different final', messageId:'m1', blockHash:'h1', turnKey:'turn'}});
         frame = __codexTTDDrawerFrame();
@@ -182,8 +239,23 @@ def test_helper_fixture_review_regressions() -> None:
         __codexTTDRecordStructuredThinking({{thinking:longText, messageId:'long', blockHash:'long-h', turnKey:'long-turn'}});
         frame = __codexTTDDrawerFrame();
         const longEntry = frame.entries.find(e => e.messageId === 'long');
-        assert(longEntry.text.includes('displayed text truncated') || longEntry.lines.some(l => l.includes('displayed text truncated')), 'long rendered text should label truncation');
-        assert(longEntry.charCount >= 50000, 'long entry should preserve/track original char count');
+        assert(longEntry.text.includes('captured text truncated') || longEntry.lines.some(l => l.includes('displayed text truncated')), 'long rendered text should label truncation');
+        assert(longEntry.charCount >= 50000 && longEntry.rawCharCount >= 50000, 'long entry should track original char count');
+        assert((longEntry.text.length || 0) < longEntry.rawCharCount, 'long stored display text should be bounded');
+
+        globalThis.__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__ = undefined;
+        __codexTTDBeginTurn('long-live');
+        for (let i = 0; i < 10; i++) __codexTTDRecordLiveThinking({{text:'y'.repeat(10000), streamKey:1}});
+        frame = __codexTTDDrawerFrame();
+        const liveLong = frame.entries.find(e => e.source === 'live');
+        assert(liveLong.rawCharCount === 100000 && liveLong.charCount === 100000, 'long live raw char count should remain accurate');
+        assert(liveLong.text.length < liveLong.rawCharCount, 'long live display text should be bounded');
+
+        globalThis.__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__ = undefined;
+        for (let i = 0; i < 100; i++) __codexTTDRecordStructuredThinking({{thinking:'entry-' + i, messageId:'m' + i, blockHash:'h' + i}});
+        frame = __codexTTDDrawerFrame();
+        assert(__codexTTDEnsure().entries.length <= 80, 'stored entries should be capped');
+        assert(frame.droppedEntryCount >= 20, 'dropped entry count should be tracked');
 
         let opened = false, selected = 'thinking';
         const actions = __codexTTDWrapFooterActions({{}}, 'thinking', (v) => {{ opened = v; }}, (v) => {{ selected = v; }});
@@ -210,5 +282,6 @@ if __name__ == "__main__":
     test_structured_collection_runs_before_ctrl_o_guard()
     test_helper_fixture_merge_and_secondary_sources()
     test_manifest_operations_match_source_and_payload_hashes()
+    test_operations_stay_out_of_request_and_persistence_surfaces()
     test_helper_fixture_review_regressions()
     print("thinking-text drawer package checks passed")

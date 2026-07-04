@@ -32,7 +32,7 @@
               "oldRangeLength": 16,
               "replacement": {
                 "path": "payloads/01-thinking-text-helpers.js",
-                "sha256": "d3884b23d381c093aff91e9ca8f64f181832851845db2fd61e4a632ed15c875e"
+                "sha256": "e2e0122825c772b85614a5049446c03e7fc2fb23ba7dbca4102d95a525a5c6ab"
               },
               "knownBehaviorChange": "Adds display-only Thinking drawer helpers and action wrapper."
             },
@@ -281,6 +281,51 @@
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
           "value": "__codexTTDRecordSalvagedThinking"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__CODEX_THINKING_TEXT_DRAWER_TURN_V1__"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "x closes"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "thinking-available"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__codexTTDRecordLiveThinking"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__codexTTDRecordStructuredThinking"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__codexTTDRecordThinkingSignature"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__codexTTDRecordThinkingEstimate"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__codexTTDRecordRedactedThinking"
         }
       ],
       "manualSmoke": {

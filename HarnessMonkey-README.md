@@ -9,15 +9,14 @@ Provides a Python CLI tool, (ugly) GUI, and menubar manager. Reference for Mac o
 | Package | What it does | Demo |
 |---------|--------------|------|
 | [`fable-fallback`](packages/fable-fallback) | Un-hides Fable→Opus safety-classifier downgrade events: warning banner in resumed chats, marker in the `/resume` picker. The original reason this repo exists. | ![demo](assets/demos/fable-fallback.gif) |
-| [`hidden-context-drawer`](packages/hidden-context-drawer) | Adds a footer "Hidden Context" drawer so you can read the model-visible attachment context (reminders, timestamps, token accounting) the harness normally hides from you. | ![demo](assets/demos/hidden-context-drawer.gif) |
-| [`normal-channel-hidden-context`](packages/normal-channel-hidden-context) | Same hidden context, different delivery: projects it straight into the transcript as inline warning rows. Conflicts with the drawer — pick one. | ![demo](assets/demos/normal-channel-hidden-context.gif) |
-| [`reminders-manager`](packages/reminders-manager) | A second footer drawer with live on/off toggles for seven recurring reminder/accounting attachment families. Runtime control instead of build-time suppression. | ![demo](assets/demos/reminders-manager.gif) |
-| [`upstream-attachment-suppression`](packages/upstream-attachment-suppression) | Statically suppresses those same seven attachment families upstream, before they're ever generated. The "just make it all quiet" option. Conflicts with `reminders-manager` — pick one. | ![demo](assets/demos/upstream-attachment-suppression.gif) |
-| [`hotrod-dragons`](packages/hotrod-dragons) | Two heraldic fire-breathing pixel-art dragons flanking your terminal, with animated flames. Does nothing. Improves everything. Needs a truecolor terminal. | ![demo](assets/demos/hotrod-dragons.gif) |
-| [`dvd-cursor-goblin`](packages/dvd-cursor-goblin) | A `[DVD]` overlay that follows your mouse around the terminal like a lost screensaver. | ![demo](assets/demos/dvd-cursor-goblin.gif) |
-| [`dvd-cursor-terminal-art-spike`](packages/dvd-cursor-terminal-art-spike) | Spike: the DVD cursor as box-drawing glyph art instead of plain text. | ![demo](assets/demos/dvd-cursor-terminal-art-spike.gif) |
-| [`dvd-cursor-real-art-spike`](packages/dvd-cursor-real-art-spike) | Spike: the DVD cursor as an actual inline PNG via iTerm2 image escapes, with a text fallback. | ![demo](assets/demos/dvd-cursor-real-art-spike.gif) |
-| [`reminder-suppression`](packages/reminder-suppression) | Superseded — kept as historical reference for Claude Code 2.1.198. Use `upstream-attachment-suppression` instead. | — |
+| [`drawer-dock`](packages/drawer-dock) | The shared footer-drawer framework the three drawer scripts below plug into. Enable it alongside any of them. | ![demo](assets/demos/drawer-dock.gif) |
+| [`hidden-context-drawer`](packages/hidden-context-drawer) | A footer "Hidden Context" drawer so you can read the model-visible attachment context (reminders, timestamps, token accounting) the harness normally hides from you. | ![demo](assets/demos/hidden-context-drawer.gif) |
+| [`hidden-context-inline`](packages/hidden-context-inline) | Same hidden context, different delivery: projects it straight into the transcript as inline warning rows. Conflicts with the drawer — pick one. | ![demo](assets/demos/hidden-context-inline.gif) |
+| [`thinking-drawer`](packages/thinking-drawer) | A footer drawer projecting the model's thinking text, raw and structured. | ![demo](assets/demos/thinking-drawer.gif) |
+| [`reminders-drawer`](packages/reminders-drawer) | A footer drawer with live on/off toggles for seven recurring reminder/accounting attachment families. Runtime control instead of build-time suppression. | ![demo](assets/demos/reminders-drawer.gif) |
+| [`mute-reminders`](packages/mute-reminders) | Statically suppresses those same seven attachment families upstream, before they're ever generated. The "just make it all quiet" option. Conflicts with `reminders-drawer` — pick one. | ![demo](assets/demos/mute-reminders.gif) |
+| [`heraldic-dragons`](packages/heraldic-dragons) | Two heraldic fire-breathing pixel-art dragons flanking your terminal, with animated flames. Does nothing. Improves everything. Needs a truecolor terminal. | ![demo](assets/demos/heraldic-dragons.gif) |
+| [`capybara-onsen`](packages/capybara-onsen) | Two capybaras soaking in a moonlit hot spring around your session, with animated water and steam. The scene at the top of this page. Also needs truecolor. | ![demo](assets/demos/capybara-onsen.gif) |
 
 ### Why these scripts?
 
@@ -25,7 +24,7 @@ I was tired of four things with Claude Code:
 1. Not being able to see all the tokens the model sees
 2. The automated reminders that fire and make Claude anxious and jumpy
 3. Not nearly enough vibes
-4. Needing an alias to pass my [system prompt](tk lessanxiousclaude link) and --dangerously-skip-permissions 
+4. Needing an alias to pass my [system prompt](https://github.com/hackerbara/lessanxious-claude) and --dangerously-skip-permissions 
 
 So these are ideas to improve my personal Claude situation, and maybe yours too. But you should think of scripts that speak to you!
 
@@ -37,9 +36,27 @@ Probably not! Don't violate your TOS, don't get hacked, don't crash your compute
 
 ## How do I install?
 
-TK UV something? Requires: Mac Arm, Python, Xcode?
+Requires: a Mac on Apple Silicon, [uv](https://docs.astral.sh/uv/) (brings its own Python), and a local Claude Code install to patch. No Xcode needed — re-signing is ad-hoc via the stock `codesign`.
 
-TK Installing the scripts into your ~
+```sh
+git clone https://github.com/hackerbara/harnessmonkey
+cd harnessmonkey
+uv sync
+uv run harnessmonkey doctor
+```
+
+Then copy the scripts you want into your home dir and build:
+
+```sh
+mkdir -p ~/.harnessmonkey/patches
+cp -r packages/capybara-onsen packages/fable-fallback ~/.harnessmonkey/patches/
+uv run harnessmonkey enable-patch capybara-onsen
+uv run harnessmonkey enable-patch fable-fallback
+uv run harnessmonkey build --activate
+uv run harnessmonkey install-shim
+```
+
+For the GUI and menubar manager: `uv sync --extra gui`, then `uv run harnessmonkey-gui`.
 
 ## How do I use it?
 
@@ -63,6 +80,6 @@ Ummm, yep, there's a lot of trouble to shoot in this endeavor! Scripts and thing
 
 Please do that instead of asking me, whenever possible. It's part of the fun.
 
-TK doctor command exists to back you out of sticky situations.
+If things get sticky: `uv run harnessmonkey doctor` diagnoses the current state, `rollback` restores the previous build, and `use-official` points your shim back at the untouched binary while you sort things out.
 
 <3 Hackerbara

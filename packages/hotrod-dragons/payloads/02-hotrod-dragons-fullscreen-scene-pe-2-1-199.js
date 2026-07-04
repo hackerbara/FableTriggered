@@ -1,1 +1,0 @@
-pe=zd.jsxs(B,{flexGrow:1,flexDirection:"column",overflow:"hidden",backgroundColor:"rgb(0,0,0)",paddingX:32,children:[zd.jsx(__CodexHotrodSpriteSceneV11,{rows:y,columns:T},"codex-hotrod-v11-scene"),Q,ee,ne,oe,ie]})

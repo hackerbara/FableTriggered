@@ -27,6 +27,7 @@ from claude_monkey.module_patch import (
     check_planned_conflicts,
     plan_module_operations,
     render_changed_module,
+    verify_insertions,
 )
 from claude_monkey.package_model import PackageKind, PackageValidationError, load_package_manifest
 from claude_monkey.repack import repack_changed_modules
@@ -527,12 +528,37 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
                     manifest.id, module_target.path, module.content, operation_inputs
                 )
                 planned_by_module.setdefault(module_target.path, []).extend(planned)
-        changed_modules: dict[str, bytes] = {}
-        for module_path, planned in planned_by_module.items():
+        for planned in planned_by_module.values():
             _check_overlaps(planned)
+        shared_anchors: set[str] = set()
+        for planned in planned_by_module.values():
+            insertion_points: dict[int, list[PlannedModuleOperation]] = {}
+            for item in planned:
+                if item.kind == "insertion":
+                    insertion_points.setdefault(item.module_start, []).append(item)
+            for items in insertion_points.values():
+                if len(items) > 1:
+                    shared_anchors.update(item.anchor for item in items if item.anchor)
+        if shared_anchors:
+            for _, manifest, target in selected:
+                for assertion in target.postconditions:
+                    if any(anchor in assertion.value for anchor in shared_anchors):
+                        raise ValueError(
+                            "postcondition_composition_sensitive:"
+                            f"{manifest.id}:{assertion.value[:60]}"
+                        )
+        changed_modules: dict[str, bytes] = {}
+        insertion_evidence: dict[tuple[str, str], dict[str, Any]] = {}
+        for module_path, planned in planned_by_module.items():
             changed_modules[module_path] = render_changed_module(
                 original_modules[module_path], planned
             )
+            for evidence in verify_insertions(changed_modules[module_path], planned):
+                if not evidence["insertionVerified"]:
+                    raise ValueError(
+                        f"insertion_evidence_failed:{evidence['packageId']}:{evidence['opId']}"
+                    )
+                insertion_evidence[(evidence["packageId"], evidence["opId"])] = evidence
         if not changed_modules:
             raise ValueError("no_module_changes")
         repack = repack_changed_modules(source, changed_modules)
@@ -562,6 +588,14 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
                 "newLen": item.new_len,
                 "delta": item.delta,
                 "oldSha256": item.old_sha256,
+                "type": item.op_type,
+                "kind": item.kind,
+                "insertOrder": item.insert_order,
+                "anchor": item.anchor,
+                "seamHint": item.seam_hint,
+                "contextStart": item.context_start,
+                "contextEnd": item.context_end,
+                **insertion_evidence.get((item.package_id, item.op_id), {}),
             }
             for planned in planned_by_module.values()
             for item in planned

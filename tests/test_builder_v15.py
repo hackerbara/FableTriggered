@@ -173,3 +173,119 @@ def test_source_identity_mismatch_report_names_current_and_target(tmp_path):
     assert "source_identity_mismatch:fixture-v15" in report.failureReason
     assert "current source is Claude 2.1.199" in report.failureReason
     assert "package targets Claude fixture" in report.failureReason
+
+
+
+def write_insertion_package(
+    package: Path,
+    binary: Path,
+    *,
+    package_id: str,
+    payload: str,
+    insert_order: int,
+    postcondition_value: str,
+) -> None:
+    manifest = {
+        "schemaVersion": 2,
+        "id": package_id,
+        "name": package_id,
+        "description": "Insertion fixture",
+        "packageVersion": "0.1.0",
+        "targets": [
+            {
+                "sourceIdentity": {
+                    "claudeVersion": "fixture",
+                    "versionOutput": "fixture (Claude Code)",
+                    "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+                    "sizeBytes": binary.stat().st_size,
+                    "platform": "darwin",
+                    "arch": "arm64",
+                },
+                "requiredEngine": "bun_graph_repack",
+                "requiredBinaryFormat": "bun_standalone_macho64",
+                "modules": [
+                    {
+                        "path": "/$bunfs/root/src/entrypoints/cli.js",
+                        "contentSha256": hashlib.sha256(MODULE_0).hexdigest(),
+                        "contentLength": len(MODULE_0),
+                        "operations": [
+                            {
+                                "opId": f"{package_id}-insert",
+                                "label": "Insert entry",
+                                "type": "insert_after",
+                                "anchor": "OLD_RENDER",
+                                "insertOrder": insert_order,
+                                "seamHint": "fixture.afterOldRender",
+                                "replacement": {"inline": payload},
+                            }
+                        ],
+                    }
+                ],
+                "postconditions": [
+                    {
+                        "type": "module_must_contain",
+                        "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+                        "value": postcondition_value,
+                    }
+                ],
+            }
+        ],
+    }
+    package.mkdir()
+    (package / "patch.json").write_text(json.dumps(manifest))
+
+
+def _build(tmp_path, source, package_dirs):
+    return build_patchset_v15(
+        BuildRequestV15(
+            source_path=source,
+            output_dir=tmp_path / "out",
+            package_dirs=package_dirs,
+            source_version="fixture",
+            source_version_output="fixture (Claude Code)",
+            platform="darwin",
+            arch="arm64",
+            command_runner=successful_runner,
+        )
+    )
+
+
+def test_insertion_build_reports_evidence_and_extended_fields(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg = tmp_path / "pkg-a"
+    write_insertion_package(
+        pkg, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    report = _build(tmp_path, source, [pkg])
+    assert report.automatedStatus == "passed"
+    applied = report.operationsApplied[0]
+    assert applied["type"] == "insert_after"
+    assert applied["kind"] == "insertion"
+    assert applied["insertOrder"] == 100
+    assert applied["anchor"] == "OLD_RENDER"
+    assert applied["seamHint"] == "fixture.afterOldRender"
+    assert applied["insertionVerified"] is True
+    assert applied["oldLen"] == 0
+    assert applied["moduleStart"] == applied["moduleEnd"]
+    assert isinstance(applied["finalOffset"], int)
+
+
+def test_composition_sensitive_postcondition_fails_build(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg_a = tmp_path / "pkg-a"
+    pkg_b = tmp_path / "pkg-b"
+    write_insertion_package(
+        pkg_a, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100,
+        postcondition_value="OLD_RENDER,A_ENTRY",  # asserts adjacency across a SHARED point
+    )
+    write_insertion_package(
+        pkg_b, source, package_id="pkg-b", payload=",B_ENTRY",
+        insert_order=200, postcondition_value="B_ENTRY",
+    )
+    report = _build(tmp_path, source, [pkg_a, pkg_b])
+    assert report.status == "failed"
+    assert report.failureReason.startswith("postcondition_composition_sensitive:pkg-a")

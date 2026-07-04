@@ -1054,6 +1054,38 @@ def test_install_page_shim_status_line_reflects_shim_target_path(qtbot, tmp_path
     assert "Not installed" in window.install_page.shim_status_label.text()
 
 
+def test_install_page_shim_status_line_abbreviates_home(qtbot, monkeypatch, tmp_path):
+    # Fix: paths shown to the user should be home-abbreviated (~/...) --
+    # extends the courtesy `repair_confirm_text`/the update notice now use.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    installed_path = tmp_path / ".local" / "bin" / "claude"
+    state = _state(tmp_path, shim_target_path=installed_path)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state)
+
+    assert window.install_page.shim_status_label.text() == "Installed at ~/.local/bin/claude"
+
+
+def test_install_target_combo_marks_standard_location_guesses(qtbot, tmp_path):
+    # Fix: today's combo mixed genuinely-detected entries with hardcoded
+    # standard-location guesses indistinguishably -- guesses must now carry
+    # a short "standard location" suffix so the user can tell them apart.
+    state = _state(tmp_path, shim_target_path=None, detected_claude_command_path=None)
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state)
+
+    combo = window.install_page.target_combo
+    texts = [combo.itemText(i) for i in range(combo.count())]
+    assert any("standard location" in text for text in texts)
+    # The managed-user-target entry (index 0, a real detected/owned path)
+    # must never carry the guess suffix.
+    assert "standard location" not in texts[0]
+
+
 def test_install_target_browse_picks_path_and_emits_action(qtbot, monkeypatch, tmp_path):
     state = _state(tmp_path)
     window = SettingsWindow()

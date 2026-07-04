@@ -32,8 +32,11 @@ from PySide6.QtWidgets import (
 
 from claude_monkey.gui.pages.common import Banner
 from claude_monkey.gui.window_model import (
+    InstallTargetChoice,
     InstallTargetSelection,
+    abbreviate_home,
     install_button_enabled,
+    install_target_choice_label,
     install_target_choices,
     uninstall_button_enabled,
 )
@@ -103,16 +106,21 @@ class InstallPage(QWidget):
 
         choices = list(install_target_choices(state))
         current_target = self._selection.target(state)
-        if current_target not in (target for _label, target in choices):
-            choices.append((f"Use {current_target}", current_target))
+        if current_target not in (choice.target for choice in choices):
+            # An explicit user pick (combo selection or Browse…) is known
+            # precisely -- render it plain, like the other detected entries,
+            # never with a "standard location" guess suffix.
+            choices.append(InstallTargetChoice(f"Use {current_target}", current_target, True))
 
         self.target_combo.blockSignals(True)
         self.target_combo.clear()
-        for label, target in choices:
-            self.target_combo.addItem(f"{label}: {target}", target)
+        for choice in choices:
+            exists = None if choice.detected else choice.target.exists()
+            label_text = install_target_choice_label(choice, exists=exists)
+            self.target_combo.addItem(f"{label_text}: {choice.target}", choice.target)
         self.target_combo.addItem(BROWSE_LABEL, None)
         current_index = next(
-            index for index, (_label, target) in enumerate(choices) if target == current_target
+            index for index, choice in enumerate(choices) if choice.target == current_target
         )
         self.target_combo.setCurrentIndex(current_index)
         self.target_combo.blockSignals(False)
@@ -134,7 +142,9 @@ class InstallPage(QWidget):
             self.status_label.setText(f"{plan.target} (user-writable)")
 
         self.shim_status_label.setText(
-            f"Installed at {state.shim_target_path}" if state.shim_target_path else "Not installed"
+            f"Installed at {abbreviate_home(state.shim_target_path)}"
+            if state.shim_target_path
+            else "Not installed"
         )
 
     def _on_combo_index_changed(self, index: int) -> None:

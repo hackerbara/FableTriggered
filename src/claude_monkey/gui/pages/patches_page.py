@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from claude_monkey.gui.pages.common import Banner
-from claude_monkey.gui.window_model import patch_item_enabled, remove_enabled
+from claude_monkey.gui.window_model import compatibility_display, patch_item_enabled, remove_enabled
 from claude_monkey.menubar_state import MenuState, PatchMenuItem
 
 COLUMN_LABELS = ("", "Patch", "Compatibility")
@@ -99,7 +99,9 @@ class PatchesPage(QWidget):
         label_item.setFlags(label_flags)
         self.table.setItem(row, 1, label_item)
 
-        compat_item = QTableWidgetItem(patch.compatibility_message or patch.compatibility_status)
+        compat_item = QTableWidgetItem(
+            compatibility_display(patch.compatibility_status, patch.compatibility_message)
+        )
         compat_item.setFlags(label_flags)
         self.table.setItem(row, 2, compat_item)
 

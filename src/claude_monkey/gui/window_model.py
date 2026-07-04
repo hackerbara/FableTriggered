@@ -66,11 +66,35 @@ def build_tray_model(state: MenuState | None, busy_command: str | None) -> TrayM
     )
 
 
+HEALTHY_COMPATIBILITY_STATUSES = frozenset({"compatible", "unknown", "unconstrained"})
+_COMPATIBILITY_FALLBACK_TEXT = "Not compatible with this Claude version"
+
+
+def compatibility_display(status: str, message: str | None = None) -> str:
+    """Map an internal compatibility status word to UI-safe text.
+
+    The CLI's internal status vocabulary (``compatible``, ``unknown``,
+    ``unconstrained``, ``version_mismatch``, ``sha_mismatch``,
+    ``constrained``, ...) must never render verbatim in the UI -- it only
+    makes sense to someone who understands ClaudeMonkey's internals.
+
+    Healthy/neutral statuses render as an empty string: the row already
+    shows the package name, and that's enough. Anything else is a problem
+    status, so it renders the CLI-supplied, already human-phrased
+    ``message`` when one is available, or a short generic fallback when it
+    isn't. This is the single place every GUI surface routes compatibility
+    text through -- no caller should format ``status`` itself.
+    """
+    if status in HEALTHY_COMPATIBILITY_STATUSES:
+        return ""
+    return message or _COMPATIBILITY_FALLBACK_TEXT
+
+
 def patch_menu_label(patch: PatchMenuItem) -> str:
     if not patch.available:
         return f"{patch.label} — unavailable"
-    if patch.compatibility_status not in {"compatible", "unknown", "unconstrained"}:
-        detail = patch.compatibility_message or patch.compatibility_status
+    detail = compatibility_display(patch.compatibility_status, patch.compatibility_message)
+    if detail:
         return f"{patch.label} — {detail}"
     return patch.label
 
@@ -82,7 +106,7 @@ def patch_item_enabled(patch: PatchMenuItem, *, mutating_enabled: bool) -> bool:
         return True
     if not patch.available:
         return False
-    return patch.compatibility_status in {"compatible", "unknown", "unconstrained"}
+    return patch.compatibility_status in HEALTHY_COMPATIBILITY_STATUSES
 
 
 def option_item_enabled(option: OptionMenuItem, *, mutating_enabled: bool) -> bool:

@@ -24,7 +24,11 @@ from PySide6.QtWidgets import (
 )
 
 from claude_monkey.gui.pages.common import Banner
-from claude_monkey.gui.window_model import option_item_enabled, remove_enabled
+from claude_monkey.gui.window_model import (
+    compatibility_display,
+    option_item_enabled,
+    remove_enabled,
+)
 from claude_monkey.menubar_state import MenuState, OptionMenuItem
 
 COLUMN_LABELS = ("", "Option", "Risk", "Compatibility")
@@ -115,7 +119,7 @@ class OptionsPage(QWidget):
             risk_item.setForeground(HIGH_RISK_COLOR)
         self.table.setItem(row, 2, risk_item)
 
-        compat_item = QTableWidgetItem(option.compatibility_status)
+        compat_item = QTableWidgetItem(compatibility_display(option.compatibility_status))
         compat_item.setFlags(cell_flags)
         self.table.setItem(row, 3, compat_item)
 

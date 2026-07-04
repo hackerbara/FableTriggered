@@ -31,6 +31,7 @@ from claude_monkey.gui import window_model
 from claude_monkey.gui.window_model import (
     InstallTargetSelection,
     build_tray_model,
+    compatibility_display,
     default_install_target,
     install_target_choices,
     option_item_enabled,
@@ -162,6 +163,49 @@ def test_none_state_yields_error_model():
     assert model.prompt_items == ()
     assert model.patch_items == ()
     assert model.option_items == ()
+
+
+# ---------------------------------------------------------------------------
+# compatibility_display
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["compatible", "unknown", "unconstrained"],
+)
+def test_compatibility_display_healthy_statuses_are_blank(status):
+    # Internal jargon like "unconstrained" must never reach the UI -- a
+    # healthy/neutral status shows nothing, letting the row speak for
+    # itself via the package name alone.
+    assert compatibility_display(status) == ""
+    assert compatibility_display(status, "some message") == ""
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["version_mismatch", "sha_mismatch", "constrained", "incompatible", "some_future_status"],
+)
+def test_compatibility_display_problem_status_uses_message_when_present(status):
+    assert compatibility_display(status, "Human readable detail.") == "Human readable detail."
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["version_mismatch", "sha_mismatch", "constrained", "incompatible", "some_future_status"],
+)
+def test_compatibility_display_problem_status_falls_back_without_message(status):
+    # No raw status word (e.g. "sha_mismatch", "constrained") may pass
+    # through verbatim when the CLI didn't supply a message.
+    display = compatibility_display(status)
+    assert display != ""
+    assert display != status
+    assert display == "Not compatible with this Claude version"
+
+
+def test_compatibility_display_blank_message_falls_back():
+    display = compatibility_display("version_mismatch", "")
+    assert display == "Not compatible with this Claude version"
 
 
 # ---------------------------------------------------------------------------

@@ -279,6 +279,36 @@ def test_patches_incompatible_row_is_disabled(qtbot, tmp_path):
     assert not (checkbox_item.flags() & Qt.ItemFlag.ItemIsEnabled)
 
 
+def test_patches_compatibility_column_hides_internal_status_words(qtbot, tmp_path):
+    # "unconstrained"/"compatible" are internal jargon (Task: hide compat
+    # status vocabulary) -- the column must show nothing for healthy rows
+    # and short human text (never the raw status word) for problem rows.
+    state = _state(
+        tmp_path,
+        patch_items=(
+            PatchMenuItem("p1", "Fable", True, True, True, "unconstrained", None),
+            PatchMenuItem("p2", "Compat", True, True, True, "compatible", None),
+            PatchMenuItem(
+                "p3", "Broken", False, False, True, "version_mismatch", "targets 2.1.198"
+            ),
+            PatchMenuItem("p4", "NoMessage", False, False, True, "sha_mismatch", None),
+        ),
+    )
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state)
+
+    table = window.patches_page.table
+    assert table.item(0, 2).text() == ""
+    assert table.item(1, 2).text() == ""
+    assert table.item(2, 2).text() == "targets 2.1.198"
+    assert table.item(3, 2).text() == "Not compatible with this Claude version"
+    for row in range(table.rowCount()):
+        text = table.item(row, 2).text()
+        assert text not in {"unconstrained", "compatible", "version_mismatch", "sha_mismatch"}
+
+
 def test_patches_add_package_emits_action(qtbot, monkeypatch, fake_state, tmp_path):
     window = SettingsWindow()
     qtbot.addWidget(window)
@@ -560,6 +590,28 @@ def test_options_remove_button_disabled_with_reason_tooltip(qtbot, fake_state):
 
     assert window.options_page.remove_button.isEnabled() is False
     assert "dangerous-permissions" in window.options_page.remove_button.toolTip()
+
+
+def test_options_compatibility_column_hides_internal_status_words(qtbot, tmp_path):
+    # Same contract as the Patches page: "unconstrained"/"constrained" are
+    # internal jargon and must never render verbatim in the Compatibility
+    # column.
+    state = _state(
+        tmp_path,
+        option_items=(
+            OptionMenuItem("o1", "Local proxy", True, True, "unconstrained", "low"),
+            OptionMenuItem("o2", "Constrained thing", True, True, "constrained", "low"),
+        ),
+    )
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    window.render(state)
+
+    table = window.options_page.table
+    assert table.item(0, 3).text() == ""
+    for row in range(table.rowCount()):
+        assert table.item(row, 3).text() not in {"unconstrained", "constrained"}
 
 
 # --- Install page (Task 18) ---------------------------------------------

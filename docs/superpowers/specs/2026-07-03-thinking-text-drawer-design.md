@@ -11,6 +11,8 @@ Create a new ClaudeMonkey patch package modeled on `hidden-context-drawer`, but 
 
 The drawer is a pop-up layer the user can open whenever. It must not change the main chat setup, normal chat rendering, request assembly, JSONL history, or model-visible context. Its job is to surface as much raw/structured thinking text as the harness already has or receives.
 
+“Open whenever” is a hard product invariant: the Thinking footer target must be available in interactive footer mode even when no thinking has been captured yet. The empty drawer state is `No thinking captured yet`. Flash/unread state indicates new captured thinking, but availability must not depend on Ctrl-O, transcript mode, or a `frame.visible` gate.
+
 ## Product principle
 
 The drawer should prefer real text over derived progress.
@@ -56,6 +58,8 @@ Reuse the hidden-context drawer pattern:
 
 The drawer title should be ` Thinking `. The footer label can be `Thinking`.
 
+Unlike `hidden-context-drawer`, the Thinking footer item is always available while the interactive footer is active. Captured entries affect unread/flash text and counts, not whether the drawer can be opened.
+
 ### 2. Thinking frame layer
 
 Maintain a global display frame, for example `__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__`.
@@ -83,6 +87,8 @@ Feed the frame from multiple seams:
 - **Salvage source:** capture virtual thinking blocks created from in-flight `_t?.thinking` on cancellation/interruption.
 - **Secondary evidence source:** record `redacted_thinking`, `thinking_signature`, and `system/thinking_tokens` as markers when raw text is not present.
 
+Structured collection must run at a parent assistant-message/content-list seam that sees assistant content blocks before normal-mode rendering suppresses `thinking` and `redacted_thinking`. Do not rely on the thinking renderer as the only collection source. The collector must update display-only frame state whether or not Ctrl-O is active.
+
 ## Data flow
 
 ### During streaming
@@ -97,7 +103,7 @@ When redacted thinking appears, show a compact marker that a redacted thinking b
 
 ### When assistant content lands
 
-Scan assistant messages for structured `thinking` blocks. These are canonical because they are what Ctrl-O transcript mode already knows how to render.
+Scan assistant messages for structured `thinking` blocks at a content-list seam before the normal renderer decides whether transcript/verbose mode is active. These blocks are canonical because they are what Ctrl-O transcript mode already knows how to render, but collection must not be Ctrl-O-gated.
 
 For each structured block:
 
@@ -122,8 +128,10 @@ If live chunks lack a stable ID, use a provisional per-active-stream key.
 
 When final structured text arrives:
 
-- if it starts with, contains, or closely matches the provisional text, replace the provisional entry with the structured final entry;
-- if the texts disagree, preserve both entries and label them clearly (`live partial`, `structured final`).
+- merge live and structured entries only when stable identity matches, or when exactly one active provisional entry exists for the same turn and normalized structured text contains the normalized provisional text;
+- on merge, preserve provenance, for example `sources: ["live", "structured"]`;
+- if identity is absent, ambiguous, or text disagrees, preserve both entries and label them clearly (`live partial`, `structured final`);
+- do not use fuzzy or Levenshtein-style “close match” dedupe.
 
 Never silently discard unique thinking text.
 
@@ -146,6 +154,8 @@ Entries should show:
 - character count and/or estimated token count;
 - wrapped thinking text when available;
 - compact secondary rows for redacted or estimate-only evidence.
+
+If there are no entries, the drawer renders `No thinking captured yet`.
 
 Display order should be most-recent turn first, matching the hidden-context drawer style. Within a turn, in-progress live text may appear before finalization; once structured text arrives, the final/canonical entry should be preferred.
 
@@ -171,7 +181,11 @@ It should reuse payload patterns from `packages/hidden-context-drawer`, but with
 - target module `/$bunfs/root/src/entrypoints/cli.js`;
 - exact source identity for Claude Code 2.1.201.
 
+All 2.1.199 `hidden-context-drawer` exact anchors miss against Claude Code 2.1.201, so fresh anchors are not optional.
+
 Because the shared footer-drawer framework is not yet ready, this package should initially own its drawer seams directly rather than depending on an unimplemented composition framework.
+
+The initial `thinking-text-drawer` package is a standalone direct footer/overlay seam owner. It is expected to conflict with any other direct footer drawer package targeting the same Claude Code source until structured splices or a reviewed footer-drawer framework exists. Do not claim compatibility with a future `hidden-context-drawer` or `reminders-manager` port unless a build matrix proves non-overlap.
 
 ## Testing plan
 
@@ -181,6 +195,7 @@ Because the shared footer-drawer framework is not yet ready, this package should
 - Package validation resolves all operations against the target binary.
 - Postconditions verify helper globals, footer label, drawer title, close behavior, and collector hooks.
 - Existing `hidden-context-drawer` package files remain untouched.
+- Tests verify x-only drawer close behavior: no Escape close path, no Escape copy, `footer:clearSelection` does not close Thinking, and `footer:close` does.
 
 ### Fixture tests
 
@@ -192,6 +207,7 @@ Add package-level tests for collector helpers where feasible:
 - mismatched live/final text preserves both entries;
 - redacted-only and estimate-only events produce secondary rows;
 - empty thinking strings do not create noisy rows.
+- long thinking text is preserved in captured frame data; rendering may viewport/wrap/cap displayed lines, but stored captured text is not silently truncated unless the UI labels truncation explicitly.
 
 ### Manual smoke
 
@@ -202,7 +218,7 @@ Against a copied patched binary:
 3. Verify thinking text appears in the drawer as a pop-up layer.
 4. Verify Ctrl-O still works and still shows transcript thinking.
 5. Verify normal chat remains unchanged.
-6. Verify no JSONL/request/context mutation occurs.
+6. Verify no JSONL/request/context mutation occurs with before/after transcript or request-state checks, not package validation alone.
 7. If possible, observe whether live text appears before final assistant text.
 
 ## Out of scope

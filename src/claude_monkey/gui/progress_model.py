@@ -59,6 +59,11 @@ class ProgressModel:
             stage_id = stage.get("id")
             if stage_id is None:
                 continue
+            if stage_id in by_id:
+                # Duplicate id within the same plan event: first occurrence
+                # wins. Silently keeping both would orphan the earlier row
+                # in `rows` (unreachable by `_by_id`, forever "pending").
+                continue
             label = stage.get("label")
             row = StageRow(stage_id=stage_id, label=label if label is not None else stage_id)
             rows.append(row)
@@ -82,8 +87,11 @@ class ProgressModel:
             self._by_id[stage_id] = row
 
         row.status = status
-        if "message" in event:
-            row.message = event.get("message")
+        # Only carry a message forward when the event actually supplies one;
+        # otherwise clear it so a stale error message doesn't survive a
+        # later status-only transition (e.g. a retried stage going back to
+        # "running", or a subsequent "done").
+        row.message = event.get("message") if "message" in event else None
 
     def _apply_log(self, event: dict) -> None:
         line = event.get("line")
@@ -97,6 +105,12 @@ class ProgressModel:
 
         if payload.get("ok"):
             self.outcome = "success"
+            # A dropped terminal "done" event can leave a row stuck at
+            # "running" even though the process reported overall success.
+            # Reconcile every such row so the checklist doesn't lie.
+            for row in self.rows:
+                if row.status == "running":
+                    row.status = "done"
             return
 
         self.outcome = "failure"

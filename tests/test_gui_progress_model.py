@@ -59,6 +59,9 @@ def test_malformed_events_do_not_raise():
     m.apply_event({"event": "plan"})
     m.apply_event({"event": "plan", "stages": "oops"})
     m.apply_event({"event": "plan", "stages": [{"id": "x"}, {"label": "no id"}]})
+    # The entry with no "id" is skipped, so exactly one row survives.
+    assert [r.stage_id for r in m.rows] == ["x"]
+    assert m.rows[0].label == "x"
     # stage event missing "id"
     m.apply_event({"event": "stage", "status": "running"})
     # stage event missing "status"
@@ -79,3 +82,41 @@ def test_apply_result_malformed_payload_does_not_raise():
     # outcome should reflect the last processed payload's ok-ish value,
     # but at minimum must not raise and must remain a valid state.
     assert m.outcome in (None, "success", "failure")
+
+
+def test_duplicate_stage_id_in_plan_deduplicates():
+    m = ProgressModel()
+    plan = {
+        "event": "plan",
+        "stages": [
+            {"id": "a", "label": "A1"},
+            {"id": "a", "label": "A2"},
+            {"id": "b", "label": "B"},
+        ],
+    }
+    m.apply_event(plan)
+    # Exactly one row for the duplicated id; no orphaned row left behind.
+    assert [r.stage_id for r in m.rows] == ["a", "b"]
+    # The surviving row is reachable by later stage events.
+    m.apply_event({"event": "stage", "id": "a", "status": "done"})
+    assert m.rows[0].status == "done"
+
+
+def test_apply_result_ok_resolves_stuck_running_row():
+    m = ProgressModel()
+    m.apply_event(PLAN)
+    m.apply_event({"event": "stage", "id": "a", "status": "running"})
+    # No terminal "done" event arrives for "a" (e.g. dropped by the runner),
+    # but the process reports overall success.
+    m.apply_result({"ok": True, "summary": "built"})
+    assert m.rows[0].status == "done"
+    assert m.outcome == "success"
+
+
+def test_stage_message_clears_on_status_only_transition():
+    m = ProgressModel()
+    m.apply_event(PLAN)
+    m.apply_event({"event": "stage", "id": "a", "status": "running", "message": "retrying"})
+    m.apply_event({"event": "stage", "id": "a", "status": "done"})
+    assert m.rows[0].status == "done"
+    assert m.rows[0].message is None

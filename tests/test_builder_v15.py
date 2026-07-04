@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 from tests.builder_fixtures import write_fixture_package  # noqa: F401 - re-exported for other tests
 from tests.fixtures_bun import MODULE_0, MODULE_1, MODULE_PATH_1, build_aligned_macho_fixture
 
-from claude_monkey.builder_v15 import build_patchset_v15
+from claude_monkey.builder_v15 import BuildRequestV15, build_patchset_v15
+from claude_monkey.smoke import CommandResult
 
 pytest_plugins = ["tests.builder_fixtures"]
 
@@ -68,6 +71,19 @@ def test_source_identity_mismatch_report_names_current_and_target(successful_bui
     assert "current source is Claude 2.1.199" in report.failureReason
     assert "package targets Claude fixture" in report.failureReason
 
+
+def successful_runner(argv):
+    if argv[0] == "codesign" and "--verify" in argv:
+        return CommandResult(argv=argv, returncode=0, stdout="", stderr="valid")
+    if argv[0] == "codesign":
+        return CommandResult(argv=argv, returncode=0, stdout="", stderr="signed")
+    if argv[-1] == "--version":
+        return CommandResult(argv=argv, returncode=0, stdout="fixture (Claude Code)\n", stderr="")
+    if argv[-1] == "--help":
+        return CommandResult(
+            argv=argv, returncode=0, stdout="Usage: claude [options]\nClaude Code help\n", stderr=""
+        )
+    return CommandResult(argv=argv, returncode=1, stdout="", stderr="unexpected")
 
 
 def write_insertion_package(

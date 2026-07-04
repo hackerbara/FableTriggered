@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
+from pathlib import Path
 
 from claude_monkey.cli import main
 
@@ -1166,3 +1167,106 @@ def test_use_official_json_missing_inputs_return_envelopes(monkeypatch, tmp_path
     payload = parse_json_output(capsys)
     assert payload["ok"] is False
     assert payload["error"]["code"] == "missing_official"
+
+
+# -- shim-update-resilience stage 2: cache-source + repair-shim -------------
+#
+# docs/superpowers/specs/2026-07-04-claude-monkey-shim-update-resilience.md
+# Sec2/Sec3 + Refinements R1-R4, R6, R8, R9.
+
+
+def _replace_with_official(target, tmp_path, version="2.1.201"):
+    official = tmp_path / "official-source" / "claude"
+    official.parent.mkdir(parents=True)
+    official.write_text(f"#!/bin/sh\necho '{version} (Claude Code)'\n")
+    official.chmod(official.stat().st_mode | 0o111)
+    target.unlink()
+    target.symlink_to(official)
+    return official
+
+
+def test_cache_source_json_contract_via_cli(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    official = _replace_with_official(target, tmp_path)
+    official_sha = hashlib.sha256(official.read_bytes()).hexdigest()
+
+    assert main(["cache-source", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is True
+    assert payload["sha256"] == official_sha
+    assert Path(payload["cachedSourcePath"]).read_bytes() == official.read_bytes()
+    assert payload["version"] == "2.1.201"
+    assert isinstance(payload["gcRemovedDigests"], list)
+    # Never touches the target.
+    assert target.is_symlink()
+
+
+def test_cache_source_json_missing_target_returns_envelope(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert main(["cache-source", "--json"]) == 2
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "missing_target"
+
+
+def test_repair_shim_json_contract_via_cli(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    official = _replace_with_official(target, tmp_path)
+    official_sha = hashlib.sha256(official.read_bytes()).hexdigest()
+
+    assert main(["status", "--json"]) == 0
+    before = parse_json_output(capsys)
+    assert before["shimInstalled"] is False
+    assert before["targetReplacedByOfficial"] is True
+
+    assert main(["repair-shim", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is True
+    assert payload["repaired"] is True
+    assert payload["newOfficialSha256"] == official_sha
+    assert payload["newOfficialVersion"] == "2.1.201"
+    assert Path(payload["cachedSourcePath"]).read_bytes() == official.read_bytes()
+
+    assert main(["status", "--json"]) == 0
+    after = parse_json_output(capsys)
+    assert after["shimInstalled"] is True
+    assert after["targetReplacedByOfficial"] is False
+
+
+def test_repair_shim_json_never_managed_target_returns_envelope(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["repair-shim", "--target", str(target), "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "no_install_record"
+    # No write attempted: target is exactly the fake binary, untouched.
+    assert "ClaudeMonkey" not in target.read_text()
+
+
+def test_repair_shim_json_missing_target_returns_envelope(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert main(["repair-shim", "--json"]) == 2
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "missing_target"

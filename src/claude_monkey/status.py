@@ -358,7 +358,7 @@ def _shim_previously_managed(record: dict[str, Any] | None) -> bool:
     )
 
 
-def _classify_plausible_official_source(target_path: Path, paths: StatePaths) -> Path | None:
+def classify_plausible_official_source(target_path: Path, paths: StatePaths) -> Path | None:
     """Best-effort "this is some other executable" classification.
 
     Reuses the same primitives `source_discovery.py` already applies to
@@ -366,6 +366,12 @@ def _classify_plausible_official_source(target_path: Path, paths: StatePaths) ->
     ClaudeMonkey's own managed paths via `is_managed_launcher_path`). Per R8,
     this proves the target is *not* one of our own managed binaries -- it is
     not, and must never be presented as, verified-Anthropic provenance.
+
+    Stage-2 (`repair.py`) reuses this exact function for its own
+    "current target classifies as plausible official" precondition rather
+    than re-deriving the classification -- see that module for the
+    additional, code-disambiguated refusal reasons it layers on top when
+    this returns `None`.
     """
     try:
         resolved = target_path.resolve(strict=True)
@@ -429,7 +435,7 @@ def _detect_official_replacement(
     )
     if shim_installed:
         return {**_NO_OFFICIAL_REPLACEMENT, "shimRepairAvailable": repair_available}
-    resolved = _classify_plausible_official_source(target_path, paths)
+    resolved = classify_plausible_official_source(target_path, paths)
     if resolved is None:
         return {**_NO_OFFICIAL_REPLACEMENT, "shimRepairAvailable": repair_available}
     expected_shim_digest = shim_digest(paths.state_dir)

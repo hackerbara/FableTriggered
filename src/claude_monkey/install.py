@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import os
+import shutil
 import stat
 from collections.abc import Callable
 from pathlib import Path
@@ -72,6 +73,67 @@ def _existing_managed_record(record_path: Path, target_path: Path) -> dict | Non
     return None
 
 
+def atomic_write_bytes(path: Path, data: bytes, mode: int) -> None:
+    """Write `data` to `path` via temp-file + rename (atomic on same filesystem)."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_bytes(data)
+    tmp.chmod(mode)
+    tmp.replace(path)
+
+
+def atomic_write_json(path: Path, payload: dict) -> None:
+    """Write `payload` to `path` as JSON via temp-file + rename."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    tmp.replace(path)
+
+
+def sources_root(state_dir: Path) -> Path:
+    return state_dir / "sources"
+
+
+def cache_source(resolved_source: Path, state_dir: Path, *, version: str | None = None) -> dict:
+    """ClaudeMonkey's single source-cache mechanism (spec R1).
+
+    Copies `resolved_source`'s bytes into the digest-keyed cache directory
+    (`state_dir/sources/<sha256>/claude`), atomically (temp file + rename),
+    and writes/refreshes a `source-record.json` sidecar in the same
+    directory (path/sha256/sizeBytes/capturedAt/version). This is the same
+    directory layout `_cache_previous_source` has always written into --
+    generalized here so install-time caching and the explicit
+    `cache-source`/`repair-shim` commands write through one place instead of
+    a second parallel scheme. `resolve_cached_source`'s read-side containment
+    check (`state_dir / "sources"`) is unchanged and keeps working for
+    records written before this sidecar existed.
+    """
+    data = resolved_source.read_bytes()
+    digest = sha256_bytes(data)
+    digest_dir = sources_root(state_dir) / digest
+    digest_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = digest_dir / "claude"
+    if not cache_path.exists():
+        mode = stat.S_IMODE(resolved_source.stat().st_mode) | 0o755
+        atomic_write_bytes(cache_path, data, mode)
+    record_path = digest_dir / "source-record.json"
+    atomic_write_json(
+        record_path,
+        {
+            "path": str(resolved_source),
+            "sha256": digest,
+            "sizeBytes": len(data),
+            "capturedAt": time(),
+            "version": version,
+        },
+    )
+    return {
+        "sourcePath": str(resolved_source),
+        "previousResolvedPath": str(resolved_source),
+        "previousSourceCachePath": str(cache_path),
+        "previousSourceSha256": digest,
+        "previousSourceSizeBytes": len(data),
+    }
+
+
 def _cache_previous_source(target_path: Path, state_dir: Path) -> dict:
     if not (target_path.exists() or target_path.is_symlink()):
         return {}
@@ -81,20 +143,46 @@ def _cache_previous_source(target_path: Path, state_dir: Path) -> dict:
         return {}
     if not source_path.is_file() or not os.access(source_path, os.X_OK):
         return {}
-    data = source_path.read_bytes()
-    digest = sha256_bytes(data)
-    cache_path = state_dir / "sources" / digest / "claude"
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    if not cache_path.exists():
-        cache_path.write_bytes(data)
-        cache_path.chmod(stat.S_IMODE(source_path.stat().st_mode) | 0o755)
-    return {
-        "sourcePath": str(source_path),
-        "previousResolvedPath": str(source_path),
-        "previousSourceCachePath": str(cache_path),
-        "previousSourceSha256": digest,
-        "previousSourceSizeBytes": len(data),
-    }
+    return cache_source(source_path, state_dir)
+
+
+def _read_source_record(digest_dir: Path) -> dict | None:
+    try:
+        raw = json.loads((digest_dir / "source-record.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def _source_record_captured_at(digest_dir: Path) -> float:
+    record = _read_source_record(digest_dir)
+    if record is None:
+        return 0.0
+    value = record.get("capturedAt")
+    return float(value) if isinstance(value, (int, float)) else 0.0
+
+
+def gc_source_cache(
+    state_dir: Path, *, active_digest: str | None, keep_recent: int = 2
+) -> list[str]:
+    """R6 retention: never GC `active_digest` (the digest referenced by the
+    active install record); of the remaining distinct digests, keep the
+    `keep_recent` most recently captured (by source-record.json
+    `capturedAt`) and remove the rest. Call only after a successful new
+    cache write. Returns the list of removed digests.
+    """
+    sources_dir = sources_root(state_dir)
+    if not sources_dir.exists():
+        return []
+    digest_dirs = [entry for entry in sources_dir.iterdir() if entry.is_dir()]
+    others = [entry for entry in digest_dirs if entry.name != active_digest]
+    others.sort(key=_source_record_captured_at, reverse=True)
+    to_remove = others[keep_recent:]
+    removed: list[str] = []
+    for digest_dir in to_remove:
+        shutil.rmtree(digest_dir, ignore_errors=True)
+        removed.append(digest_dir.name)
+    return removed
 
 
 def resolve_cached_source(record: dict, state_dir: Path) -> Path | None:

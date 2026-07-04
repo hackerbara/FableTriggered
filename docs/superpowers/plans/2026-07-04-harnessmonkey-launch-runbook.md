@@ -38,6 +38,8 @@
 
 ## Phase 1 — Content & cuts (after G1 + G2; old repo; system stays green after each step)
 
+> **Implementation plans exist for the meat of this phase:** tasks 1.2/1.3b/1.4/1.5 → `docs/superpowers/plans/2026-07-04-schema-unification-and-repin.md` (also absorbs the current schema/build-semantics test failures as its Task 0); task 1.7a → `docs/superpowers/plans/2026-07-04-install-uninstall-command.md`.
+
 - [ ] 1.1 Delete the 4 cut packages + `tests/test_dvd_cursor_*.py`, **and in the same change** remove `reminder-suppression` from `tests/test_reference_packages.py` `PACKAGE_DIRS` (it hardcodes the cut package's path — the suite fails otherwise); run full test suite.
 - [ ] 1.2 Delete the dead legacy loader path (`src/claude_monkey/manifest.py`, `builder.py`, and their orphaned helpers/tests — verify unreachable from `cli.py` first; survey says only tests import them).
 - [x] 1.3 Create `examples/` with curated generators: `.development/capy-onsen-20260703/` and `.development/highdef-v11-20260702/` pipelines (paint/sim/compile/generate_package + a short README each). ✅ Done, commit `7ff5781`.

@@ -7,11 +7,29 @@ import platform as platform_module
 import sys
 from pathlib import Path
 
+import pytest
+
+from claude_monkey import source_discovery
 from claude_monkey.cli import main
 from claude_monkey.config import load_config
 from claude_monkey.install import install_shim_transaction
 from claude_monkey.paths import StatePaths
 from claude_monkey.status import status_payload
+
+
+@pytest.fixture(autouse=True)
+def _tiny_plausible_official_size_floor(monkeypatch):
+    """This file's fake "official"/replacement/pre-existing-target binaries
+    are tiny shell-script fixtures (a handful of bytes), not real ~230MB
+    Claude binaries -- keeping the suite fast and disk-light. Patch the
+    CMux-incident size floor (`source_discovery.MIN_PLAUSIBLE_OFFICIAL_SIZE_
+    BYTES`) down to 0 (i.e. no floor) so those tiny fixtures still classify
+    as "plausible official" here, exactly as they did before Fix 1.
+
+    The real, unpatched 50MB floor is exercised end-to-end by
+    tests/test_plausible_official_size_floor.py instead.
+    """
+    monkeypatch.setattr(source_discovery, "MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES", 0)
 
 
 def write_json(path: Path, payload: dict) -> None:

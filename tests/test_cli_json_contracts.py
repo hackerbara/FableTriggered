@@ -5,7 +5,23 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
+from claude_monkey import source_discovery
 from claude_monkey.cli import main
+
+
+@pytest.fixture(autouse=True)
+def _tiny_plausible_official_size_floor(monkeypatch):
+    """This file's fake "official"/replacement binaries are tiny shell-script
+    fixtures, not real ~230MB Claude binaries. Patch the CMux-incident size
+    floor (`source_discovery.MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES`) down to 0
+    (no floor) so those fixtures classify as "plausible official" and
+    install-shim's plausibility gate doesn't refuse them here -- the real,
+    unpatched 50MB floor is exercised end-to-end by
+    tests/test_plausible_official_size_floor.py.
+    """
+    monkeypatch.setattr(source_discovery, "MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES", 0)
 
 
 def parse_json_output(capsys):
@@ -34,6 +50,8 @@ def test_status_json_contract(monkeypatch, tmp_path, capsys):
     assert payload["detectedOfficialVersion"] is None
     assert payload["shimRepairAvailable"] is False
     assert payload["rolloutRequired"] is False
+    # Reverted-shim visibility gap fix: never managed this machine -> null.
+    assert payload["lastManagedTargetPath"] is None
 
 
 def test_status_json_contract_shim_replaced_by_official_is_additive(
@@ -79,6 +97,61 @@ def test_status_json_contract_shim_replaced_by_official_is_additive(
     assert payload["detectedOfficialSha256"] == official_sha
     assert payload["shimRepairAvailable"] is True
     assert payload["rolloutRequired"] is True
+
+
+def test_status_json_last_managed_target_path_is_additive_and_survives_revert(
+    monkeypatch, tmp_path, capsys
+):
+    """Reverted-shim visibility gap fix: `lastManagedTargetPath` reports the
+    install record's `targetPath` whenever a valid, ClaudeMonkey-owned
+    install-record.json exists -- REGARDLESS of whether `shimInstalled` is
+    currently true -- so a consumer can distinguish "never managed this
+    machine" (null) from "managed but something (e.g. the official Anthropic
+    auto-updater) reverted the shim since" (non-null while shimInstalled is
+    False). Purely additive: `installRecordPath`/`shimTargetPath` keep their
+    existing `shimInstalled`-gated semantics unchanged.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    assert main(["status", "--json"]) == 0
+    payload_before = parse_json_output(capsys)
+    assert payload_before["shimInstalled"] is True
+    assert payload_before["lastManagedTargetPath"] == str(target)
+    assert payload_before["shimTargetPath"] == str(target)
+    assert payload_before["installRecordPath"] is not None
+    existing_keys = set(payload_before)
+
+    # The official Anthropic auto-updater (or anything else) reverts the
+    # shim: same target path, different bytes.
+    target.unlink()
+    target.write_text("#!/bin/sh\necho 'reverted by official updater'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["status", "--json"]) == 0
+    payload_after = parse_json_output(capsys)
+
+    # Additive: same key set as before.
+    assert set(payload_after) == existing_keys
+    # Existing, shimInstalled-gated fields keep their exact prior semantics
+    # -- both go back to null the moment shimInstalled flips False.
+    assert payload_after["shimInstalled"] is False
+    assert payload_after["shimTargetPath"] is None
+    assert payload_after["installRecordPath"] is None
+    # The gap this closes: lastManagedTargetPath is NOT gated on
+    # shimInstalled, so it stays populated -- this machine WAS managed, even
+    # though something reverted the shim since.
+    assert payload_after["lastManagedTargetPath"] == str(target)
+    # This condition ("reverted since managed") is fully derivable from two
+    # already-existing fields with no new boolean needed:
+    assert payload_after["shimPreviouslyManaged"] is True
+    assert payload_after["shimInstalled"] is False
 
 
 def test_mutating_command_json_envelope(monkeypatch, tmp_path, capsys):

@@ -370,3 +370,15 @@ def test_envelope_relationship_metadata_defaults_empty(tmp_path):
     loaded = load_package_manifest(package_dir, PackageKind.PATCH)
     assert loaded.requires_packages == ()
     assert loaded.conflicts_with_packages == ()
+
+def test_package_version_round_trips(tmp_path):
+    pkg = tmp_path / "x"
+    pkg.mkdir()
+    (pkg / "patch.json").write_text(json.dumps({
+        "schemaVersion": 1, "kind": "patch", "id": "x", "label": "X",
+        "description": "d", "packageVersion": "1.2.3",
+        "patch": {"engine": "bun_graph_repack", "targets": []},
+    }))
+    manifest = load_package_manifest(pkg, PackageKind.PATCH)
+    assert manifest.package_version == "1.2.3"
+

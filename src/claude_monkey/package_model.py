@@ -115,6 +115,7 @@ class PackageManifest:
     id: str
     label: str
     description: str
+    package_version: str
     package_dir: Path
     manifest_path: Path | None
     risk: Risk | None
@@ -440,6 +441,7 @@ def load_package_manifest_from_dict(
         id=package_id,
         label=_require_string(top, "name" if schema_version == 2 else "label"),
         description=_require_string(top, "description"),
+        package_version=_optional_string(top, "packageVersion") or "0.0.0",
         package_dir=package_dir,
         manifest_path=manifest_path,
         risk=_parse_risk(top.get("risk")),

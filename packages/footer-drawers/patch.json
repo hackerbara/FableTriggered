@@ -32,7 +32,7 @@
               "oldRangeLength": 193,
               "replacement": {
                 "path": "payloads/01-bootstrap-and-overlay.js",
-                "sha256": "7c20a5d4df3dc16432f42927f3e1f1064d5456d526c5c2a45ee59ba8fca2c6e2"
+                "sha256": "0a025cc0e09075e2c0f5820b69dc07e7cd7551db2df01c69356aeb082ac44b08"
               },
               "knownBehaviorChange": "Adds shared drawer registry helpers and renders the active registered drawer in the bottom overlay sibling."
             },
@@ -169,7 +169,7 @@
               "oldRangeLength": 89,
               "replacement": {
                 "path": "payloads/10-footer-bar-var.js",
-                "sha256": "dd531e9ecc303b3c7f9f7786f054e381a2bd9f8c19764daaa38dd0ada5d2e423"
+                "sha256": "1e268877603845e766e5efa47a94ca89502be2beeddf50dd9987869d549e6747"
               },
               "knownBehaviorChange": "Computes a compact registry-rendered drawer toolbar segment."
             },

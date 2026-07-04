@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -136,6 +137,91 @@ def test_footer_drawers_payload_defines_registry_lifecycle_contract() -> None:
     assert 'return e["footer:clearSelection"]?.()' in clear_handler
     assert "__codexFDClose(\"escape\")" not in text
     assert "__codexFDClose(\"x\")" in text
+
+
+def _run_footer_drawers_payload_js(body: str) -> dict:
+    bootstrap = FOOTER_DRAWERS / "payloads" / "01-bootstrap-and-overlay.js"
+    script = f"""
+const fs = require("fs");
+const Xd = {{
+  Fragment: "Fragment",
+  jsx: (type, props, key) => ({{type: typeof type === "function" ? type.name : type, props, key}}),
+  jsxs: (type, props, key) => ({{type: typeof type === "function" ? type.name : type, props, key}}),
+}};
+function B(props) {{ return props; }}
+function v(props) {{ return props; }}
+const MXe = {{ c: (n) => new Array(n) }};
+function clc() {{ return null; }}
+eval(fs.readFileSync({str(bootstrap)!r}, "utf8"));
+{body}
+"""
+    result = subprocess.run(["node", "-e", script], check=True, text=True, capture_output=True)
+    return json.loads(result.stdout)
+
+
+def test_footer_drawers_bar_consumes_active_selection_and_renders_per_entry_hints() -> None:
+    bar_payload = (FOOTER_DRAWERS / "payloads" / "10-footer-bar-var.js").read_text(encoding="utf-8")
+    assert "__codexFDBar(FDs)" in bar_payload
+    assert "children:__codexFDBarText()" not in bar_payload
+
+    data = _run_footer_drawers_payload_js(
+        """
+__codexFDDrawers().entries = [];
+__codexFDRegister({id:"hidden",order:100,available:()=>true,label:()=>"Hidden",badge:()=>"2"});
+__codexFDRegister({id:"thinking",order:200,available:()=>true,label:()=>"Thinking"});
+__codexFDRegister({id:"reminders",order:300,available:()=>true,label:()=>"Reminders",flash:()=>true});
+__codexFDAvailable();
+__codexFDDrawers().hoverId = "thinking";
+console.log(JSON.stringify({
+  active: __codexFDBarItems(true),
+  inactive: __codexFDBarItems(false)
+}));
+"""
+    )
+
+    assert [item["id"] for item in data["active"]] == ["hidden", "thinking", "reminders"]
+    assert [item["hintKind"] for item in data["active"]] == ["arrow", "enter", "arrow"]
+    assert [item["selected"] for item in data["active"]] == [False, True, False]
+    assert [item["hintKind"] for item in data["inactive"]] == ["arrow", "arrow", "arrow"]
+    assert [item["selected"] for item in data["inactive"]] == [False, False, False]
+
+
+def test_footer_drawers_open_clear_selection_delegates_without_closing_and_x_keeps_drawers_selected() -> None:
+    data = _run_footer_drawers_payload_js(
+        """
+__codexFDDrawers().entries = [];
+let stockClear = 0;
+let closedReason = null;
+let selected = [];
+__codexFDRegister({
+  id:"hidden",
+  order:100,
+  available:()=>true,
+  label:()=>"Hidden",
+  onKey:(key)=>false,
+  onClose:(reason)=>{ closedReason = reason; }
+});
+__codexFDOpen("hidden");
+let actions = __codexFDWrapActions({
+  "footer:clearSelection":()=>{ stockClear += 1; },
+  "footer:close":()=>{ closedReason = "stock"; }
+}, "drawers", (value)=>{ selected.push(value); });
+actions["footer:clearSelection"]();
+let afterClear = {openId: __codexFDDrawers().openId, stockClear, selected: selected.slice()};
+actions["footer:close"]();
+console.log(JSON.stringify({
+  afterClear,
+  afterClose: {openId: __codexFDDrawers().openId, closedReason, selected}
+}));
+"""
+    )
+
+    assert data["afterClear"] == {"openId": "hidden", "stockClear": 1, "selected": ["drawers"]}
+    assert data["afterClose"] == {
+        "openId": None,
+        "closedReason": "x",
+        "selected": ["drawers", "drawers"],
+    }
 
 
 def test_footer_drawers_operations_resolve_once_in_2_1_201_module_dump() -> None:

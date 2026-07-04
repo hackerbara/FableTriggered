@@ -46,7 +46,12 @@ from claude_monkey.package_model import (
     manifest_digest,
     validate_package_id,
 )
-from claude_monkey.packages_admin import add_package, invalid_package_error, scaffold_prompt_package
+from claude_monkey.packages_admin import (
+    add_package,
+    invalid_package_error,
+    remove_package,
+    scaffold_prompt_package,
+)
 from claude_monkey.paths import StatePaths, default_paths
 from claude_monkey.shim_entry import compute_launch_with_paths
 from claude_monkey.smoke import run_command
@@ -107,6 +112,16 @@ def build_parser() -> argparse.ArgumentParser:
     add_prompt.add_argument("--id")
     add_prompt.add_argument("--name")
     add_prompt.add_argument("--json", action="store_true")
+
+    remove_patch = sub.add_parser("remove-patch")
+    remove_patch.add_argument("patch_id")
+    remove_patch.add_argument("--json", action="store_true")
+    remove_option = sub.add_parser("remove-option")
+    remove_option.add_argument("option_id")
+    remove_option.add_argument("--json", action="store_true")
+    remove_prompt = sub.add_parser("remove-prompt")
+    remove_prompt.add_argument("prompt_id")
+    remove_prompt.add_argument("--json", action="store_true")
 
     inspect_binary = sub.add_parser("inspect-binary")
     inspect_binary.add_argument("--source", required=True)
@@ -1268,6 +1283,26 @@ def handle_add_package(args: argparse.Namespace, paths: StatePaths, kind: str) -
     return 0 if result["ok"] else 1
 
 
+def _profile_dict(config) -> dict:
+    profile = active_profile(config)
+    return {
+        "prompt": profile.prompt,
+        "patches": list(profile.patches),
+        "options": list(profile.options),
+    }
+
+
+def handle_remove_package(
+    args: argparse.Namespace, paths: StatePaths, config, kind: str, package_id: str
+) -> int:
+    result = remove_package(package_id, kind, paths.state_dir, _profile_dict(config))
+    if args.json:
+        print_json(result)
+    else:
+        print(result["summary"], file=sys.stdout if result["ok"] else sys.stderr)
+    return 0 if result["ok"] else 1
+
+
 def _slugify_prompt_stem(stem: str) -> str:
     return re.sub(r"[^a-z0-9._-]+", "-", stem.lower()).strip("-")
 
@@ -1423,6 +1458,12 @@ def main(argv: list[str] | None = None) -> int:
         return handle_add_package(args, paths, "option")
     if args.command == "add-prompt":
         return handle_add_prompt(args, paths)
+    if args.command == "remove-patch":
+        return handle_remove_package(args, paths, config, "patch", args.patch_id)
+    if args.command == "remove-option":
+        return handle_remove_package(args, paths, config, "option", args.option_id)
+    if args.command == "remove-prompt":
+        return handle_remove_package(args, paths, config, "prompt", args.prompt_id)
     if args.command == "inspect-binary":
         source = Path(args.source).expanduser()
         payload = inspect_binary_bytes(source.read_bytes(), source_path=str(source))

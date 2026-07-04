@@ -1,7 +1,7 @@
 import json
 import tempfile
 
-from claude_monkey.packages_admin import add_package, scaffold_prompt_package
+from claude_monkey.packages_admin import add_package, remove_package, scaffold_prompt_package
 
 
 def _write_pkg(tmp_path, folder, manifest):
@@ -128,6 +128,63 @@ def test_add_rejects_package_containing_symlink(tmp_path):
         for path in home.rglob("*"):
             if path.is_file():
                 assert "top-secret-content" not in path.read_text(errors="ignore")
+
+
+def test_remove_refuses_profile_referenced_patch(tmp_path):
+    home = tmp_path / "home"
+    (home / "patches" / "p1").mkdir(parents=True)
+    result = remove_package("p1", "patch", home, {"prompt": None, "patches": ["p1"], "options": []})
+    assert result["ok"] is False and result["error"]["code"] == "package_in_use"
+    assert (home / "patches" / "p1").exists()
+
+
+def test_remove_allows_baked_in_but_not_desired(tmp_path):
+    # active in the built binary but no longer in the profile -> removable
+    home = tmp_path / "home"
+    (home / "patches" / "p1").mkdir(parents=True)
+    result = remove_package("p1", "patch", home, {"prompt": None, "patches": [], "options": []})
+    assert result["ok"] is True and not (home / "patches" / "p1").exists()
+
+
+def test_remove_refuses_active_prompt_and_enabled_option(tmp_path):
+    home = tmp_path / "home"
+    (home / "prompts" / "pr").mkdir(parents=True)
+    (home / "options" / "op").mkdir(parents=True)
+    profile = {"prompt": "pr", "patches": [], "options": ["op"]}
+    assert remove_package("pr", "prompt", home, profile)["error"]["code"] == "package_in_use"
+    assert remove_package("op", "option", home, profile)["error"]["code"] == "package_in_use"
+
+
+def test_remove_missing_package(tmp_path):
+    result = remove_package("nope", "patch", tmp_path / "home",
+                            {"prompt": None, "patches": [], "options": []})
+    assert result["ok"] is False and result["error"]["code"] == "package_missing"
+
+
+def test_remove_rejects_path_traversal_id_with_no_filesystem_changes(tmp_path):
+    """Regression: `remove_package` joins `package_id` into a path and then
+    `shutil.rmtree`s it — an unvalidated traversal id here is worse than
+    `add_package`'s known traversal bug (arbitrary directory deletion, not just
+    an unwanted copy). Must gate `package_id` through phase-1's
+    `validate_package_id` before any filesystem use, matching the add-* side.
+    """
+    home = tmp_path / "home"
+    (home / "patches").mkdir(parents=True)
+    outside_target = tmp_path / "evil-target"
+    outside_target.mkdir()
+    (outside_target / "keepme.txt").write_text("do not delete")
+
+    result = remove_package(
+        "../../evil-target",
+        "patch",
+        home,
+        {"prompt": None, "patches": [], "options": []},
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "invalid_package"
+    assert outside_target.exists()
+    assert (outside_target / "keepme.txt").exists()
 
 
 def test_add_renames_with_warning_when_multiple_json_files_present(tmp_path):

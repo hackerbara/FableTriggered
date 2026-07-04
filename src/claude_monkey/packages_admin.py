@@ -230,6 +230,51 @@ def add_package(source: Path, kind: str, home: Path) -> dict:
     return _envelope(True, f"installed {kind} package {package_id}", warnings=warnings)
 
 
+def _profile_references(package_id: str, kind: str, profile: dict) -> bool:
+    if kind == "patch":
+        return package_id in (profile.get("patches") or [])
+    if kind == "prompt":
+        return profile.get("prompt") == package_id
+    return package_id in (profile.get("options") or [])
+
+
+def remove_package(package_id: str, kind: str, home: Path, profile: dict) -> dict:
+    """Remove an installed `kind` package (`~/.claude-monkey/{patches,prompts,options}/<id>/`).
+
+    Refusal is purely about the *active profile* referencing the package (spec:
+    protection is for the next build/launch) — build-baked state
+    (`activePatchIds`/`builtPatchIds`) never blocks removal.
+
+    Security note (mirrors `add_package`/`_load_manifest`'s Critical-1 fix): unlike
+    `add_package`, this function joins attacker-influenced `package_id` into a
+    filesystem path and then `shutil.rmtree`s it, which is a *more* dangerous
+    primitive than an unwanted `copytree` — an unvalidated traversal id (e.g.
+    `"../../etc"`) could delete an arbitrary directory. `package_id` is therefore
+    gated through phase-1's `validate_package_id` (same slug rule,
+    `^[a-z0-9][a-z0-9._-]*$`) before it is ever used to build `target`.
+    """
+    home = Path(home)
+    try:
+        validate_package_id(package_id)
+    except PackageValidationError as exc:
+        return _envelope(False, f"invalid package id {package_id!r}: {exc}", code="invalid_package")
+
+    target = home / _BUCKETS[kind] / package_id
+    if not target.is_dir():
+        return _envelope(
+            False, f"no installed {kind} package: {package_id}", code="package_missing"
+        )
+    if _profile_references(package_id, kind, profile):
+        return _envelope(
+            False,
+            f"{kind} package {package_id} is referenced by the active profile; "
+            "disable/deselect it first",
+            code="package_in_use",
+        )
+    shutil.rmtree(target)
+    return _envelope(True, f"removed {kind} package {package_id}")
+
+
 def scaffold_prompt_package(source_file: Path, package_id: str, name: str | None) -> dict:
     return {
         "schemaVersion": 1, "kind": "prompt", "id": package_id,

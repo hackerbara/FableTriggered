@@ -979,6 +979,127 @@ def test_add_prompt_json_contract_missing_source_file_envelope(monkeypatch, tmp_
     assert payload["error"]["code"] == "invalid_package"
 
 
+def test_remove_patch_json_contract_removes_uninstalled_package(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    installed = tmp_path / ".claude-monkey" / "patches" / "demo-patch"
+    installed.mkdir(parents=True)
+
+    assert main(["remove-patch", "demo-patch", "--json"]) == 0
+    payload = parse_json_output(capsys)
+    assert payload["schemaVersion"] == 1
+    assert payload["ok"] is True
+    assert payload["error"] is None
+    assert not installed.exists()
+
+
+def test_remove_patch_json_contract_refuses_profile_referenced_package(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    source = tmp_path / "demo-patch"
+    source.mkdir()
+    (source / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "patch",
+                "id": "demo-patch",
+                "label": "Demo",
+                "description": "d",
+                "patch": {"engine": "bun_graph_repack", "targets": []},
+            }
+        )
+    )
+    assert main(["add-patch", str(source), "--json"]) == 0
+    assert main(["enable-patch", "demo-patch", "--json"]) == 0
+    capsys.readouterr()  # drain add-patch/enable-patch output before the assertion below
+
+    assert main(["remove-patch", "demo-patch", "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "package_in_use"
+    installed = tmp_path / ".claude-monkey" / "patches" / "demo-patch"
+    assert installed.exists()
+
+
+def test_remove_patch_json_contract_missing_package(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert main(["remove-patch", "nope", "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "package_missing"
+
+
+def test_remove_option_json_contract_refuses_enabled_option(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    installed = tmp_path / ".claude-monkey" / "options" / "op1"
+    installed.mkdir(parents=True)
+    (installed / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "option",
+                "id": "op1",
+                "label": "Op1",
+                "description": "d",
+                "option": {},
+            }
+        )
+    )
+    assert main(["enable-option", "op1", "--json"]) == 0
+    capsys.readouterr()  # drain enable-option output before the assertion below
+
+    assert main(["remove-option", "op1", "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "package_in_use"
+    assert installed.exists()
+
+
+def test_remove_prompt_json_contract_refuses_active_prompt(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    installed = tmp_path / ".claude-monkey" / "prompts" / "pr1"
+    installed.mkdir(parents=True)
+    (installed / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "prompt",
+                "id": "pr1",
+                "label": "Pr1",
+                "description": "d",
+                "prompt": {"mode": "append", "source": {"path": "prompt.md"}},
+            }
+        )
+    )
+    (installed / "prompt.md").write_text("be helpful")
+    assert main(["set-prompt", "pr1", "--json"]) == 0
+    capsys.readouterr()  # drain set-prompt output before the assertion below
+
+    assert main(["remove-prompt", "pr1", "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "package_in_use"
+    assert installed.exists()
+
+
+def test_remove_patch_json_contract_traversal_id_returns_invalid_package(
+    monkeypatch, tmp_path, capsys
+):
+    """Regression: an unvalidated traversal id must never reach `shutil.rmtree`."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    outside_target = tmp_path / "evil-target"
+    outside_target.mkdir()
+    (outside_target / "keepme.txt").write_text("do not delete")
+
+    assert main(["remove-patch", "../evil-target", "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_package"
+    assert outside_target.exists()
+    assert (outside_target / "keepme.txt").exists()
+
+
 def test_use_official_json_missing_inputs_return_envelopes(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("HOME", str(tmp_path))
     assert main(["use-official", "--json"]) == 2

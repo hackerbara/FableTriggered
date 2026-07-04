@@ -3,11 +3,11 @@
   "kind": "patch",
   "id": "thinking-text-drawer",
   "label": "Thinking Text Drawer",
-  "description": "Projects raw and structured thinking text into an always-openable footer Thinking drawer.",
+  "description": "Projects raw and structured thinking text into a Footer Drawers framework registrant.",
   "risk": {
     "level": "medium",
     "requiresConfirmation": true,
-    "notes": "Local display-only renderer patch for Claude Code internals; pinned to Claude Code 2.1.201 and requires manual smoke."
+    "notes": "Local display-only collector package for Claude Code internals; requires footer-drawers and manual smoke."
   },
   "compatibility": {
     "claudeVersions": [
@@ -19,7 +19,7 @@
     "arches": [
       "arm64"
     ],
-    "notes": "Requires source identity a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd and /$bunfs/root/src/entrypoints/cli.js content sha 46db617a7b13c062fb31595f6244819b11f7cdc6e6fed8e2c3f74a27fb6da1bd."
+    "notes": "Requires the shared footer-drawers framework and source identity a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd."
   },
   "x-packageVersion": "0.1.0",
   "patch": {
@@ -44,17 +44,16 @@
             "operations": [
               {
                 "opId": "thinking-helpers-before-ypr",
-                "label": "Thinking Text Drawer helpers before hidden attachment filter",
-                "type": "replace_exact",
-                "exact": "function Ypr(e){",
-                "requireWithinRange": [],
-                "oldRangeSha256": "d28eb1ac566bb2132f7617a972e08a5e283bc9b551891a13015796fed2b18f5b",
-                "oldRangeLength": 16,
+                "label": "Insert Thinking Text Drawer helpers before hidden attachment filter",
+                "type": "insert_before",
                 "replacement": {
                   "path": "payloads/01-thinking-text-helpers.js",
-                  "sha256": "aa482e5ed43f825327be7618b97a611cf97ce20c9d9caeb3f6b5d8a06c78d1d0"
+                  "sha256": "d902b3b070623cbe519906f5454586922b3335df00ed2f5dc3f16810783a67d6"
                 },
-                "knownBehaviorChange": "Adds display-only Thinking drawer helpers and action wrapper."
+                "knownBehaviorChange": "Adds display-only Thinking collectors and helpers before the stock hidden attachment filter without claiming the Ypr byte span.",
+                "anchor": "function Ypr(e){",
+                "expectedAnchorCount": 1,
+                "insertOrder": 200
               },
               {
                 "opId": "thinking-message-start-turn-collector",
@@ -127,118 +126,6 @@
                 "knownBehaviorChange": "Records structured thinking text at the parent assistant content-list seam; redacted-only blocks do not create drawer rows."
               },
               {
-                "opId": "thinking-footer-open-state",
-                "label": "Add Thinking drawer React open state",
-                "type": "replace_exact",
-                "exact": "let[Ss,Ms]=wo.useState(!1),[go,Zo]=wo.useState(!1),[oa,Lu]=wo.useState(!1),[Ec,cn]=wo.useState(!1),[Gn,$n]=wo.useState(!1),[K,ye]=wo.useState(!1),[$e,Xe]=wo.useState(!1),wt=wo.useRef(!1)",
-                "requireWithinRange": [],
-                "oldRangeSha256": "06de1dc7f88285201024417255e7063909d15721b81de5aae9af697efa288146",
-                "oldRangeLength": 186,
-                "replacement": {
-                  "path": "payloads/05-footer-open-state.js",
-                  "sha256": "ea252c90793b2297711cac96ee2540a6c43bde04a9d53466e6d33090c7ecf535"
-                },
-                "knownBehaviorChange": "Adds a local open-state setter used by the footer action wrapper."
-              },
-              {
-                "opId": "thinking-footer-target",
-                "label": "Always add Thinking footer target",
-                "type": "replace_exact",
-                "exact": "ss=wo.useMemo(()=>[Ui&&\"tasks\",po&&\"workflows\",Fn&&\"tmux\",_e&&\"bagel\",Tr&&\"bridge\",Ne&&\"frame\"].filter(Boolean),[Ui,po,Fn,_e,Tr,Ne])",
-                "requireWithinRange": [],
-                "oldRangeSha256": "df92b88c06283f98acbc7d9b2079adc337a4b1a932b3f662831dd827098b2c04",
-                "oldRangeLength": 132,
-                "replacement": {
-                  "path": "payloads/06-footer-target-thinking.js",
-                  "sha256": "5f1e34337d2da9e312968aa44f7948d4b36eeb1e9b244318e8536d5bbb53084d"
-                },
-                "knownBehaviorChange": "Makes Thinking selectable even when no entries exist."
-              },
-              {
-                "opId": "thinking-footer-selection-flag",
-                "label": "Add Thinking selected flag",
-                "type": "replace_exact",
-                "exact": "let lm=Lm===\"tasks\",ZE=Lm===\"workflows\",Hd=Lm===\"tmux\",Zp=Lm===\"bagel\",AT=Lm===\"bridge\",Mm=Lm===\"frame\";function Rp",
-                "requireWithinRange": [],
-                "oldRangeSha256": "f70053be21c3e3e02fe206cdac86991c552ae6afcb67e4e1e09d3cfce9dfb275",
-                "oldRangeLength": 115,
-                "replacement": {
-                  "path": "payloads/07-footer-selection-flag.js",
-                  "sha256": "feb646cd6526b5b361622953a51e55084f79d17482a9a24aad2307c95bfc516c"
-                },
-                "knownBehaviorChange": "Publishes a local Thinking selection boolean."
-              },
-              {
-                "opId": "thinking-footer-action-wrap-open",
-                "label": "Wrap footer action object open",
-                "type": "replace_exact",
-                "exact": "Go({\"footer:up\":By,\"footer:down\":d0,\"footer:next\":o6,\"footer:previous\":IR,\"footer:openSelected\":()=>{",
-                "requireWithinRange": [],
-                "oldRangeSha256": "e927b8169b546f7bcb6ae445bb32044d06c0a02a5b4731e5d4a1cf68e9fdf872",
-                "oldRangeLength": 101,
-                "replacement": {
-                  "path": "payloads/08-footer-action-wrap-open.js",
-                  "sha256": "8b6e45360f90ac14a35d7957c3edbcbdb9cae9dc031a32044bc3e09cdf2bb882"
-                },
-                "knownBehaviorChange": "Starts wrapper around footer actions so Thinking can open/scroll/close without changing stock actions for other targets."
-              },
-              {
-                "opId": "thinking-footer-action-wrap-close",
-                "label": "Wrap footer action object close",
-                "type": "replace_exact",
-                "exact": "return!1}},{context:\"Footer\",isActive:!!Lm&&!se});",
-                "requireWithinRange": [],
-                "oldRangeSha256": "431e9a586c12d7fdb5481ec7852d0d8fc981f25059399a33ae887da796a37c51",
-                "oldRangeLength": 50,
-                "replacement": {
-                  "path": "payloads/09-footer-action-wrap-close.js",
-                  "sha256": "9ced0a8a233ef13bfda60b084a53fc7128d818d3afd81e72d4cf9d4ee6c7dce3"
-                },
-                "knownBehaviorChange": "Closes wrapper around footer actions and passes selection/open-state setter."
-              },
-              {
-                "opId": "thinking-selected-overlay-globals",
-                "label": "Publish selected/open globals for bottom overlay",
-                "type": "replace_exact",
-                "exact": "return qd.jsxs(B,{flexDirection:\"column\",marginTop:Vt||dY?0:1,children:[Lm&&!se&&qd.jsx(B,{tabIndex:0,autoFocus:!0,onKeyDown:X8}),!Ys()&&qd.jsx(DTr,{}),J&&",
-                "requireWithinRange": [],
-                "oldRangeSha256": "ab470d59febafcec8748e444ae3cc7a0541d0666c10449466c55fabffb7bb3de",
-                "oldRangeLength": 155,
-                "replacement": {
-                  "path": "payloads/10-selected-overlay-globals.js",
-                  "sha256": "9453e616cb4db4defa5bca81c966fbe5791d6509facf2386cece38b412784328"
-                },
-                "knownBehaviorChange": "Publishes display-only globals for the bottom overlay renderer."
-              },
-              {
-                "opId": "thinking-bottom-overlay-renderer",
-                "label": "Render Thinking drawer in bottom overlay sibling",
-                "type": "replace_exact",
-                "exact": "function Ilc(){let e=MXe.c(2),t=clc();if(!t)return null;let n;if(e[0]!==t)n=Xd.jsx(B,{position:\"absolute\",bottom:\"100%\",left:0,right:0,opaque:!0,children:t}),e[0]=t,e[1]=n;else n=e[1];return n}",
-                "requireWithinRange": [],
-                "oldRangeSha256": "9ff773cbc33face8625d9e4883d33b5e36aeae2e87349921b9f3402fc7d12526",
-                "oldRangeLength": 193,
-                "replacement": {
-                  "path": "payloads/11-bottom-overlay-renderer.js",
-                  "sha256": "f35c37c5e43761121d095aeb881113ff3774ad3f27d1045d1344aa5db60b1244"
-                },
-                "knownBehaviorChange": "Renders the Thinking drawer when selected/open; otherwise preserves stock overlay."
-              },
-              {
-                "opId": "thinking-footer-status-bar",
-                "label": "Add Thinking footer status segment in hidden-context-style dedicated row slot",
-                "type": "replace_exact",
-                "exact": "ue=x.map((Me)=>di.jsx(ELc,{link:Me},Me.key??Me.url)),de=[...[]],fe=n?tNf(s,L,W,F,R,O):[];if(Z)de.push(di.jsx(v,{dimColor:!0,children:di.jsx(Rt,{chord:L,action:\"return to team lead\",format:{keyCase:\"lower\"}})},\"esc-return\"));else if(n)de.push(...fe);let ve=(ti()||na())&&l&&o&&!T&&!z?di.jsxs(v,{dimColor:!0,children:[gJ,\" for agents\"]},\"bg-detach\"):null,Re=!oe&&o&&!T&&kor(wAt({isBg:ti(),isLoading:s,isExternalLoading:i,betweenCalls:a,inFlight:{count:0,kinds:[]}}))&&Ot().leftArrowOpensAgents!==!1&&!z?di.jsxs(v,{dimColor:!0,children:[gJ,\" for agents\"]},\"fg-agents\"):null,Oe=xte(g,_,A).length>0||A!==void 0&&wte(g[A]),we=re?di.jsx(Nns,{tasksSelected:c,onOpenDialog:d}):null;if(de.length===0&&!we&&!le&&!ie&&ue.length===0&&!ve&&n){if(!z)de.push(di.jsx(v,{dimColor:!0,children:\"? for shortcuts\"},\"shortcuts-hint\"))}if(Re)de.push(Re);let Pe=Ot().copyOnSelect??!0,We=O&&(!Pe||FT());if(w&&H)de.push(di.jsx(qQe,{},\"voice-warmup\"));else if(Ys()&&We){let Me=Gt()===\"macos\",Ye=Me&&(M()?.lastPressHadAlt??!1);de.push(di.jsx(v,{dimColor:!0,children:di.jsxs(qn,{children:[!Pe&&di.jsx(Rt,{chord:\"ctrl+c\",action:\"copy\"}),FT()&&(Ye?di.jsx(v,{children:\"set macOptionClickForcesSelection in VS Code settings\"}):di.jsxs(v,{children:[Me?\"option+click\":\"shift+click\",\" to native select\"]}))]})},\"selection-copy\"))}else if(de.length>0&&n&&w&&I===\"idle\"&&fe.length===0&&V)de.push(di.jsxs(v,{dimColor:!0,children:[\"hold \",$,\" to speak\"]},\"voice-hint\"));if((we||Oe)&&n&&!y)de.push(di.jsx(v,{dimColor:!0,children:c?di.jsx(Rt,{chord:\"enter\",action:\"view tasks\"}):di.jsx(Rt,{chord:\"down\",action:\"manage\"})},\"manage-tasks\"));if(de.length===0&&!we&&!le&&!ce&&!ie&&ue.length===0&&!ve)return Ys()?di.jsx(v,{children:\" \"}):null;return di.jsxs(B,{height:1,overflow:\"hidden\",children:[le&&di.jsxs(B,{flexShrink:0,children:[le,(ce||ve||ie||ue.length>0||we||de.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ce&&di.jsxs(B,{flexShrink:0,children:[ce,(ve||ie||ue.length>0||we||de.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ve&&di.jsxs(B,{flexShrink:0,children:[ve,(ie||ue.length>0||we||de.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ie&&di.jsxs(B,{flexShrink:0,children:[ie,(ue.length>0||we||de.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),ue.length>0&&di.jsxs(B,{flexShrink:0,children:[di.jsx(qn,{children:ue}),(we||de.length>0)&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),we&&di.jsxs(B,{flexShrink:0,children:[we,de.length>0&&di.jsx(v,{dimColor:!0,children:\" \\xB7 \"})]}),de.length>0&&di.jsx(v,{wrap:\"truncate\",children:di.jsx(qn,{children:de})})]})}",
-                "requireWithinRange": [],
-                "oldRangeSha256": "ea6305032c12db60dcad0adcc4359f735d5470e8caae74f1f05b3e6b150d27da",
-                "oldRangeLength": 2559,
-                "replacement": {
-                  "path": "payloads/12-footer-status-bar.js",
-                  "sha256": "b1db8d02d92bac652b6a6b889bd171a3d81ae6423eeb3de8d2db9c7288fef2ce"
-                },
-                "knownBehaviorChange": "Adds a dedicated always-available Thinking footer segment without putting the drawer control in generic hint rows."
-              },
-              {
                 "opId": "thinking-system-token-estimate",
                 "label": "Preserve stock system thinking_tokens drop without drawer rows",
                 "type": "replace_exact",
@@ -265,6 +152,19 @@
                   "sha256": "a09a5c29ba3558b146bd79b41ccc424fa70f9066cc382e601816e8934372b7e1"
                 },
                 "knownBehaviorChange": "Records interrupted in-flight thinking as salvaged display-only drawer text while preserving stock virtual block behavior."
+              },
+              {
+                "opId": "thinking-register-footer-drawer",
+                "label": "Register Thinking drawer with Footer Drawers framework",
+                "type": "insert_before",
+                "anchor": "var MXe,A_,Xd,GKo=2,pmr;",
+                "expectedAnchorCount": 1,
+                "insertOrder": 200,
+                "replacement": {
+                  "path": "payloads/17-register-footer-drawer.js",
+                  "sha256": "cac53c0eaf739d36d530586686164ce582dfc2e9397e822b26b1839d93f41c34"
+                },
+                "knownBehaviorChange": "Registers the display-only Thinking drawer with footer-drawers; footer routing is framework-owned."
               }
             ]
           }
@@ -305,22 +205,7 @@
           {
             "type": "module_must_contain",
             "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-            "value": "__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__"
-          },
-          {
-            "type": "module_must_contain",
-            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "value": "__CODEX_THINKING_TEXT_DRAWER_TURN_V1__"
-          },
-          {
-            "type": "module_must_contain",
-            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-            "value": "x closes"
-          },
-          {
-            "type": "module_must_contain",
-            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-            "value": "thinking-available"
           },
           {
             "type": "module_must_contain",
@@ -346,6 +231,26 @@
             "type": "module_must_contain",
             "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "value": "__codexTTDRecordRedactedThinking"
+          },
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "__codexTTDRegisterFooterDrawer"
+          },
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "id:\"thinking\",order:200"
+          },
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "__codexTTDRegisterFooterDrawer"
+          },
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "id:\"thinking\",order:200"
           }
         ],
         "manualSmoke": {
@@ -354,5 +259,8 @@
         }
       }
     ]
-  }
+  },
+  "requiresPackages": [
+    "footer-drawers"
+  ]
 }

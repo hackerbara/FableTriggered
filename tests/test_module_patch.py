@@ -174,3 +174,85 @@ def test_insertion_missing_anchor_in_context_fails():
         plan_module_operations(
             "pkg", "/$bunfs/root/src/entrypoints/cli.js", MODULE, [(operation, b",X")]
         )
+
+
+
+def test_replace_substring_within_claims_only_subspan():
+    operation = make_op(
+        op_id="sub",
+        type="replace_substring_within",
+        anchor=None,
+        start_marker="function render(){",
+        end_marker="}",
+        expected_end_marker_count=2,
+        sub_exact="OLD_RENDER",
+        replacement=PayloadRefV2(inline="OLD_RENDER,EXTRA_FLAG"),
+    )
+    replacement = b"OLD_RENDER,EXTRA_FLAG"
+    planned = plan_module_operations(
+        "pkg", "/$bunfs/root/src/entrypoints/cli.js", MODULE, [(operation, replacement)]
+    )
+    item = planned[0]
+    assert item.kind == "subspan_replacement"
+    assert item.module_start == MODULE.index(b"OLD_RENDER")
+    assert item.module_end == item.module_start + len(b"OLD_RENDER")
+    assert item.context_start == MODULE.index(b"function render(){")
+    changed = render_changed_module(MODULE, planned)
+    assert b"function render(){OLD_RENDER,EXTRA_FLAG}" in changed
+    # bytes outside the subspan are untouched stock
+    assert changed.endswith(b"function after(){return 1}\n")
+
+
+def test_replace_substring_within_rejects_non_unique_subspan():
+    operation = make_op(
+        op_id="sub-dup",
+        type="replace_substring_within",
+        anchor=None,
+        start_marker="function render(){",
+        end_marker="return 1}",
+        expected_end_marker_count=1,
+        sub_exact="function",  # appears twice inside this context
+        replacement=PayloadRefV2(inline="fn"),
+    )
+    with pytest.raises(ModulePatchError, match="subExact count"):
+        plan_module_operations(
+            "pkg", "/$bunfs/root/src/entrypoints/cli.js", MODULE, [(operation, b"fn")]
+        )
+
+
+def test_replace_substring_within_context_sha_mismatch_fails():
+    operation = make_op(
+        op_id="sub-ctx",
+        type="replace_substring_within",
+        anchor=None,
+        start_marker="function render(){",
+        end_marker="}",
+        expected_end_marker_count=2,
+        sub_exact="OLD_RENDER",
+        context_sha256="0" * 64,
+        replacement=PayloadRefV2(inline="NEW"),
+    )
+    with pytest.raises(ModulePatchError, match="context sha256 mismatch"):
+        plan_module_operations(
+            "pkg", "/$bunfs/root/src/entrypoints/cli.js", MODULE, [(operation, b"NEW")]
+        )
+
+
+def test_replace_substring_within_old_range_applies_to_subspan():
+    old = b"OLD_RENDER"
+    operation = make_op(
+        op_id="sub-old",
+        type="replace_substring_within",
+        anchor=None,
+        start_marker="function render(){",
+        end_marker="}",
+        expected_end_marker_count=2,
+        sub_exact="OLD_RENDER",
+        old_range_sha256=hashlib.sha256(old).hexdigest(),
+        old_range_length=len(old),
+        replacement=PayloadRefV2(inline="NEW"),
+    )
+    planned = plan_module_operations(
+        "pkg", "/$bunfs/root/src/entrypoints/cli.js", MODULE, [(operation, b"NEW")]
+    )
+    assert planned[0].old_len == len(old)

@@ -143,6 +143,25 @@ def _resolve_operation(module: bytes, operation: ModuleOperationV2) -> _Resolved
             context_end=ctx_end,
             evidence_spans=ctx_spans + ((found, found + len(anchor)),),
         )
+    elif operation.type == "replace_substring_within":
+        if operation.sub_exact is None:
+            raise ModulePatchError(
+                f"{operation.op_id}: replace_substring_within requires subExact"
+            )
+        ctx_start, ctx_end, _ctx_spans = _resolve_context(module, operation)
+        sub = _b(operation.sub_exact)
+        scope = module[ctx_start:ctx_end]
+        sub_count = _count(scope, sub)
+        if sub_count != 1:
+            raise ModulePatchError(f"{operation.op_id}: subExact count {sub_count} != 1")
+        start = ctx_start + scope.find(sub)
+        return _Resolved(
+            start=start,
+            end=start + len(sub),
+            kind="subspan_replacement",
+            context_start=ctx_start,
+            context_end=ctx_end,
+        )
     else:
         raise ModulePatchError(f"{operation.op_id}: unsupported operation type {operation.type}")
     if start < 0 or end < 0 or end < start:
@@ -170,6 +189,14 @@ def plan_module_operations(
         old_sha = hashlib.sha256(old).hexdigest()
         if operation.old_range_sha256 is not None and operation.old_range_sha256 != old_sha:
             raise ModulePatchError(f"{operation.op_id}: old range sha256 mismatch")
+        if (
+            operation.context_sha256 is not None
+            and resolved.context_start is not None
+            and resolved.context_end is not None
+        ):
+            context = module_content[resolved.context_start : resolved.context_end]
+            if hashlib.sha256(context).hexdigest() != operation.context_sha256:
+                raise ModulePatchError(f"{operation.op_id}: context sha256 mismatch")
         planned.append(
             PlannedModuleOperation(
                 package_id=package_id,

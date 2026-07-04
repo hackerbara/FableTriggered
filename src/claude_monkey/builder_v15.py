@@ -82,6 +82,8 @@ def _v3_manifest_as_v2_dict(package_dir: Path) -> dict[str, Any]:
         "description": manifest.description,
         "packageVersion": "0.0.0",
         "targets": list(manifest.patch.targets),
+        "requiresPackages": list(manifest.requires_packages),
+        "conflictsWithPackages": list(manifest.conflicts_with_packages),
     }
 
 

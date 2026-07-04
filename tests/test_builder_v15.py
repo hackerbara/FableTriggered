@@ -350,3 +350,24 @@ def test_requirements_satisfied_build_passes(tmp_path):
     _add_relationships(pkg_a, requires=["pkg-b"])
     report = _build(tmp_path, source, [pkg_a, pkg_b])
     assert report.automatedStatus == "passed"
+
+
+
+def test_v3_bridge_carries_relationship_metadata(tmp_path):
+    from claude_monkey.builder_v15 import _v3_manifest_as_v2_dict
+
+    package_dir = tmp_path / "thin-drawer"
+    package_dir.mkdir()
+    manifest = {
+        "schemaVersion": 1,
+        "kind": "patch",
+        "id": "thin-drawer",
+        "label": "Thin drawer",
+        "description": "Fixture",
+        "requiresPackages": ["footer-drawers"],
+        "patch": {"engine": "bun_graph_repack", "targets": [{}]},
+    }
+    (package_dir / "package.json").write_text(json.dumps(manifest))
+    bridged = _v3_manifest_as_v2_dict(package_dir)
+    assert bridged["requiresPackages"] == ["footer-drawers"]
+    assert bridged["conflictsWithPackages"] == []

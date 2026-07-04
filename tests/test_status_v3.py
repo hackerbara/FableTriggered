@@ -9,6 +9,7 @@ from pathlib import Path
 
 from claude_monkey.cli import main
 from claude_monkey.config import load_config
+from claude_monkey.install import install_shim_transaction
 from claude_monkey.paths import StatePaths
 from claude_monkey.status import status_payload
 
@@ -398,3 +399,95 @@ def test_status_payload_keeps_invalid_desired_patch_visible(monkeypatch, tmp_pat
         "patch bad-patch skipped: invalid" in item for item in payload["compatibilityWarnings"]
     )
     assert payload["rebuildRequired"] is True
+
+
+# -- shim-update-resilience stage 1: replaced-managed-shim detection --------
+#
+# docs/superpowers/specs/2026-07-04-claude-monkey-shim-update-resilience.md
+# section 1 + "Refinements (controller review, 2026-07-04)".
+
+
+def seed_shim_target(tmp_path: Path) -> tuple[Path, Path]:
+    """Install a real managed shim over an existing binary at an external
+    target path (outside ClaudeMonkey's own managed bin/versions roots, like
+    the spec's `/Users/MAC/.local/bin/claude`). Returns (state_dir, target).
+    """
+    state = tmp_path / ".claude-monkey"
+    target = tmp_path / "local-bin" / "claude"
+    make_executable(target, "#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    install_shim_transaction(target, state, dry_run=False)
+    return state, target
+
+
+def replace_target_with_official(target: Path, tmp_path: Path, version: str = "2.1.201") -> Path:
+    """Simulate an official Claude updater clobbering the shim in place with
+    a symlink to a newly installed official binary (the spec's observed
+    failure mode: target path unchanged, target identity replaced).
+    """
+    official = make_executable(
+        tmp_path / "official-source" / "claude",
+        f"#!/bin/sh\necho '{version} (Claude Code)'\n",
+    )
+    target.unlink()
+    target.symlink_to(official)
+    return official
+
+
+def test_status_detects_target_replaced_by_official(tmp_path):
+    state, target = seed_shim_target(tmp_path)
+    official = replace_target_with_official(target, tmp_path)
+    official_sha = hashlib.sha256(official.read_bytes()).hexdigest()
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["shimInstalled"] is False
+    assert payload["shimPreviouslyManaged"] is True
+    assert payload["targetReplacedByOfficial"] is True
+    assert payload["detectedOfficialSha256"] == official_sha
+    assert payload["detectedOfficialVersion"] == "2.1.201"
+    assert payload["shimRepairAvailable"] is True
+    assert payload["rolloutRequired"] is True
+
+
+def test_status_never_managed_target_reports_all_new_fields_empty(tmp_path):
+    state = tmp_path / ".claude-monkey"
+    state.mkdir(parents=True)
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["shimPreviouslyManaged"] is False
+    assert payload["targetReplacedByOfficial"] is False
+    assert payload["detectedOfficialSha256"] is None
+    assert payload["detectedOfficialVersion"] is None
+    assert payload["shimRepairAvailable"] is False
+    assert payload["rolloutRequired"] is False
+
+
+def test_status_intact_shim_reports_no_replacement(tmp_path):
+    state, _target = seed_shim_target(tmp_path)
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["shimInstalled"] is True
+    assert payload["shimPreviouslyManaged"] is True
+    assert payload["targetReplacedByOfficial"] is False
+    assert payload["detectedOfficialSha256"] is None
+    assert payload["detectedOfficialVersion"] is None
+    assert payload["shimRepairAvailable"] is False
+    assert payload["rolloutRequired"] is False
+
+
+def test_status_corrupt_cache_disables_repair_but_keeps_detecting_replacement(tmp_path):
+    state, target = seed_shim_target(tmp_path)
+    replace_target_with_official(target, tmp_path)
+
+    record_path = state / "install-record.json"
+    record = json.loads(record_path.read_text())
+    cache_path = Path(record["previousSourceCachePath"])
+    cache_path.write_bytes(b"corrupted-cache-bytes")
+
+    payload = status_payload(StatePaths(state), load_config(state / "config.json"))
+
+    assert payload["shimPreviouslyManaged"] is True
+    assert payload["targetReplacedByOfficial"] is True
+    assert payload["shimRepairAvailable"] is False

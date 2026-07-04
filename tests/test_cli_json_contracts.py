@@ -24,6 +24,60 @@ def test_status_json_contract(monkeypatch, tmp_path, capsys):
     assert isinstance(payload["activePatchIds"], list)
     assert "rebuildRequired" in payload
     assert payload["lastError"] is None or "message" in payload["lastError"]
+    # Additive shim-update-resilience stage 1 fields (spec §1): a fresh HOME
+    # with no install record was never managed by ClaudeMonkey, so every new
+    # field reports the empty/false/null case.
+    assert payload["shimPreviouslyManaged"] is False
+    assert payload["targetReplacedByOfficial"] is False
+    assert payload["detectedOfficialSha256"] is None
+    assert payload["detectedOfficialVersion"] is None
+    assert payload["shimRepairAvailable"] is False
+    assert payload["rolloutRequired"] is False
+
+
+def test_status_json_contract_shim_replaced_by_official_is_additive(
+    monkeypatch, tmp_path, capsys
+):
+    """New detection fields must be additive and must not disturb existing
+    consumers of shimInstalled/status (test_cli_json_contracts guards this
+    per the spec's Non-goals + CLI/UI surfaces sections).
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    assert main(["status", "--json"]) == 0
+    payload_before = parse_json_output(capsys)
+    assert payload_before["shimInstalled"] is True
+    existing_keys = set(payload_before)
+
+    official = tmp_path / "official-source" / "claude"
+    official.parent.mkdir(parents=True)
+    official.write_text("#!/bin/sh\necho '2.1.201 (Claude Code)'\n")
+    official.chmod(official.stat().st_mode | 0o111)
+    target.unlink()
+    target.symlink_to(official)
+
+    assert main(["status", "--json"]) == 0
+    payload = parse_json_output(capsys)
+
+    # Existing consumers/fields are unaffected: same key set, and
+    # shimInstalled correctly flips to False (the target is no longer the
+    # bytes ClaudeMonkey installed) -- unchanged semantics per the task spec.
+    assert set(payload) == existing_keys
+    assert payload["shimInstalled"] is False
+
+    official_sha = hashlib.sha256(official.read_bytes()).hexdigest()
+    assert payload["shimPreviouslyManaged"] is True
+    assert payload["targetReplacedByOfficial"] is True
+    assert payload["detectedOfficialSha256"] == official_sha
+    assert payload["shimRepairAvailable"] is True
+    assert payload["rolloutRequired"] is True
 
 
 def test_mutating_command_json_envelope(monkeypatch, tmp_path, capsys):

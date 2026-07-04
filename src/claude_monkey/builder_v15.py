@@ -24,8 +24,12 @@ from claude_monkey.manifest_v2 import (
 from claude_monkey.module_patch import (
     ModulePatchError,
     PlannedModuleOperation,
+    check_planned_conflicts,
     plan_module_operations,
+    planned_operation_render_order,
     render_changed_module,
+    shared_insertion_points,
+    verify_insertions,
 )
 from claude_monkey.package_model import PackageKind, PackageValidationError, load_package_manifest
 from claude_monkey.repack import repack_changed_modules
@@ -80,6 +84,8 @@ def _v3_manifest_as_v2_dict(package_dir: Path) -> dict[str, Any]:
         "description": manifest.description,
         "packageVersion": "0.0.0",
         "targets": list(manifest.patch.targets),
+        "requiresPackages": list(manifest.requires_packages),
+        "conflictsWithPackages": list(manifest.conflicts_with_packages),
     }
 
 
@@ -345,17 +351,6 @@ def _assert_condition_v2(
     }
 
 
-def _check_overlaps(planned: list[PlannedModuleOperation]) -> None:
-    ordered = sorted(
-        planned, key=lambda item: (item.module_start, item.module_end, item.package_id, item.op_id)
-    )
-    for left, right in zip(ordered, ordered[1:], strict=False):
-        if left.module_end > right.module_start:
-            raise ValueError(
-                f"patch_conflict:{left.package_id}:{left.op_id}:{right.package_id}:{right.op_id}"
-            )
-
-
 def _short_sha(value: str) -> str:
     return f"{value[:12]}…"
 
@@ -448,6 +443,7 @@ def _select_packages(
 ) -> tuple[list[tuple[Path, ManifestV2, TargetV2]], BuildReportV2 | None]:
     selected: list[tuple[Path, ManifestV2, TargetV2]] = []
     enabled: list[str] = []
+    seen_ids: set[str] = set()
     for package_dir in request.package_dirs:
         try:
             manifest = load_manifest_v2(package_dir)
@@ -466,6 +462,15 @@ def _select_packages(
             return selected, _write_failed(
                 request, report_path, reason, source=source, enabled=enabled
             )
+        if manifest.id in seen_ids:
+            return selected, _write_failed(
+                request,
+                report_path,
+                f"duplicate_package_id:{manifest.id}:{package_dir.name}",
+                source=source,
+                enabled=enabled,
+            )
+        seen_ids.add(manifest.id)
         enabled.append(manifest.id)
         matching = [
             target for target in manifest.targets if target_matches(target, request, source)
@@ -494,6 +499,18 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
     report = _base_report(request, source)
     report.enabledPatches = [manifest.id for _, manifest, _ in selected]
     try:
+        enabled_ids = {manifest.id for _, manifest, _ in selected}
+        for _, manifest, _ in selected:
+            for required in sorted(manifest.requires_packages):
+                if required not in enabled_ids:
+                    raise ValueError(
+                        f"patch_conflict:required_package_missing:{manifest.id}:{required}"
+                    )
+            for conflict in sorted(manifest.conflicts_with_packages):
+                if conflict in enabled_ids:
+                    raise ValueError(
+                        f"patch_conflict:package_conflict:{manifest.id}:{conflict}"
+                    )
         layout = find_macho_layout(source)
         graph = parse_bun_section(
             source[layout.bun_section.offset : layout.bun_section.offset + layout.bun_section.size]
@@ -530,12 +547,41 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
                     manifest.id, module_target.path, module.content, operation_inputs
                 )
                 planned_by_module.setdefault(module_target.path, []).extend(planned)
-        changed_modules: dict[str, bytes] = {}
+        shared_anchors_by_module: dict[str, set[str]] = {}
         for module_path, planned in planned_by_module.items():
-            _check_overlaps(planned)
+            check_planned_conflicts(planned)
+            for items in shared_insertion_points(planned).values():
+                if len(items) > 1:
+                    shared_anchors_by_module.setdefault(module_path, set()).update(
+                        item.anchor for item in items if item.anchor
+                    )
+        if shared_anchors_by_module:
+            all_shared_anchors = {
+                anchor for anchors in shared_anchors_by_module.values() for anchor in anchors
+            }
+            for _, manifest, target in selected:
+                for assertion in target.postconditions:
+                    if assertion.module_path is None:
+                        anchors = all_shared_anchors
+                    else:
+                        anchors = shared_anchors_by_module.get(assertion.module_path, set())
+                    if any(anchor in assertion.value for anchor in anchors):
+                        raise ValueError(
+                            "postcondition_composition_sensitive:"
+                            f"{manifest.id}:{assertion.value[:60]}"
+                        )
+        changed_modules: dict[str, bytes] = {}
+        insertion_evidence: dict[tuple[str, str], dict[str, Any]] = {}
+        for module_path, planned in planned_by_module.items():
             changed_modules[module_path] = render_changed_module(
                 original_modules[module_path], planned
             )
+            for evidence in verify_insertions(changed_modules[module_path], planned):
+                if not evidence["insertionVerified"]:
+                    raise ValueError(
+                        f"insertion_evidence_failed:{evidence['packageId']}:{evidence['opId']}"
+                    )
+                insertion_evidence[(evidence["packageId"], evidence["opId"])] = evidence
         if not changed_modules:
             raise ValueError("no_module_changes")
         repack = repack_changed_modules(source, changed_modules)
@@ -565,9 +611,19 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
                 "newLen": item.new_len,
                 "delta": item.delta,
                 "oldSha256": item.old_sha256,
+                "type": item.op_type,
+                "kind": item.kind,
+                "insertOrder": item.insert_order,
+                "anchor": item.anchor,
+                "seamHint": item.seam_hint,
+                "contextStart": item.context_start,
+                "contextEnd": item.context_end,
+                **insertion_evidence.get((item.package_id, item.op_id), {}),
             }
-            for planned in planned_by_module.values()
-            for item in planned
+            for item in sorted(
+                (item for planned in planned_by_module.values() for item in planned),
+                key=planned_operation_render_order,
+            )
         ]
         report.changedModules = [
             {

@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from tests.fixtures_bun import MODULE_0, build_aligned_macho_fixture
+from tests.fixtures_bun import MODULE_0, MODULE_1, MODULE_PATH_1, build_aligned_macho_fixture
 
 from claude_monkey.builder_v15 import BuildRequestV15, build_patchset_v15
 from claude_monkey.smoke import CommandResult
@@ -173,3 +173,319 @@ def test_source_identity_mismatch_report_names_current_and_target(tmp_path):
     assert "source_identity_mismatch:fixture-v15" in report.failureReason
     assert "current source is Claude 2.1.199" in report.failureReason
     assert "package targets Claude fixture" in report.failureReason
+
+
+
+def write_insertion_package(
+    package: Path,
+    binary: Path,
+    *,
+    package_id: str,
+    payload: str,
+    insert_order: int,
+    postcondition_value: str,
+) -> None:
+    manifest = {
+        "schemaVersion": 2,
+        "id": package_id,
+        "name": package_id,
+        "description": "Insertion fixture",
+        "packageVersion": "0.1.0",
+        "targets": [
+            {
+                "sourceIdentity": {
+                    "claudeVersion": "fixture",
+                    "versionOutput": "fixture (Claude Code)",
+                    "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+                    "sizeBytes": binary.stat().st_size,
+                    "platform": "darwin",
+                    "arch": "arm64",
+                },
+                "requiredEngine": "bun_graph_repack",
+                "requiredBinaryFormat": "bun_standalone_macho64",
+                "modules": [
+                    {
+                        "path": "/$bunfs/root/src/entrypoints/cli.js",
+                        "contentSha256": hashlib.sha256(MODULE_0).hexdigest(),
+                        "contentLength": len(MODULE_0),
+                        "operations": [
+                            {
+                                "opId": f"{package_id}-insert",
+                                "label": "Insert entry",
+                                "type": "insert_after",
+                                "anchor": "OLD_RENDER",
+                                "insertOrder": insert_order,
+                                "seamHint": "fixture.afterOldRender",
+                                "replacement": {"inline": payload},
+                            }
+                        ],
+                    }
+                ],
+                "postconditions": [
+                    {
+                        "type": "module_must_contain",
+                        "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+                        "value": postcondition_value,
+                    }
+                ],
+            }
+        ],
+    }
+    package.mkdir()
+    (package / "patch.json").write_text(json.dumps(manifest))
+
+
+def _build(tmp_path, source, package_dirs):
+    return build_patchset_v15(
+        BuildRequestV15(
+            source_path=source,
+            output_dir=tmp_path / "out",
+            package_dirs=package_dirs,
+            source_version="fixture",
+            source_version_output="fixture (Claude Code)",
+            platform="darwin",
+            arch="arm64",
+            command_runner=successful_runner,
+        )
+    )
+
+
+def test_insertion_build_reports_evidence_and_extended_fields(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg = tmp_path / "pkg-a"
+    write_insertion_package(
+        pkg, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    report = _build(tmp_path, source, [pkg])
+    assert report.automatedStatus == "passed"
+    applied = report.operationsApplied[0]
+    assert applied["type"] == "insert_after"
+    assert applied["kind"] == "insertion"
+    assert applied["insertOrder"] == 100
+    assert applied["anchor"] == "OLD_RENDER"
+    assert applied["seamHint"] == "fixture.afterOldRender"
+    assert applied["insertionVerified"] is True
+    assert applied["oldLen"] == 0
+    assert applied["moduleStart"] == applied["moduleEnd"]
+    assert isinstance(applied["finalOffset"], int)
+
+
+def test_composition_sensitive_postcondition_fails_build(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg_a = tmp_path / "pkg-a"
+    pkg_b = tmp_path / "pkg-b"
+    write_insertion_package(
+        pkg_a, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100,
+        postcondition_value="OLD_RENDER,A_ENTRY",  # asserts adjacency across a SHARED point
+    )
+    write_insertion_package(
+        pkg_b, source, package_id="pkg-b", payload=",B_ENTRY",
+        insert_order=200, postcondition_value="B_ENTRY",
+    )
+    report = _build(tmp_path, source, [pkg_a, pkg_b])
+    assert report.status == "failed"
+    assert report.failureReason.startswith("postcondition_composition_sensitive:pkg-a")
+
+
+
+def _add_relationships(package: Path, *, requires=None, conflicts=None) -> None:
+    manifest = json.loads((package / "patch.json").read_text())
+    if requires is not None:
+        manifest["requiresPackages"] = requires
+    if conflicts is not None:
+        manifest["conflictsWithPackages"] = conflicts
+    (package / "patch.json").write_text(json.dumps(manifest))
+
+
+def test_required_package_missing_fails_before_planning(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg = tmp_path / "pkg-a"
+    write_insertion_package(
+        pkg, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    _add_relationships(pkg, requires=["footer-drawers"])
+    report = _build(tmp_path, source, [pkg])
+    assert report.status == "failed"
+    assert report.failureReason == "patch_conflict:required_package_missing:pkg-a:footer-drawers"
+
+
+def test_package_conflict_fails_before_planning(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg_a = tmp_path / "pkg-a"
+    pkg_b = tmp_path / "pkg-b"
+    write_insertion_package(
+        pkg_a, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    write_insertion_package(
+        pkg_b, source, package_id="pkg-b", payload=",B_ENTRY",
+        insert_order=200, postcondition_value="B_ENTRY",
+    )
+    _add_relationships(pkg_a, conflicts=["pkg-b"])
+    report = _build(tmp_path, source, [pkg_a, pkg_b])
+    assert report.status == "failed"
+    assert report.failureReason == "patch_conflict:package_conflict:pkg-a:pkg-b"
+
+
+def test_requirements_satisfied_build_passes(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg_a = tmp_path / "pkg-a"
+    pkg_b = tmp_path / "pkg-b"
+    write_insertion_package(
+        pkg_a, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    write_insertion_package(
+        pkg_b, source, package_id="pkg-b", payload=",B_ENTRY",
+        insert_order=200, postcondition_value="B_ENTRY",
+    )
+    _add_relationships(pkg_a, requires=["pkg-b"])
+    report = _build(tmp_path, source, [pkg_a, pkg_b])
+    assert report.automatedStatus == "passed"
+
+
+
+def test_v3_bridge_carries_relationship_metadata(tmp_path):
+    from claude_monkey.builder_v15 import _v3_manifest_as_v2_dict
+
+    package_dir = tmp_path / "thin-drawer"
+    package_dir.mkdir()
+    manifest = {
+        "schemaVersion": 1,
+        "kind": "patch",
+        "id": "thin-drawer",
+        "label": "Thin drawer",
+        "description": "Fixture",
+        "requiresPackages": ["footer-drawers"],
+        "patch": {"engine": "bun_graph_repack", "targets": [{}]},
+    }
+    (package_dir / "package.json").write_text(json.dumps(manifest))
+    bridged = _v3_manifest_as_v2_dict(package_dir)
+    assert bridged["requiresPackages"] == ["footer-drawers"]
+    assert bridged["conflictsWithPackages"] == []
+
+
+
+def test_operations_applied_report_uses_render_order_for_shared_insertions(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg_a = tmp_path / "pkg-a"
+    pkg_b = tmp_path / "pkg-b"
+    write_insertion_package(
+        pkg_a, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    write_insertion_package(
+        pkg_b, source, package_id="pkg-b", payload=",B_ENTRY",
+        insert_order=200, postcondition_value="B_ENTRY",
+    )
+
+    report = _build(tmp_path, source, [pkg_b, pkg_a])
+
+    assert report.automatedStatus == "passed"
+    assert [item["opId"] for item in report.operationsApplied] == [
+        "pkg-a-insert",
+        "pkg-b-insert",
+    ]
+    assert [item["finalOffset"] for item in report.operationsApplied] == sorted(
+        item["finalOffset"] for item in report.operationsApplied
+    )
+
+
+
+def write_module1_marker_package(package: Path, binary: Path) -> None:
+    manifest = {
+        "schemaVersion": 2,
+        "id": "module-one-guard",
+        "name": "Module One Guard",
+        "description": "Module one postcondition fixture",
+        "packageVersion": "0.1.0",
+        "targets": [
+            {
+                "sourceIdentity": {
+                    "claudeVersion": "fixture",
+                    "versionOutput": "fixture (Claude Code)",
+                    "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+                    "sizeBytes": binary.stat().st_size,
+                    "platform": "darwin",
+                    "arch": "arm64",
+                },
+                "requiredEngine": "bun_graph_repack",
+                "requiredBinaryFormat": "bun_standalone_macho64",
+                "modules": [
+                    {
+                        "path": MODULE_PATH_1,
+                        "contentSha256": hashlib.sha256(MODULE_1).hexdigest(),
+                        "contentLength": len(MODULE_1),
+                        "operations": [
+                            {
+                                "opId": "noop-other",
+                                "label": "Keep other module stable",
+                                "type": "replace_exact",
+                                "exact": "true",
+                                "replacement": {"inline": "true"},
+                            }
+                        ],
+                    }
+                ],
+                "postconditions": [
+                    {
+                        "type": "module_must_not_contain",
+                        "modulePath": MODULE_PATH_1,
+                        "value": "OLD_RENDER",
+                    }
+                ],
+            }
+        ],
+    }
+    package.mkdir()
+    (package / "patch.json").write_text(json.dumps(manifest))
+
+
+def test_composition_sensitive_postcondition_scoped_to_assertion_module(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg_a = tmp_path / "pkg-a"
+    pkg_b = tmp_path / "pkg-b"
+    guard = tmp_path / "module-one-guard"
+    write_insertion_package(
+        pkg_a, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    write_insertion_package(
+        pkg_b, source, package_id="pkg-b", payload=",B_ENTRY",
+        insert_order=200, postcondition_value="B_ENTRY",
+    )
+    write_module1_marker_package(guard, source)
+
+    report = _build(tmp_path, source, [pkg_a, pkg_b, guard])
+
+    assert report.automatedStatus == "passed"
+
+
+def test_duplicate_package_id_fails_before_planning(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg_a = tmp_path / "pkg-a"
+    pkg_copy = tmp_path / "pkg-a-copy"
+    write_insertion_package(
+        pkg_a, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    write_insertion_package(
+        pkg_copy, source, package_id="pkg-a", payload=",COPY_ENTRY",
+        insert_order=200, postcondition_value="COPY_ENTRY",
+    )
+
+    report = _build(tmp_path, source, [pkg_a, pkg_copy])
+
+    assert report.status == "failed"
+    assert report.failureReason == "duplicate_package_id:pkg-a:pkg-a-copy"

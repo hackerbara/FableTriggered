@@ -24,6 +24,8 @@ TOP_LEVEL_FIELDS = {
     "id",
     "label",
     "description",
+    "requiresPackages",
+    "conflictsWithPackages",
     "risk",
     "compatibility",
     "prompt",
@@ -118,6 +120,8 @@ class PackageManifest:
     option: OptionPackage | None
     patch: PatchPackage | None
     raw: dict[str, Any]
+    requires_packages: tuple[str, ...] = ()
+    conflicts_with_packages: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -423,6 +427,8 @@ def load_package_manifest_from_dict(
         option=option,
         patch=patch,
         raw=data,
+        requires_packages=_require_string_list(top, "requiresPackages"),
+        conflicts_with_packages=_require_string_list(top, "conflictsWithPackages"),
     )
 
 

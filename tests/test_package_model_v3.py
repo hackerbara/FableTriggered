@@ -333,3 +333,40 @@ def test_conflicts_with_env_defaults_to_override_and_preserves_error(tmp_path):
     assert loaded.option.conflicts_with_env[0].policy == "override"
     assert loaded.option.conflicts_with_env[1].policy == "error"
     assert loaded.option.conflicts_with_env[2].policy == "override"
+
+
+
+def test_envelope_relationship_metadata_parses(tmp_path):
+    package_dir = tmp_path / "thin-drawer"
+    package_dir.mkdir()
+    manifest = {
+        "schemaVersion": 1,
+        "kind": "patch",
+        "id": "thin-drawer",
+        "label": "Thin drawer",
+        "description": "Fixture",
+        "requiresPackages": ["footer-drawers"],
+        "conflictsWithPackages": ["old-drawer"],
+        "patch": {"engine": "bun_graph_repack", "targets": [{}]},
+    }
+    (package_dir / "package.json").write_text(json.dumps(manifest))
+    loaded = load_package_manifest(package_dir, PackageKind.PATCH)
+    assert loaded.requires_packages == ("footer-drawers",)
+    assert loaded.conflicts_with_packages == ("old-drawer",)
+
+
+def test_envelope_relationship_metadata_defaults_empty(tmp_path):
+    package_dir = tmp_path / "plain"
+    package_dir.mkdir()
+    manifest = {
+        "schemaVersion": 1,
+        "kind": "patch",
+        "id": "plain",
+        "label": "Plain",
+        "description": "Fixture",
+        "patch": {"engine": "bun_graph_repack", "targets": [{}]},
+    }
+    (package_dir / "package.json").write_text(json.dumps(manifest))
+    loaded = load_package_manifest(package_dir, PackageKind.PATCH)
+    assert loaded.requires_packages == ()
+    assert loaded.conflicts_with_packages == ()

@@ -6,7 +6,13 @@ from typing import Any, Literal
 HEX_DIGITS = set("0123456789abcdefABCDEF")
 SUPPORTED_ENGINES = {"bun_graph_repack"}
 SUPPORTED_BINARY_FORMATS = {"bun_standalone_macho64"}
-SUPPORTED_OPERATION_TYPES = {"replace_between", "replace_exact"}
+SUPPORTED_OPERATION_TYPES = {
+    "replace_between",
+    "replace_exact",
+    "insert_before",
+    "insert_after",
+    "replace_substring_within",
+}
 SUPPORTED_ASSERTION_TYPES = {
     "module_must_contain",
     "module_must_not_contain",
@@ -53,6 +59,13 @@ class ModuleOperationV2:
     old_range_length: int | None
     replacement: PayloadRefV2
     known_behavior_change: str | None
+    anchor: str | None = None
+    insert_order: int | None = None
+    expected_anchor_count: int = 1
+    sub_exact: str | None = None
+    expected_sub_exact_count: int = 1
+    context_sha256: str | None = None
+    seam_hint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -96,6 +109,8 @@ class ManifestV2:
     package_version: str
     targets: tuple[TargetV2, ...]
     raw: dict[str, Any]
+    requires_packages: tuple[str, ...] = ()
+    conflicts_with_packages: tuple[str, ...] = ()
 
 
 def require_mapping(value: Any, label: str) -> dict[str, Any]:
@@ -137,6 +152,13 @@ def optional_non_negative_int(obj: dict[str, Any], field: str) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ManifestV2Error(f"{field} must be a non-negative integer")
     return value
+
+
+def optional_string_list(obj: dict[str, Any], field: str) -> tuple[str, ...]:
+    value = obj.get(field, [])
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ManifestV2Error(f"{field} must be a list of strings")
+    return tuple(value)
 
 
 def require_sha256(value: Any, field: str) -> str:
@@ -195,10 +217,8 @@ def parse_operation(value: Any) -> ModuleOperationV2:
     op_type = require_string(op, "type")
     if op_type not in SUPPORTED_OPERATION_TYPES:
         raise ManifestV2Error(f"unsupported operation type: {op_type}")
-    require_within = op.get("requireWithinRange", [])
-    if not isinstance(require_within, list) or not all(isinstance(x, str) for x in require_within):
-        raise ManifestV2Error("requireWithinRange must be a list of strings")
-    return ModuleOperationV2(
+    require_within = optional_string_list(op, "requireWithinRange")
+    operation = ModuleOperationV2(
         op_id=require_string(op, "opId"),
         label=require_string(op, "label"),
         type=op_type,
@@ -211,12 +231,110 @@ def parse_operation(value: Any) -> ModuleOperationV2:
         expected_end_marker_count=require_int(op, "expectedEndMarkerCount")
         if "expectedEndMarkerCount" in op
         else 1,
-        require_within_range=tuple(require_within),
+        require_within_range=require_within,
         old_range_sha256=optional_sha256(op, "oldRangeSha256"),
         old_range_length=optional_non_negative_int(op, "oldRangeLength"),
         replacement=parse_payload(op.get("replacement")),
         known_behavior_change=optional_string(op, "knownBehaviorChange"),
+        anchor=optional_string(op, "anchor"),
+        insert_order=optional_non_negative_int(op, "insertOrder"),
+        expected_anchor_count=require_int(op, "expectedAnchorCount")
+        if "expectedAnchorCount" in op
+        else 1,
+        sub_exact=optional_string(op, "subExact"),
+        expected_sub_exact_count=require_int(op, "expectedSubExactCount")
+        if "expectedSubExactCount" in op
+        else 1,
+        context_sha256=optional_sha256(op, "contextSha256"),
+        seam_hint=optional_string(op, "seamHint"),
     )
+    _validate_operation_shape(operation)
+    return operation
+
+
+def _require_supported_marker_counts(operation: ModuleOperationV2) -> None:
+    if operation.expected_start_marker_count != 1:
+        raise ManifestV2Error(
+            f"{operation.op_id}: expectedStartMarkerCount must be 1 (other values unsupported)"
+        )
+    if operation.expected_end_marker_count != 1:
+        raise ManifestV2Error(
+            f"{operation.op_id}: expectedEndMarkerCount must be 1 (other values unsupported)"
+        )
+
+
+def _validate_operation_shape(operation: ModuleOperationV2) -> None:
+    if operation.type in {"insert_before", "insert_after"}:
+        if operation.anchor is None:
+            raise ManifestV2Error(f"{operation.op_id}: {operation.type} requires anchor")
+        if operation.expected_anchor_count != 1:
+            raise ManifestV2Error(
+                f"{operation.op_id}: expectedAnchorCount must be 1 (other values unsupported)"
+            )
+        if (operation.start_marker is None) != (operation.end_marker is None):
+            raise ManifestV2Error(
+                f"{operation.op_id}: context markers must be provided together"
+            )
+        if operation.context_sha256 is not None and operation.start_marker is None:
+            raise ManifestV2Error(
+                f"{operation.op_id}: contextSha256 requires context markers"
+            )
+        if operation.start_marker is not None:
+            _require_supported_marker_counts(operation)
+        if operation.exact is not None or operation.sub_exact is not None:
+            raise ManifestV2Error(
+                f"{operation.op_id}: exact/subExact not allowed on insertions"
+            )
+        if (
+            operation.require_within_range
+            or operation.old_range_sha256 is not None
+            or operation.old_range_length is not None
+        ):
+            raise ManifestV2Error(
+                f"{operation.op_id}: old-range evidence not allowed on insertions"
+            )
+    elif operation.type == "replace_substring_within":
+        if operation.start_marker is None or operation.end_marker is None:
+            raise ManifestV2Error(
+                f"{operation.op_id}: replace_substring_within requires startMarker and endMarker"
+            )
+        if operation.sub_exact is None:
+            raise ManifestV2Error(
+                f"{operation.op_id}: replace_substring_within requires subExact"
+            )
+        _require_supported_marker_counts(operation)
+        if operation.expected_sub_exact_count != 1:
+            raise ManifestV2Error(
+                f"{operation.op_id}: expectedSubExactCount must be 1 (other values unsupported)"
+            )
+        if (
+            operation.anchor is not None
+            or operation.insert_order is not None
+            or operation.exact is not None
+        ):
+            raise ManifestV2Error(
+                f"{operation.op_id}: anchor/insertOrder/exact not allowed on "
+                "replace_substring_within"
+            )
+    else:
+        if operation.expected_anchor_count != 1:
+            raise ManifestV2Error(
+                f"{operation.op_id}: expectedAnchorCount must be 1 (other values unsupported)"
+            )
+        if operation.expected_sub_exact_count != 1:
+            raise ManifestV2Error(
+                f"{operation.op_id}: expectedSubExactCount must be 1 (other values unsupported)"
+            )
+        if (
+            operation.anchor is not None
+            or operation.insert_order is not None
+            or operation.sub_exact is not None
+            or operation.context_sha256 is not None
+            or operation.seam_hint is not None
+        ):
+            raise ManifestV2Error(
+                f"{operation.op_id}: structured-splice fields not allowed on {operation.type}"
+            )
 
 
 def parse_module(value: Any) -> ModuleTargetV2:
@@ -321,4 +439,6 @@ def load_manifest_v2_dict(data: dict[str, Any]) -> ManifestV2:
         package_version=require_string(top, "packageVersion"),
         targets=parsed_targets,
         raw=data,
+        requires_packages=optional_string_list(top, "requiresPackages"),
+        conflicts_with_packages=optional_string_list(top, "conflictsWithPackages"),
     )

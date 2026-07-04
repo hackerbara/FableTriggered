@@ -1,6 +1,6 @@
 # Composition Engine Structured Splices — Design
 
-**Status:** Draft for user review.  
+**Status:** Implemented (Phases 1–2) — see docs/superpowers/plans/2026-07-04-composition-engine-structured-splices.md and docs/manifest-v2-operations.md. **Amended 2026-07-04** after cross-review against the footer-drawers framework spec: added postcondition semantics for shared insertion points, anchor-evidence disjointness rule, promoted the `useMemo` dependency-pairing note to a stated rule, and adjusted Phase 3 so drawer migrations are subsumed by the footer-drawers framework instead of done twice.
 **Project:** ClaudeMonkey composition engine.  
 **Source handoff:** `docs/superpowers/specs/2026-07-03-composition-engine-additive-splice-handoff.md`.  
 **Target baseline:** Claude Code `2.1.199`, Bun standalone Mach-O, schema-v2 `bun_graph_repack` packages.  
@@ -149,6 +149,7 @@ Rules:
 - `insertOrder` is required for shared insertion points.
 - The sort key for a shared insertion group is `(moduleStart, insertOrder, packageId, opId)`, but duplicate `insertOrder` at the same point should fail by default unless an explicit tie policy is added later.
 - A zero-width insertion at a non-zero replacement boundary is allowed only when the insertion point is outside the replacement's claimed range. Inserting inside another operation's claimed range should fail unless the owner operation explicitly exposes a future named seam; named seams are out of phase-1 scope.
+- **Anchor-evidence disjointness:** the anchor bytes (and any `startMarker`/`endMarker` context bytes) of an insertion must be disjoint from every claimed non-zero range in the build, not merely the zero-width point. An insertion whose point sits at a replacement boundary but whose anchor lies *inside* the replaced span validated against evidence that no longer exists in the rendered output — the insertion would land beside bytes it never saw. Fail closed on this case.
 
 ### New subspan replacement operation
 
@@ -243,6 +244,17 @@ The planned operation record must carry enough information for validation and re
 - a normalized `renderOrder` tuple.
 
 `render_changed_module()` must sort by the normalized render order, not merely by `moduleStart`. Same-offset insertions are therefore rendered in exactly the order that validation accepted. This is a core invariant, not report decoration.
+
+## Postconditions under shared insertion points
+
+Today packages assert postconditions as exact substrings of the merged output. That model breaks the moment two packages insert at the same point: package A's asserted adjacency (`anchor` immediately followed by A's bytes) becomes false whenever package B's insertion sorts between them. Package A's postconditions must not be sensitive to whether package B is enabled in the build.
+
+Rules:
+
+- **Engine-verified insertion evidence replaces adjacency assertions.** After rendering, the engine knows each insertion's exact final offset in the merged module. It must mechanically verify that each insertion's own bytes appear at that planned offset and record this in the build report (`insertionVerified: true` per op). This check is automatic; packages do not restate it.
+- **Manifest postconditions for insertion ops assert own-payload presence only** — e.g. a distinctive marker substring from the inserted bytes (`"reminders"` in an array literal, a helper function name). They must not assert byte adjacency between the anchor and the inserted bytes, and must not assert any span that crosses a shared insertion point.
+- **Validation should catch violations where possible:** if a postcondition substring contains an insertion anchor that other enabled ops also target, warn or fail — that postcondition is composition-sensitive by construction.
+- Postconditions for `replace_exact`, `replace_between`, and `replace_substring_within` are unchanged: those ops own their claimed range, and the claimed range cannot contain another package's insertion point (rule above), so exact-substring assertions inside the replacement payload remain safe. A replacement-op postcondition that spans *beyond* its claimed range into a shared insertion point is subject to the same composition-sensitivity failure.
 
 ## Package relationship metadata
 
@@ -373,7 +385,7 @@ Report schema compatibility should be explicit. These operation fields are addit
 With structured splices, a future footer framework can avoid the worst current compromises:
 
 - Drawer packages can append to a shared footer target insertion point instead of replacing the whole `ji` statement or reconstructing it downstream.
-- Dynamic React `useMemo` insertions must update paired dependency-array seams or carry an explicit invariant/postcondition proving no new dependency is required.
+- **Rule, not a footnote — `useMemo` insertions come in pairs, and the real seam is a cluster.** Any insertion into a `useMemo` array literal (or callback body) MUST be paired with a dependency-array insertion, or carry an explicit stated invariant that no new dependency is required (e.g. the inserted expression reads only stable refs or module globals whose changes are tracked by an existing dep). Byte-checked reality from the shipping `hidden-context-drawer` op03: the working `ji` seam today is not one edit — it is (a) inline computation of the frame from a render-local ref *before* the statement, (b) an array-literal entry, and (c) a dependency-array entry (`__codexHiddenContextFrame?.generation`). Migrating such a seam to structured splices means 3–4 coordinated insertion ops around one statement. Phase 3 planning must budget for the cluster, not "one insertion."
 - A package can add one selection flag without restating all stock sibling flags.
 - A framework package can own genuinely shared behavior while thin drawer packages contribute small registration and content seams.
 - If a drawer depends on the framework, that dependency can be explicit instead of implied by marker presence.
@@ -408,6 +420,9 @@ Add tests for:
 - Duplicate `insertOrder` at the same point fails closed.
 - Insertion inside a claimed replacement range fails.
 - Insertion adjacent to a claimed replacement boundary behaves as specified.
+- Insertion whose anchor bytes lie inside another op's claimed range fails (anchor-evidence disjointness), even when the zero-width point is at the boundary.
+- Engine-verified insertion evidence: rendered output contains each insertion's bytes at the planned final offset; report records it.
+- A manifest postcondition asserting adjacency across a shared insertion point is rejected or warned as composition-sensitive.
 - `replace_substring_within` claims only the subspan, not the whole context.
 - Non-unique subspan inside context fails.
 - Old-range SHA and length apply to the claimed subspan.
@@ -489,11 +504,11 @@ Use this to model known alternatives and future framework dependencies.
 
 ### Phase 3 — migrate real seams
 
-Migrate selected current packages away from fragile workarounds:
+**Amended:** do not migrate the drawer packages' footer seams to insertions as standalone in-place refactors. The footer-drawers framework (`2026-07-03-footer-drawers-framework-design.md`, now implementation-ready pending Phases 1–2) refactors both drawers to thin registrants and re-owns those same seams — migrating them twice means two flag days for the same users. Instead:
 
-1. Replace downstream `ji` reassignment in `reminders-manager` with ordered insertion if the data-flow design supports it.
-2. Replace additive Hidden Context flag/target restatements with context-bounded insertions where possible; use `replace_substring_within` only for genuinely owned subspan edits.
-3. Revisit footer framework design only after these migrations prove the engine primitives.
+1. Prove the primitives with the fixture package pair from the testing plan (shared footer-like anchor, two ordered insertions).
+2. Optionally migrate one small non-footer seam as a live proof if a low-risk candidate exists.
+3. Then implement the footer-drawers framework directly — it *is* the real-seam migration for the `ji` cluster, selection flags, bar, key routing, and overlay mounts.
 
 ### Phase 4 — named seam layer design
 

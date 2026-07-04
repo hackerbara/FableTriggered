@@ -11,8 +11,8 @@ from typing import Any
 from claude_monkey.config import ClaudeMonkeyConfig, LaunchProfile
 from claude_monkey.install import (
     OWNER_MARKER,
+    _version_from_path,
     current_target_is_installed_shim,
-    resolve_cached_source,
     shim_digest,
 )
 from claude_monkey.launch_profile import load_active_launch_packages, select_launch_target
@@ -358,7 +358,7 @@ def _shim_previously_managed(record: dict[str, Any] | None) -> bool:
     )
 
 
-def _classify_plausible_official_source(target_path: Path, paths: StatePaths) -> Path | None:
+def classify_plausible_official_source(target_path: Path, paths: StatePaths) -> Path | None:
     """Best-effort "this is some other executable" classification.
 
     Reuses the same primitives `source_discovery.py` already applies to
@@ -366,6 +366,12 @@ def _classify_plausible_official_source(target_path: Path, paths: StatePaths) ->
     ClaudeMonkey's own managed paths via `is_managed_launcher_path`). Per R8,
     this proves the target is *not* one of our own managed binaries -- it is
     not, and must never be presented as, verified-Anthropic provenance.
+
+    Stage-2 (`repair.py`) reuses this exact function for its own
+    "current target classifies as plausible official" precondition rather
+    than re-deriving the classification -- see that module for the
+    additional, code-disambiguated refusal reasons it layers on top when
+    this returns `None`.
     """
     try:
         resolved = target_path.resolve(strict=True)
@@ -379,19 +385,20 @@ def _classify_plausible_official_source(target_path: Path, paths: StatePaths) ->
 
 
 def _cheap_official_version(path: Path) -> str | None:
-    """Best-effort version extraction, reusing the existing --version probe.
+    """Best-effort version extraction for a detected replacement target.
 
+    `path` here is reached only when the target's digest does NOT match the
+    managed shim -- i.e. exactly when an unverified binary sits at the
+    target path, with only `classify_plausible_official_source`'s path-shape
+    check as credential (not verified Anthropic provenance). Detection runs
+    on every `status --json`/GUI refresh (R5), so this must never execute
+    `path` -- see `install._version_from_path`'s docstring for the concrete
+    failure mode (running an intact shim's `--version` re-enters
+    `select_launch_target` and executes whatever `claude` resolves on PATH).
     Per spec R7, extraction failure must not suppress detection -- callers
     treat None as "version unknown", not as an error.
     """
-    try:
-        result = run_command([str(path), "--version"])
-    except OSError:
-        return None
-    if result.returncode != 0:
-        return None
-    output = result.stdout.strip() or result.stderr.strip() or None
-    return _version_from_output(output)
+    return _version_from_path(path)
 
 
 _NO_OFFICIAL_REPLACEMENT: dict[str, Any] = {
@@ -421,15 +428,23 @@ def _detect_official_replacement(
     assert record is not None
     target_path = Path(record["targetPath"])
     # Repair availability never depends on whether a replacement was
-    # detected -- an intact shim has nothing to repair, and a corrupt cache
-    # can't back a repair even if the target was replaced (R9 "corrupt
-    # cache" case).
-    repair_available = not shim_installed and (
-        resolve_cached_source(record, paths.state_dir) is not None
-    )
+    # detected -- an intact shim has nothing to repair. It also no longer
+    # depends on the OLD previous-source cache being valid (adjudication,
+    # controller decision): `restore_install_transaction` (install.py:368-
+    # 439) never reads `previousSourceCachePath`/`previousSourceSha256` --
+    # it restores from `previousType`/`previousTarget`/
+    # `previousContentBase64`/`previousMode`, and `repair_shim_action`
+    # overwrites all of those fields on success anyway (R4). Gating
+    # `shimRepairAvailable` on the old cache's validity only produced a bug:
+    # a corrupt old cache plus an otherwise-healthy replaced target made
+    # repair permanently unavailable even though repair never reads that
+    # cache. Kept intentionally pinned: `_install_record_source`
+    # (launch_profile.py) still returns None on a corrupt cache -- that is
+    # the separate launch-fallback safety gate (R9), untouched here.
+    repair_available = not shim_installed
     if shim_installed:
         return {**_NO_OFFICIAL_REPLACEMENT, "shimRepairAvailable": repair_available}
-    resolved = _classify_plausible_official_source(target_path, paths)
+    resolved = classify_plausible_official_source(target_path, paths)
     if resolved is None:
         return {**_NO_OFFICIAL_REPLACEMENT, "shimRepairAvailable": repair_available}
     expected_shim_digest = shim_digest(paths.state_dir)

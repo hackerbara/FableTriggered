@@ -53,6 +53,12 @@ from claude_monkey.packages_admin import (
     scaffold_prompt_package,
 )
 from claude_monkey.paths import StatePaths, default_paths
+from claude_monkey.repair import (
+    CacheSourceRefused,
+    RepairRefused,
+    cache_source_action,
+    repair_shim_action,
+)
 from claude_monkey.shim_entry import compute_launch_with_paths
 from claude_monkey.smoke import run_command
 from claude_monkey.source_discovery import discover_official_claude
@@ -166,6 +172,16 @@ def build_parser() -> argparse.ArgumentParser:
     uninstall.add_argument("--dry-run", action="store_true")
     uninstall.add_argument("--json", action="store_true")
     uninstall.add_argument("--progress", action="store_true")
+
+    cache_source_parser = sub.add_parser("cache-source")
+    cache_source_parser.add_argument("--target")
+    cache_source_parser.add_argument("--state-dir")
+    cache_source_parser.add_argument("--json", action="store_true")
+
+    repair_shim_parser = sub.add_parser("repair-shim")
+    repair_shim_parser.add_argument("--target")
+    repair_shim_parser.add_argument("--state-dir")
+    repair_shim_parser.add_argument("--json", action="store_true")
 
     rollback = sub.add_parser("rollback")
     rollback.add_argument("--target")
@@ -1082,6 +1098,107 @@ def _record_path(args: argparse.Namespace, state_dir: Path) -> Path:
     return Path(args.record).expanduser() if args.record else state_dir / "install-record.json"
 
 
+def _resolve_cache_or_repair_target(args: argparse.Namespace, state_dir: Path) -> Path | None:
+    """`--target` if given, else the current detection state: the install
+    record's own `targetPath` (the target ClaudeMonkey has previously
+    managed, which is what cache-source/repair-shim reason about by
+    default).
+    """
+    if args.target:
+        return Path(args.target).expanduser()
+    record_path = state_dir / "install-record.json"
+    if not record_path.exists():
+        return None
+    try:
+        raw = json.loads(record_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    target = raw.get("targetPath") if isinstance(raw, dict) else None
+    return Path(target).expanduser() if isinstance(target, str) else None
+
+
+def handle_cache_source(args: argparse.Namespace, paths: StatePaths) -> int:
+    state_dir = Path(args.state_dir).expanduser() if args.state_dir else paths.state_dir
+    target = _resolve_cache_or_repair_target(args, state_dir)
+    if target is None:
+        payload = envelope_error(
+            "cache-source requires --target or an install record with targetPath",
+            code="missing_target",
+        )
+        if args.json:
+            print_json(payload)
+        else:
+            print(payload.summary, file=sys.stderr)
+        return 2
+    try:
+        result = cache_source_action(target, state_dir, paths)
+    except CacheSourceRefused as exc:
+        payload = envelope_error(str(exc), code=exc.code, target_path=target)
+        if args.json:
+            print_json(payload)
+        else:
+            print(str(exc), file=sys.stderr)
+        return 1
+    envelope = envelope_ok(f"cached official source {result['sha256'][:8]}", target_path=target)
+    payload = to_jsonable(envelope)
+    payload["cachedSourcePath"] = result["cachedSourcePath"]
+    payload["sha256"] = result["sha256"]
+    payload["sizeBytes"] = result["sizeBytes"]
+    payload["version"] = result["version"]
+    payload["gcRemovedDigests"] = result["gcRemovedDigests"]
+    if args.json:
+        print_json(payload)
+    else:
+        print(f"cachedSourcePath={result['cachedSourcePath']}")
+    return 0
+
+
+def handle_repair_shim(args: argparse.Namespace, paths: StatePaths) -> int:
+    state_dir = Path(args.state_dir).expanduser() if args.state_dir else paths.state_dir
+    target = _resolve_cache_or_repair_target(args, state_dir)
+    if target is None:
+        payload = envelope_error(
+            "repair-shim requires --target or an install record with targetPath",
+            code="missing_target",
+        )
+        if args.json:
+            print_json(payload)
+        else:
+            print(payload.summary, file=sys.stderr)
+        return 2
+    try:
+        result = repair_shim_action(target, state_dir, paths)
+    except RepairRefused as exc:
+        auth_required = exc.code == "authorization_required"
+        payload = envelope_error(
+            str(exc),
+            code=exc.code,
+            target_path=target,
+            authorization_required=auth_required,
+            authorization_method=(
+                authorization_method_for_target(target) if auth_required else None
+            ),
+        )
+        if args.json:
+            print_json(payload)
+        else:
+            print(str(exc), file=sys.stderr)
+        return 1
+    envelope = envelope_ok("repaired managed claude shim", target_path=target)
+    payload = to_jsonable(envelope)
+    payload["repaired"] = result["repaired"]
+    payload["previousOfficialSha256"] = result["previousOfficialSha256"]
+    payload["newOfficialSha256"] = result["newOfficialSha256"]
+    payload["newOfficialVersion"] = result["newOfficialVersion"]
+    payload["cachedSourcePath"] = result["cachedSourcePath"]
+    payload["gcRemovedDigests"] = result["gcRemovedDigests"]
+    if args.json:
+        print_json(payload)
+    else:
+        print(f"repaired={str(result['repaired']).lower()}")
+    return 0
+
+
 def _target_from_args_or_record(args: argparse.Namespace, record_path: Path) -> Path | None:
     if args.target:
         return Path(args.target).expanduser()
@@ -1572,6 +1689,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command in {"uninstall-shim", "rollback"}:
         return handle_restore(args, paths)
+    if args.command == "cache-source":
+        return handle_cache_source(args, paths)
+    if args.command == "repair-shim":
+        return handle_repair_shim(args, paths)
     if args.command == "use-official":
         if not args.official:
             message = "use-official requires --official"

@@ -233,3 +233,50 @@ def test_replace_exact_rejects_seam_hint():
     }
     with pytest.raises(ManifestV2Error, match="not allowed on replace_exact"):
         load_manifest_v2_dict(_manifest_with_op(op))
+
+
+
+def _subspan_op(**overrides):
+    op = {
+        "opId": "add-flag",
+        "label": "Add selection flag",
+        "type": "replace_substring_within",
+        "startMarker": 'let qb=Du==="tasks"',
+        "endMarker": ";function Sf",
+        "subExact": 'Ap=Du==="frame"',
+        "oldRangeLength": 15,
+        "replacement": {"inline": 'Ap=Du==="frame",hC=Du==="hiddenContext"'},
+        "seamHint": "footer.selection.afterFrame",
+    }
+    op.update(overrides)
+    return op
+
+
+def test_replace_substring_within_parses():
+    operation = (
+        load_manifest_v2_dict(_manifest_with_op(_subspan_op()))
+        .targets[0].modules[0].operations[0]
+    )
+    assert operation.type == "replace_substring_within"
+    assert operation.sub_exact == 'Ap=Du==="frame"'
+    assert operation.old_range_length == 15
+    assert operation.seam_hint == "footer.selection.afterFrame"
+
+
+def test_replace_substring_within_requires_sub_exact():
+    op = _subspan_op()
+    del op["subExact"]
+    with pytest.raises(ManifestV2Error, match="requires subExact"):
+        load_manifest_v2_dict(_manifest_with_op(op))
+
+
+def test_replace_substring_within_requires_markers():
+    op = _subspan_op()
+    del op["endMarker"]
+    with pytest.raises(ManifestV2Error, match="requires startMarker and endMarker"):
+        load_manifest_v2_dict(_manifest_with_op(op))
+
+
+def test_replace_substring_within_rejects_insert_order():
+    with pytest.raises(ManifestV2Error, match="not allowed on replace_substring_within"):
+        load_manifest_v2_dict(_manifest_with_op(_subspan_op(insertOrder=5)))

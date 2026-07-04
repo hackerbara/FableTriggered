@@ -1,0 +1,1 @@
+me=Xd.jsx(__CodexHotrodMainWindowV4,{children:Xd.jsxs(B,{flexGrow:1,flexDirection:"row",overflow:"hidden",children:[Ee,pe]})},"codex-hotrod-v12-main-window")

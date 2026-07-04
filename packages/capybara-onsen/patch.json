@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "kind": "patch",
+  "id": "capybara-onsen",
+  "label": "Capybara Onsen",
+  "description": "A calming twilight Japanese onsen scene with two capybaras \u2014 baked half-block pixel art with 16-phase water/steam animation, drawn via the renderer's native ink-raw-ansi direct-draw path.",
+  "risk": {
+    "level": "low"
+  },
+  "patch": {
+    "engine": "bun_graph_repack",
+    "targets": [
+      {
+        "sourceIdentity": {
+          "claudeVersion": "2.1.199",
+          "versionOutput": "2.1.199 (Claude Code)",
+          "sha256": "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0",
+          "sizeBytes": 232155536,
+          "platform": "darwin",
+          "arch": "arm64"
+        },
+        "requiredEngine": "bun_graph_repack",
+        "requiredBinaryFormat": "bun_standalone_macho64",
+        "modules": [
+          {
+            "path": "/$bunfs/root/src/entrypoints/cli.js",
+            "contentSha256": "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55",
+            "contentLength": 18593981,
+            "operations": [
+              {
+                "opId": "capy-onsen-scene-helpers-before-v8o-2-1-199",
+                "label": "Insert onsen scene helpers + baked art data before app shell V8o",
+                "type": "replace_exact",
+                "exact": "function V8o(e){let t=KJe.c(78)",
+                "requireWithinRange": [
+                  "function V8o(e){"
+                ],
+                "oldRangeSha256": "1b36fafc9cf87469fddf028b9ec8f27e7d70bb11075d70a82d07ba3b9e4e4141",
+                "oldRangeLength": 31,
+                "replacement": {
+                  "path": "payloads/01-capy-onsen-scene-helpers-before-v8o-2-1-199.js",
+                  "sha256": "7803d660c5fcce973fb59ad61339afa5f9ffb287c3e142c5028b9b8b3cbc89f8"
+                },
+                "knownBehaviorChange": "Defines the ink-raw-ansi onsen scene components and embeds the baked half-block art data (no behavior change until the scene is mounted below)."
+              },
+              {
+                "opId": "capy-onsen-fullscreen-scene-pe-2-1-199",
+                "label": "Mount onsen scene in the fullscreen conversation view (pe)",
+                "type": "replace_exact",
+                "exact": "pe=zd.jsxs(B,{flexGrow:1,flexDirection:\"column\",overflow:\"hidden\",children:[Q,ee,ne,oe,ie]})",
+                "requireWithinRange": [
+                  "children:[Q,ee,ne,oe,ie]"
+                ],
+                "oldRangeSha256": "03f73f88656916d048549ef14c27e5d38a9bd41a102f4533bed572aac3cf4a99",
+                "oldRangeLength": 92,
+                "replacement": {
+                  "path": "payloads/02-capy-onsen-fullscreen-scene-pe-2-1-199.js",
+                  "sha256": "7ef7bb28be48f894d2bfa04ec6e3da820a0799a2f9035be3a78aa7d8faf06bcf"
+                },
+                "knownBehaviorChange": "Renders the two side onsen walls (twilight sky + water/steam pool with the capybaras) around the conversation, reserving 32-cell gutters via paddingX."
+              },
+              {
+                "opId": "capy-onsen-composer-flank-ue-2-1-199",
+                "label": "Continue the onsen pool into the composer flanks (ue)",
+                "type": "replace_exact",
+                "exact": "ue=zd.jsx(B,{flexDirection:\"column\",width:\"100%\",flexGrow:1,flexShrink:0,overflowY:\"hidden\",children:s})",
+                "requireWithinRange": [
+                  "flexGrow:1,flexShrink:0,overflowY:\"hidden\",children:s"
+                ],
+                "oldRangeSha256": "ce5d850137038d83e9a593758b5e309bc0c75a2f06b7c033245048bd8003f64b",
+                "oldRangeLength": 104,
+                "replacement": {
+                  "path": "payloads/03-capy-onsen-composer-flank-ue-2-1-199.js",
+                  "sha256": "5e3b089255774dbdc1d53b5c82fcabacaf16ef6199aec9efe5a7ec8517a5a381"
+                },
+                "knownBehaviorChange": "Wraps the composer so the onsen pool continues into the bottom-corner flanks."
+              },
+              {
+                "opId": "capy-onsen-composer-parent-le-2-1-199",
+                "label": "Indigo background on the bottom chrome parent (le)",
+                "type": "replace_exact",
+                "exact": "le=zd.jsxs(B,{flexDirection:\"column\",flexShrink:0,width:\"100%\",maxHeight:w,children:[Ee,ce,ue]})",
+                "requireWithinRange": [
+                  "children:[Ee,ce,ue]"
+                ],
+                "oldRangeSha256": "67e5a18b22d0576a5b40e88147a1c7d6a39f982fa1820c369e634b636f830e18",
+                "oldRangeLength": 96,
+                "replacement": {
+                  "path": "payloads/04-capy-onsen-composer-parent-le-2-1-199.js",
+                  "sha256": "b8ceb3ef8c394b4b27247d1d91ac0ffcdfa25a755b54cd589df28090aa7a4c13"
+                },
+                "knownBehaviorChange": "Blends the composer chrome background with the scene."
+              },
+              {
+                "opId": "capy-onsen-fallback-scene-v-2-1-199",
+                "label": "Mount onsen scene in the non-fullscreen fallback path (V)",
+                "type": "replace_exact",
+                "exact": "V=zd.jsxs(zd.Fragment,{children:[n,s,i]})",
+                "requireWithinRange": [
+                  "V=zd.jsxs(zd.Fragment,{children:[n,s,i]})"
+                ],
+                "oldRangeSha256": "17f148869dd10b35c442691521c06fada4a0dcb510a47455968d8710bb3d9e55",
+                "oldRangeLength": 41,
+                "replacement": {
+                  "path": "payloads/05-capy-onsen-fallback-scene-v-2-1-199.js",
+                  "sha256": "f8a4eda8c43cd7c4ff394c5b2a4bd85145252c58b1d149ef2bd9ca96f5d4c62b"
+                },
+                "knownBehaviorChange": "Shows the onsen scene when the app renders outside the fullscreen alt-screen path."
+              }
+            ]
+          }
+        ],
+        "preconditions": [
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "function V8o(e){let t=KJe.c(78)"
+          },
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "pe=zd.jsxs(B,{flexGrow:1,flexDirection:\"column\",overflow:\"hidden\",children:[Q,ee,ne,oe,ie]})"
+          },
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "ue=zd.jsx(B,{flexDirection:\"column\",width:\"100%\",flexGrow:1,flexShrink:0,overflowY:\"hidden\",children:s})"
+          },
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "le=zd.jsxs(B,{flexDirection:\"column\",flexShrink:0,width:\"100%\",maxHeight:w,children:[Ee,ce,ue]})"
+          },
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "V=zd.jsxs(zd.Fragment,{children:[n,s,i]})"
+          }
+        ],
+        "postconditions": [
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "function __CodexCapyOnsenSceneV1"
+          },
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "\"ink-raw-ansi\""
+          },
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "codex-capy-onsen-v1-scene"
+          },
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "String.fromCharCode(9600)"
+          },
+          {
+            "type": "module_must_not_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "\u2580"
+          }
+        ],
+        "manualSmoke": {
+          "required": true,
+          "reason": "Purely visual, calming TUI art (twilight onsen with animated water/steam and two capybaras). Correct rendering, animation, and layout must be confirmed in an interactive truecolor terminal."
+        }
+      }
+    ]
+  },
+  "x-packageVersion": "1.0.0"
+}

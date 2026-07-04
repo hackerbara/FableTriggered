@@ -1,0 +1,1 @@
+ue=zd.jsx(__CodexCapyOnsenPoolBottomV1,{children:s},"codex-capy-onsen-v1-bottom-instance")

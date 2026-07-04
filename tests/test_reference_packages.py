@@ -12,6 +12,7 @@ from claude_monkey.payloads import load_payload_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_DIRS = [
+    ROOT / "packages" / "capybara-onsen",
     ROOT / "packages" / "fable-fallback",
     ROOT / "packages" / "hidden-context-drawer",
     ROOT / "packages" / "hotrod-dragons",

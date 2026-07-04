@@ -204,8 +204,10 @@ def test_reminders_manager_builds_with_footer_framework(tmp_path):
     assert report.failureReason is None, report.failureReason
     assert report.automatedStatus == "passed"
     assert report.enabledPatches == ["footer-drawers", "reminders-manager"]
-    assert report.status == "manual_smoke_pending"
-    assert report.activationEligible is False
+    assert report.status == "verified"
+    assert report.manualSmoke["required"] is True
+    assert report.manualSmoke["status"] == "bypassed"
+    assert report.activationEligible is True
 
 
 @pytest.mark.local_real_smoke

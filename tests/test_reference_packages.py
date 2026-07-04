@@ -39,9 +39,14 @@ def source_for_identity(identity) -> Path | None:
 def test_reference_packages_are_v3_schema_with_v15_compatible_targets():
     for package_dir in PACKAGE_DIRS:
         manifest_data = json.loads((package_dir / "patch.json").read_text())
-        assert manifest_data["schemaVersion"] == 1
-        assert manifest_data["kind"] == "patch"
-        assert manifest_data["patch"]["engine"] == "bun_graph_repack"
+        if manifest_data["schemaVersion"] == 1:
+            assert manifest_data["kind"] == "patch"
+            assert manifest_data["patch"]["engine"] == "bun_graph_repack"
+        else:
+            # Transitional state before schema-unification Task 3 migrates the
+            # remaining flat-v2 packages. Task 4 tightens this back to schema v1.
+            assert manifest_data["schemaVersion"] == 2
+            assert manifest_data["targets"]
         manifest = load_manifest_v2(package_dir)
         assert manifest.id == package_dir.name
         assert manifest.schema_version == 2
@@ -182,7 +187,8 @@ def test_hidden_context_drawer_package_uses_footer_overlay_without_global_ijo_ca
     package_dir = ROOT / "packages" / "hidden-context-drawer"
     footer_drawers_dir = ROOT / "packages" / "footer-drawers"
     manifest_data = json.loads((package_dir / "patch.json").read_text())
-    operations = manifest_data["patch"]["targets"][0]["modules"][0]["operations"]
+    targets = manifest_data.get("patch", manifest_data)["targets"]
+    operations = targets[0]["modules"][0]["operations"]
     payloads = {
         operation["opId"]: (package_dir / operation["replacement"]["path"]).read_text()
         for operation in operations

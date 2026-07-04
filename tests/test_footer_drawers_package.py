@@ -233,7 +233,7 @@ def test_thinking_direct_footer_ops_are_removed_after_migration() -> None:
     }.issubset(op_ids)
 
 @pytest.mark.local_real_smoke
-def test_build_framework_alone_reaches_manual_smoke_pending(tmp_path) -> None:
+def test_build_framework_alone_reaches_verified_with_manual_smoke_bypassed(tmp_path) -> None:
     source = _source_or_skip()
     report = build_patchset_v15(
         BuildRequestV15(
@@ -247,8 +247,10 @@ def test_build_framework_alone_reaches_manual_smoke_pending(tmp_path) -> None:
         )
     )
     assert report.automatedStatus == "passed"
-    assert report.status == "manual_smoke_pending"
-    assert report.activationEligible is False
+    assert report.status == "verified"
+    assert report.manualSmoke["required"] is True
+    assert report.manualSmoke["status"] == "bypassed"
+    assert report.activationEligible is True
 
 
 def _write_matching_uas_conflict_fixture(tmp_path: Path) -> Path:
@@ -347,8 +349,10 @@ def _build_packages(tmp_path: Path, name: str, packages: list[Path]):
 def test_footer_drawers_successful_composition_matrix(tmp_path, name, packages) -> None:
     report = _build_packages(tmp_path, name, packages)
     assert report.automatedStatus == "passed", report.failureReason
-    assert report.status == "manual_smoke_pending"
-    assert report.activationEligible is False
+    assert report.status == "verified"
+    assert report.manualSmoke["required"] is True
+    assert report.manualSmoke["status"] == "bypassed"
+    assert report.activationEligible is True
     assert report.enabledPatches == [p.name for p in packages]
     if name == "framework-all":
         panels = [

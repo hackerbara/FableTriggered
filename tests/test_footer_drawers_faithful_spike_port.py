@@ -93,7 +93,10 @@ def _build_full_stack(tmp_path: Path) -> str:
     report = build_patchset_v15(request)
     assert report.failureReason is None, report.failureReason
     assert report.automatedStatus == "passed"
-    assert report.status == "manual_smoke_pending"
+    assert report.status == "verified"
+    assert report.manualSmoke["required"] is True
+    assert report.manualSmoke["status"] == "bypassed"
+    assert report.activationEligible is True
     assert report.outputPath is not None
     return _module_text_from_binary(Path(report.outputPath))
 

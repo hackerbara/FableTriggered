@@ -1233,6 +1233,7 @@ def handle_repair_shim(args: argparse.Namespace, paths: StatePaths) -> int:
     payload["cachedSourcePath"] = result["cachedSourcePath"]
     payload["gcRemovedDigests"] = result["gcRemovedDigests"]
     payload["revertedImmediately"] = reverted_immediately
+    payload["targetLocked"] = result["targetLocked"]
     if args.json:
         print_json(payload)
     else:
@@ -1729,7 +1730,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(str(exc), file=sys.stderr)
             return 1
         if args.json:
-            print_json(
+            payload = to_jsonable(
                 envelope_ok(
                     "installed managed claude shim",
                     target_path=target,
@@ -1737,6 +1738,13 @@ def main(argv: list[str] | None = None) -> int:
                     authorization_method=authorization_method,
                 )
             )
+            # Shim lock feature: additive `targetLocked` field. Read back
+            # from the install record itself rather than changing
+            # `install_shim_transaction`'s return type -- every existing
+            # caller/test relies on it returning `record_path` (a Path).
+            record_data = json.loads(record.read_text()) if record.exists() else {}
+            payload["targetLocked"] = record_data.get("targetLocked", False)
+            print_json(payload)
         else:
             print(f"installRecord={record}")
             print("dryRun=false")

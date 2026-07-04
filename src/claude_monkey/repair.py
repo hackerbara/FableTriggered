@@ -9,6 +9,8 @@ from typing import Any
 from claude_monkey.authorization import target_needs_authorization
 from claude_monkey.install import (
     OWNER_MARKER,
+    _lock_target,
+    _unlock_target,
     _version_from_path,
     atomic_write_json,
     cache_source,
@@ -351,10 +353,19 @@ def repair_shim_action(
     tmp = target_path.with_suffix(target_path.suffix + ".claude-monkey.repair.tmp")
     tmp.unlink(missing_ok=True)
     write_shim(tmp, state_dir)
+    # Unlock before the swap: defensive, since a target this function is
+    # about to repair was just classified/re-verified as a plausible
+    # official replacement (i.e. not our locked shim -- a real locked shim
+    # can't be replaced by an external actor in the first place, which is
+    # the whole point of the shim-lock feature). `was_locked` still gates
+    # the abort-path re-lock decision below in case it somehow was ours.
+    was_locked = _unlock_target(target_path)
     try:
         tmp.replace(target_path)  # rename within target_path's own directory: atomic swap
     except OSError as exc:
         tmp.unlink(missing_ok=True)
+        if was_locked:
+            _lock_target(target_path)
         raise RepairRefused(f"failed to swap shim into place: {exc}", code="swap_failed") from exc
 
     # Fix 1: the swap above is already complete and successful -- "repaired"
@@ -365,6 +376,13 @@ def repair_shim_action(
     # Read+hash only -- `_current_target_digest` never executes target_path.
     sleep(REPAIR_REVERT_RECHECK_DELAY_SECONDS)
     reverted_immediately = _current_target_digest(target_path) != new_shim_digest
+
+    # Shim lock (final step, requirement 1) -- deliberately AFTER the
+    # revert-recheck above, not before: if the recheck already found the
+    # target reverted, there is nothing of ours left at `target_path` to
+    # lock -- flagging it would flag someone else's file. Only attempt to
+    # lock when our shim is still actually there.
+    target_locked = False if reverted_immediately else _lock_target(target_path)
 
     removed = gc_source_cache(
         state_dir,
@@ -381,4 +399,5 @@ def repair_shim_action(
         "cachedSourcePath": cached["previousSourceCachePath"],
         "gcRemovedDigests": removed,
         "revertedImmediately": reverted_immediately,
+        "targetLocked": target_locked,
     }

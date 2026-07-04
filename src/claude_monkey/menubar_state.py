@@ -139,6 +139,11 @@ class MenuState:
     # investigation for why no *other* status field is a reliable stand-in
     # today.
     last_managed_target_path: Path | None = None
+    # Shim lock feature: additive, optional. Mirrors `shimInstalled`'s own
+    # opportunistic-parse pattern above -- defaults to False so status
+    # payloads from before this field existed (or from non-mac hosts) parse
+    # unchanged.
+    shim_locked: bool = False
 
 
 def _optional_path(value: Any) -> Path | None:
@@ -432,4 +437,5 @@ def parse_menu_state(
         shim_repair_available=_optional_bool(status_raw, "shimRepairAvailable", False),
         rollout_required=_optional_bool(status_raw, "rolloutRequired", False),
         last_managed_target_path=_optional_path(status_raw.get("lastManagedTargetPath")),
+        shim_locked=_optional_bool(status_raw, "shimLocked", False),
     )

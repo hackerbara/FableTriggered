@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import stat
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from time import time
@@ -310,16 +311,116 @@ def _privileged_remove(target_path: Path) -> None:
     )
 
 
+def _lock_target(target_path: Path) -> bool:
+    """Set the macOS/BSD user-immutable flag on `target_path`, as the FINAL
+    step after ClaudeMonkey has just written its own shim bytes there (see
+    `install_shim_transaction`/`repair_shim_action`).
+
+    Evidence (controlled experiment on a real machine, 2026-07-03/04): the
+    official Claude installer's own self-heal mechanism re-detects and
+    silently re-overwrites a bare (unflagged) shim within roughly 15 seconds
+    of any fresh official-claude launch -- its own code swallows the
+    resulting EPERM quietly (sessions keep working the whole time), so the
+    shim just keeps getting clobbered. Setting `UF_IMMUTABLE` here defeats
+    that reverter cleanly and never touches the official installer's own
+    download path (those land under `~/.local/share/claude/versions/`, never
+    the shim's target path).
+
+    Only ever called immediately after ClaudeMonkey itself finished writing
+    `target_path`, so ClaudeMonkey is always the owner of the bytes it is
+    about to flag -- a plain (unprivileged) `os.chflags` call is therefore
+    always sufficient here, even for an otherwise-authorization-required
+    target directory (root/sudo was needed only to *reach* the directory
+    entry, never to own the file this process itself just wrote into it).
+
+    No-op (returns False) on any platform without user-immutable-flag
+    support, or if the underlying `chflags` call fails for *any* reason
+    (permission, unsupported filesystem, etc.): a locking failure must never
+    fail the caller's transaction -- the shim keeps working unlocked, exactly
+    as it did before this feature existed. Callers report the returned bool
+    honestly (`targetLocked`/`shimLocked`) instead of assuming success.
+    """
+    if not (sys.platform == "darwin" and hasattr(os, "chflags")):
+        return False
+    try:
+        os.chflags(str(target_path), stat.UF_IMMUTABLE)
+    except OSError:
+        return False
+    return True
+
+
+def shim_target_is_locked(target_path: Path) -> bool:
+    """Read-only: is the macOS/BSD user-immutable flag currently set on
+    `target_path`? Never touches file bytes, only `st_flags` -- safe to call
+    from any read-only detection path (see `status.py`'s `shimLocked`
+    field), locked or not, installed or not. False on any platform without
+    `st_flags` support (e.g. Linux) or if the stat call fails for any reason
+    (missing file, dangling symlink, permission).
+    """
+    if not (sys.platform == "darwin" and hasattr(os, "chflags")):
+        return False
+    try:
+        flags = target_path.stat().st_flags
+    except (OSError, AttributeError):
+        return False
+    return bool(flags & stat.UF_IMMUTABLE)
+
+
+def _unlock_target(target_path: Path) -> bool:
+    """Lift the user-immutable flag from `target_path` if present, before
+    any ClaudeMonkey write to it (swap, restore/uninstall, or a rollback --
+    see every call site below).
+
+    Returns True only when the flag was actually present AND successfully
+    cleared. Callers use this to decide whether `target_path` held *our*
+    previously-locked shim: ClaudeMonkey only ever flags bytes it wrote
+    itself (see `_lock_target`'s docstring), so finding the flag set here
+    means the pre-write content was ours -- which drives the abort-path
+    re-lock decisions at each call site (still ours and still intact after
+    an aborted write -> re-lock; nothing was ours to begin with -> don't).
+    Returns False both when there was nothing to unlock (never locked, or a
+    non-mac platform) and when the flag was present but the `chflags` call
+    itself failed -- either way there is nothing for a caller to
+    conditionally re-lock.
+    """
+    if not shim_target_is_locked(target_path):
+        return False
+    try:
+        current_flags = target_path.stat().st_flags
+        os.chflags(str(target_path), current_flags & ~stat.UF_IMMUTABLE)
+    except OSError:
+        return False
+    return True
+
+
 def _write_shim_to_target(target_path: Path, state_dir: Path) -> None:
+    # Unlock before any write: a re-install over an existing ClaudeMonkey-
+    # locked shim would otherwise fail with EPERM at the swap below, on both
+    # the plain and privileged paths (`chflags UF_IMMUTABLE` blocks
+    # rename()/unlink() unconditionally, privilege or not, until the flag is
+    # explicitly cleared -- verified directly against a real filesystem).
+    # `was_locked` gates the abort-path re-lock decision if the write itself
+    # then fails below (see `_unlock_target`'s docstring).
+    was_locked = _unlock_target(target_path)
     if authorization.target_needs_authorization(target_path):
         tmp = state_dir / (target_path.name + ".claude-monkey.tmp")
         write_shim(tmp, state_dir)
         _privileged_mkdir(target_path.parent)
-        _privileged_replace(tmp, target_path)
+        try:
+            _privileged_replace(tmp, target_path)
+        except Exception:
+            if was_locked:
+                _lock_target(target_path)
+            raise
         return
     tmp = target_path.with_suffix(target_path.suffix + ".claude-monkey.tmp")
     write_shim(tmp, state_dir)
-    tmp.replace(target_path)
+    try:
+        tmp.replace(target_path)
+    except Exception:
+        if was_locked:
+            _lock_target(target_path)
+        raise
 
 
 def _install_tmp_candidates(target_path: Path, state_dir: Path) -> tuple[Path, ...]:
@@ -453,6 +554,16 @@ def install_shim_transaction(
             tmp.unlink(missing_ok=True)
         raise
     tracker.done()
+    # Lock after write (final step, requirement 1): see `_lock_target`'s
+    # docstring for the field evidence. The outcome is recorded as an
+    # additive `targetLocked` field on the install record itself (rather
+    # than changing this function's return type) so `install-shim --json`
+    # can report it honestly -- every existing caller/test relies on
+    # `install_shim_transaction` returning `record_path`, not a richer
+    # result type.
+    target_locked = _lock_target(target_path)
+    record["targetLocked"] = target_locked
+    record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     return record_path
 
 
@@ -500,17 +611,36 @@ def restore_install_transaction(
     tracker.done()
 
     tracker.start("swap")
+    # Unlock before any of our own writes below (missing/symlink/file
+    # branches and the privileged remove) -- see `_unlock_target`'s
+    # docstring. `was_locked` gates the abort-path re-lock decisions: if the
+    # flag was ours (True) and the restore itself then fails, the target is
+    # still intact (still our shim -- unlink()/replace() are atomic
+    # all-or-nothing) so re-lock it. Uninstall's own SUCCESS path
+    # deliberately never re-locks (requirement 6): it restores the ORIGINAL
+    # target, which was never ours to flag.
+    was_locked = _unlock_target(target_path)
     if needs_authorization:
         # The install record lives in the user-writable state directory. For a
         # protected target, do not let that mutable record drive elevated writes
         # of file bytes or symlink destinations. The narrow privileged operation
         # for protected uninstall is remove-only; richer restore can be added
         # later with integrity protected prior-payload storage.
-        _privileged_remove(target_path)
+        try:
+            _privileged_remove(target_path)
+        except Exception:
+            if was_locked:
+                _lock_target(target_path)
+            raise
         tracker.done()
         return True
     if previous_type == "missing":
-        target_path.unlink(missing_ok=True)
+        try:
+            target_path.unlink(missing_ok=True)
+        except OSError:
+            if was_locked:
+                _lock_target(target_path)
+            raise
     elif previous_type == "symlink":
         tmp = record_path.parent / (target_path.name + ".restore.symlink.tmp")
         tmp.unlink(missing_ok=True)
@@ -520,6 +650,8 @@ def restore_install_transaction(
         except Exception as exc:
             tracker.fail(str(exc))
             tmp.unlink(missing_ok=True)
+            if was_locked:
+                _lock_target(target_path)
             raise
     elif previous_type == "file":
         content = base64.b64decode(record["previousContentBase64"].encode("ascii"), validate=True)
@@ -535,6 +667,8 @@ def restore_install_transaction(
         except Exception as exc:
             tracker.fail(str(exc))
             tmp.unlink(missing_ok=True)
+            if was_locked:
+                _lock_target(target_path)
             raise
     tracker.done()
     return True

@@ -10,6 +10,7 @@ from claude_monkey.cli import main
 from claude_monkey.config import load_config
 from claude_monkey.install import (
     TargetNotPlausibleOfficial,
+    _unlock_target,
     install_shim_transaction,
 )
 from claude_monkey.paths import StatePaths
@@ -121,6 +122,13 @@ def seed_real_shim_target(tmp_path: Path) -> tuple[Path, Path]:
     target = tmp_path / "local-bin" / "claude"
     write_large_official(target, "#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
     install_shim_transaction(target, state, dry_run=False)
+    # Shim lock feature: every caller of this helper immediately unlinks
+    # `target` to simulate an external replacement -- a real locked shim
+    # can't be replaced that way at all (see tests/test_shim_lock.py), so
+    # lift the flag here to keep those simulations exercisable; this file's
+    # own focus (the size-floor classification gate) is orthogonal to the
+    # lock feature.
+    _unlock_target(target)
     return state, target
 
 

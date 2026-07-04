@@ -363,3 +363,24 @@ def test_parse_menu_state_parses_last_managed_target_path_opportunistically():
         {"schemaVersion": 1, "options": []},
     )
     assert without_field.last_managed_target_path is None
+
+
+def test_parse_menu_state_parses_shim_locked_opportunistically():
+    # Shim lock feature: `shimLocked` is additive on the status payload.
+    # Must parse when present and default to False when absent, never
+    # raising either way (same pattern as `lastManagedTargetPath` above).
+    with_field = parse_menu_state(
+        base_status(shimLocked=True),
+        {"schemaVersion": 1, "patches": []},
+        {"schemaVersion": 1, "prompts": []},
+        {"schemaVersion": 1, "options": []},
+    )
+    assert with_field.shim_locked is True
+
+    without_field = parse_menu_state(
+        base_status(),
+        {"schemaVersion": 1, "patches": []},
+        {"schemaVersion": 1, "prompts": []},
+        {"schemaVersion": 1, "options": []},
+    )
+    assert without_field.shim_locked is False

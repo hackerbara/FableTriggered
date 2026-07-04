@@ -9,6 +9,7 @@ import pytest
 from claude_monkey import repair as repair_module
 from claude_monkey import source_discovery
 from claude_monkey.install import (
+    _unlock_target,
     current_target_is_installed_shim,
     install_shim_transaction,
     resolve_cached_source,
@@ -74,6 +75,12 @@ def replace_target_with_official(
         tmp_path / name / "versions" / version / "claude",
         f"#!/bin/sh\necho '{version} (Claude Code)'\n",
     )
+    # Shim lock feature: a real locked shim can't actually be clobbered by
+    # an external actor (that's the whole point -- see
+    # tests/test_shim_lock.py) so lift the flag first here to keep
+    # simulating "already replaced" directly, exactly like these
+    # pre-existing tests always have.
+    _unlock_target(target)
     target.unlink()
     target.symlink_to(official)
     return official

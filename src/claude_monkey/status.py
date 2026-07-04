@@ -14,6 +14,7 @@ from claude_monkey.install import (
     _version_from_path,
     current_target_is_installed_shim,
     shim_digest,
+    shim_target_is_locked,
 )
 from claude_monkey.launch_profile import load_active_launch_packages, select_launch_target
 from claude_monkey.package_model import (
@@ -577,6 +578,16 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
     shim_installed = _shim_is_installed(install_record)
     install_record_data = _read_json_file(install_record)
     shim_previously_managed = _shim_previously_managed(install_record_data)
+    # Shim lock feature: read-only, `st_flags`-only check (never touches
+    # file bytes) -- only meaningful while `shim_installed` is True, exactly
+    # like `shimTargetPath`/`installRecordPath` above/below. False on
+    # non-mac platforms or whenever the target isn't currently the installed
+    # shim at all.
+    shim_locked = (
+        shim_target_is_locked(Path(_shim_target_from_record(install_record)))
+        if shim_installed
+        else False
+    )
     official_replacement = _detect_official_replacement(
         paths, install_record_data, shim_installed
     )
@@ -665,6 +676,12 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
         "shimInstalled": shim_installed,
         "shimTargetPath": _shim_target_from_record(install_record) if shim_installed else None,
         "installRecordPath": str(install_record) if shim_installed else None,
+        # Shim lock feature: additive, read-only. True only when the target
+        # is currently the installed shim AND carries the macOS/BSD
+        # user-immutable flag (see install.py's `_lock_target`/
+        # `shim_target_is_locked`). False on non-mac platforms, when
+        # nothing is installed, or if chflags itself is unsupported/failed.
+        "shimLocked": shim_locked,
         # Reverted-shim visibility gap fix: `shimTargetPath`/`installRecordPath`
         # above stay gated on `shim_installed` exactly as before (existing
         # consumers depend on that gating) -- this field is additive and is

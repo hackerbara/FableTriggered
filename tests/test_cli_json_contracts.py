@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -10,6 +12,7 @@ import pytest
 from claude_monkey import repair as repair_module
 from claude_monkey import source_discovery
 from claude_monkey.cli import main
+from claude_monkey.install import _unlock_target
 
 
 @pytest.fixture(autouse=True)
@@ -80,6 +83,11 @@ def test_status_json_contract_shim_replaced_by_official_is_additive(
     official.parent.mkdir(parents=True)
     official.write_text("#!/bin/sh\necho '2.1.201 (Claude Code)'\n")
     official.chmod(official.stat().st_mode | 0o111)
+    # Shim lock feature: a real locked shim can't be clobbered by an
+    # external actor at all (that's the whole point -- see
+    # tests/test_shim_lock.py), so lift the flag first to keep simulating
+    # "already replaced" directly here.
+    _unlock_target(target)
     target.unlink()
     target.symlink_to(official)
 
@@ -131,6 +139,10 @@ def test_status_json_last_managed_target_path_is_additive_and_survives_revert(
 
     # The official Anthropic auto-updater (or anything else) reverts the
     # shim: same target path, different bytes.
+    # Shim lock feature: a real locked shim can't be clobbered by an
+    # external actor at all (see tests/test_shim_lock.py), so lift the flag
+    # first to keep simulating the revert directly here.
+    _unlock_target(target)
     target.unlink()
     target.write_text("#!/bin/sh\necho 'reverted by official updater'\n")
     target.chmod(target.stat().st_mode | 0o111)
@@ -1257,6 +1269,10 @@ def _replace_with_official(target, tmp_path, version="2.1.201"):
     official.parent.mkdir(parents=True)
     official.write_text(f"#!/bin/sh\necho '{version} (Claude Code)'\n")
     official.chmod(official.stat().st_mode | 0o111)
+    # Shim lock feature: a real locked shim can't be clobbered by an
+    # external actor at all (see tests/test_shim_lock.py), so lift the flag
+    # first to keep simulating "already replaced" directly here.
+    _unlock_target(target)
     target.unlink()
     target.symlink_to(official)
     return official
@@ -1332,6 +1348,78 @@ def test_repair_shim_json_contract_via_cli(monkeypatch, tmp_path, capsys):
     after = parse_json_output(capsys)
     assert after["shimInstalled"] is True
     assert after["targetReplacedByOfficial"] is False
+
+
+# -- shim lock: additive `targetLocked`/`shimLocked` fields ------------------
+#
+# Evidence (controlled experiment on a real machine, 2026-07-03/04): with
+# `chflags uchg` set on the shim, the official installer's own self-heal
+# leaves it untouched across fresh sessions (its own code swallows the
+# resulting EPERM silently); without it, the shim is clobbered within ~15s.
+
+
+def test_install_shim_json_contract_target_locked_is_additive(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    payload = parse_json_output(capsys)
+
+    assert payload["ok"] is True
+    assert isinstance(payload["targetLocked"], bool)
+    if sys.platform == "darwin" and hasattr(os, "chflags"):
+        assert payload["targetLocked"] is True
+
+
+def test_repair_shim_json_contract_target_locked_is_additive(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(repair_module, "REPAIR_REVERT_RECHECK_DELAY_SECONDS", 0)
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    _replace_with_official(target, tmp_path)
+
+    assert main(["repair-shim", "--json"]) == 0
+    payload = parse_json_output(capsys)
+
+    assert payload["ok"] is True
+    assert isinstance(payload["targetLocked"], bool)
+    if sys.platform == "darwin" and hasattr(os, "chflags"):
+        assert payload["targetLocked"] is True
+
+
+def test_status_json_contract_shim_locked_is_additive(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    target = tmp_path / "local-bin" / "claude"
+    target.parent.mkdir(parents=True)
+    target.write_text("#!/bin/sh\necho '2.1.199 (Claude Code)'\n")
+    target.chmod(target.stat().st_mode | 0o111)
+
+    assert main(["install-shim", "--target", str(target), "--json"]) == 0
+    parse_json_output(capsys)
+
+    assert main(["status", "--json"]) == 0
+    payload_before = parse_json_output(capsys)
+    existing_keys = set(payload_before)
+    assert "shimLocked" in existing_keys
+    assert isinstance(payload_before["shimLocked"], bool)
+    if sys.platform == "darwin" and hasattr(os, "chflags"):
+        assert payload_before["shimLocked"] is True
+
+    _replace_with_official(target, tmp_path)
+
+    assert main(["status", "--json"]) == 0
+    payload_after = parse_json_output(capsys)
+    assert set(payload_after) == existing_keys
+    assert payload_after["shimLocked"] is False
 
 
 def test_repair_shim_json_never_managed_target_returns_envelope(monkeypatch, tmp_path, capsys):

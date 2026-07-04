@@ -5,6 +5,7 @@ import json
 
 from claude_monkey.install import (
     ProtectedTargetRestoreUnavailable,
+    _unlock_target,
     install_shim_transaction,
     restore_install_transaction,
 )
@@ -181,6 +182,12 @@ def test_protected_restore_keeps_current_target_if_replacement_fails(monkeypatch
     target.write_text("official")
     state = tmp_path / "state"
     record = install_shim_transaction(target, state, dry_run=False)
+    # Shim lock feature: lift the flag before directly overwriting the
+    # installed shim to simulate a differently-managed replacement -- a real
+    # locked shim can't be clobbered this way at all (see
+    # tests/test_shim_lock.py); this keeps the pre-existing scenario here
+    # exercisable.
+    _unlock_target(target)
     target.write_text("managed shim replacement")
 
     monkeypatch.setattr(
@@ -217,6 +224,12 @@ def test_protected_restore_cleans_temp_if_replacement_fails(monkeypatch, tmp_pat
     target.write_text("official")
     state = tmp_path / "state"
     record = install_shim_transaction(target, state, dry_run=False)
+    # Shim lock feature: lift the flag before directly overwriting the
+    # installed shim to simulate a differently-managed replacement -- a real
+    # locked shim can't be clobbered this way at all (see
+    # tests/test_shim_lock.py); this keeps the pre-existing scenario here
+    # exercisable.
+    _unlock_target(target)
     target.write_text("managed shim replacement")
 
     monkeypatch.setattr(

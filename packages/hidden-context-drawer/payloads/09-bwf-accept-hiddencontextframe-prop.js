@@ -1,1 +1,0 @@
-function WPf({mode:e,toolPermissionContext:t,showHint:n,denseShowHint:r,isInputEmpty:o,isLoading:s,isExternalLoading:i,betweenCalls:a,leftArrowDetachAvailable:l,tasksSelected:c,tmuxSelected:u,onOpenTasksDialog:d,prNeedsAuth:p,hiddenContextFrame:Hc}){let{columns:m}=Er();

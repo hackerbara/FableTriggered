@@ -2,83 +2,104 @@ import hashlib
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "hidden-context-drawer"
-LIVE_2_1_199 = Path("/Users/MAC/.local/share/claude/versions/2.1.199")
+LIVE_2_1_201 = Path("/Users/MAC/.local/share/claude/versions/2.1.201")
+EXPECTED_BINARY_SHA = "a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd"
+EXPECTED_BINARY_SIZE = 231708784
+EXPECTED_MODULE_SHA = "46db617a7b13c062fb31595f6244819b11f7cdc6e6fed8e2c3f74a27fb6da1bd"
+EXPECTED_MODULE_LENGTH = 18700756
+MODULE_DUMP = ROOT / ".development" / "artifacts" / "claude-2.1.201-framework-source-module0.js"
 
 
 def read_rel(path: str) -> str:
     return (PACKAGE / path).read_text(encoding="utf-8")
 
 
-def test_hidden_context_drawer_does_not_touch_or_advertise_escape() -> None:
-    """Hidden Context close must be owned by footer:x, never by Escape."""
-    package_text = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in [PACKAGE / "README.md", PACKAGE / "patch.json", *sorted((PACKAGE / "payloads").glob("*.js"))]
-    )
-    footer_actions = read_rel("payloads/13-footer-clearselection-consumes-hiddencontext.js")
-    overlay = read_rel("payloads/15-uxl-refresh-bottom-overlay.js")
-
-    assert '"footer:close":()=>{if(hC){globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1,hCp(!1),Sf(null);return}if(qb&&xs>=1)' in footer_actions
-    assert '"footer:clearSelection":()=>{if(hC)return!1;if(Ap' in footer_actions
-    clear_selection_body = footer_actions.split('"footer:clearSelection":()=>{', 1)[1].split('},"footer:close"', 1)[0]
-    assert 'globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__' not in clear_selection_body
-    assert 'hCp(!1)' not in clear_selection_body
-    assert 'Sf(null)' not in clear_selection_body.split('if(Ap', 1)[0]
-    assert "x closes" in overlay
-    assert "esc" not in overlay.lower()
-    assert "escape" not in package_text.lower()
-    assert "inputOwnsEscape" not in package_text
-    assert "hCe=Tt" not in package_text
+def manifest_json() -> dict:
+    return json.loads((PACKAGE / "patch.json").read_text(encoding="utf-8"))
 
 
-def test_hidden_context_drawer_package_targets_current_2_1_199() -> None:
-    """The drawer package should be pinned to the current 2.1.199 module anchors."""
-    manifest = json.loads((PACKAGE / "patch.json").read_text(encoding="utf-8"))
+def payloads_text() -> str:
+    return "\n".join(path.read_text(encoding="utf-8") for path in sorted((PACKAGE / "payloads").glob("*.js")))
+
+
+def test_hidden_context_drawer_targets_claude_2_1_201() -> None:
+    manifest = manifest_json()
     target = manifest["targets"][0]
     identity = target["sourceIdentity"]
-
-    assert identity["claudeVersion"] == "2.1.199"
-    assert identity["versionOutput"] == "2.1.199 (Claude Code)"
-    assert (
-        identity["sha256"]
-        == "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0"
-    )
-    assert identity["sizeBytes"] == 232155536
-
     module = target["modules"][0]
-    assert module["contentSha256"] == "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55"
-    assert module["contentLength"] == 18593981
+    assert identity == {
+        "claudeVersion": "2.1.201",
+        "versionOutput": "2.1.201 (Claude Code)",
+        "sha256": EXPECTED_BINARY_SHA,
+        "sizeBytes": EXPECTED_BINARY_SIZE,
+        "platform": "darwin",
+        "arch": "arm64",
+    }
+    assert module["path"] == "/$bunfs/root/src/entrypoints/cli.js"
+    assert module["contentSha256"] == EXPECTED_MODULE_SHA
+    assert module["contentLength"] == EXPECTED_MODULE_LENGTH
+    if LIVE_2_1_201.exists():
+        assert hashlib.sha256(LIVE_2_1_201.read_bytes()).hexdigest() == EXPECTED_BINARY_SHA
 
-    helper_operation = next(
-        op for op in module["operations"] if op["opId"] == "projection-helpers-before-jlr"
-    )
-    assert helper_operation["exact"] == "function Jur(e){"
-    assert read_rel("payloads/01-projection-helpers-before-jlr.js").endswith("function Jur(e){")
 
-    if not LIVE_2_1_199.exists():
-        return
+def test_hidden_context_drawer_thin_package_keeps_x_only_contract() -> None:
+    manifest = manifest_json()
+    assert manifest["requiresPackages"] == ["footer-drawers"]
+    ops = manifest["targets"][0]["modules"][0]["operations"]
+    op_ids = {op["opId"] for op in ops}
+    assert {"projection-helpers-before-ypr", "yt-projection-list-drawer-frame", "hidden-context-register-footer-drawer"}.issubset(op_ids)
+    assert op_ids.isdisjoint({
+        "uxl-refresh-bottom-overlay",
+        "footer-hidden-context-selected-hook",
+        "footer-availability-bar-hidden-context",
+        "axf-messagesref-footer-target-frame",
+        "footer-hiddencontext-selection-flag",
+        "footer-hiddencontext-up-down-scroll",
+        "footer-clearselection-consumes-hiddencontext",
+        "selected-only-bottom-overlay-hidden-context-globals",
+    })
+    helper_op = next(op for op in ops if op["opId"] == "projection-helpers-before-ypr")
+    assert helper_op["type"] == "insert_before"
+    assert helper_op["anchor"] == "function Ypr(e){"
+    assert helper_op["insertOrder"] == 100
+    helper_payload = read_rel("payloads/01-projection-helpers-before-ypr-2.1.201.js")
+    assert "function Ypr(e){" not in helper_payload
+    assert "function Jur(e){" not in helper_payload
+    text = payloads_text()
+    assert "__codexFDDrawers" in text
+    assert ".register" in text
+    assert 'id:"hiddenContext"' in text
+    assert "footer:clearSelection" not in text
+    assert "inputOwnsEscape" not in text
+    assert "escape" not in text.lower()
+    assert "x closes" in read_rel("payloads/17-register-footer-drawer.js")
 
-    actual_identity_hash = hashlib.sha256(LIVE_2_1_199.read_bytes()).hexdigest()
-    if actual_identity_hash != identity["sha256"]:
-        return
 
-    # Prefer the checked-in extraction produced by the updater; it keeps this test
-    # independent from the Bun graph inspector while still verifying real anchors.
-    extracted_module = ROOT / ".development" / "artifacts" / "claude-2.1.199-hidden-context-source-module0.js"
-    if not extracted_module.exists():
-        return
-    source = extracted_module.read_text(encoding="utf-8")
+def test_hidden_context_operations_match_source_and_payload_hashes() -> None:
+    source = MODULE_DUMP.read_text(encoding="utf-8") if MODULE_DUMP.exists() else None
+    module = manifest_json()["targets"][0]["modules"][0]
+    for op in module["operations"]:
+        payload = PACKAGE / op["replacement"]["path"]
+        assert payload.exists(), op["opId"]
+        assert payload.read_bytes().isascii(), op["opId"]
+        assert op["replacement"]["sha256"] == hashlib.sha256(payload.read_bytes()).hexdigest(), op["opId"]
+        if source is None:
+            continue
+        if op["type"] == "replace_exact":
+            exact = op["exact"]
+            assert source.count(exact) == 1, op["opId"]
+            assert op["oldRangeLength"] == len(exact.encode("utf-8")), op["opId"]
+            assert op["oldRangeSha256"] == hashlib.sha256(exact.encode("utf-8")).hexdigest(), op["opId"]
+        elif op["type"] in {"insert_before", "insert_after"}:
+            assert source.count(op["anchor"]) == op.get("expectedAnchorCount", 1), op["opId"]
+        else:
+            raise AssertionError(op)
 
-    for operation in module["operations"]:
-        exact = operation["exact"]
-        assert source.count(exact) == 1, operation["opId"]
-        assert operation["oldRangeLength"] == len(exact.encode("utf-8"))
-        assert operation["oldRangeSha256"] == hashlib.sha256(exact.encode("utf-8")).hexdigest()
 
 if __name__ == "__main__":
-    test_hidden_context_drawer_does_not_touch_or_advertise_escape()
-    test_hidden_context_drawer_package_targets_current_2_1_199()
+    test_hidden_context_drawer_targets_claude_2_1_201()
+    test_hidden_context_drawer_thin_package_keeps_x_only_contract()
+    test_hidden_context_operations_match_source_and_payload_hashes()
     print("hidden-context drawer package checks passed")

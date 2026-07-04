@@ -1,1 +1,0 @@
-y=Tt((Ne)=>Ne.footerSelection==="tasks"&&Ne.coordinatorTaskIndex>=0||Ne.footerSelection==="workflows"),T=Tt((Ne)=>Ne.footerSelection!==null),hCsel=Tt((Ne)=>Ne.footerSelection==="hiddenContext"),S=Tt

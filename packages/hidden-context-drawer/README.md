@@ -53,3 +53,9 @@ Run it for manual smoke:
 ```bash
 /Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hidden-context-drawer-2.1.199/claude --dangerously-skip-permissions
 ```
+
+## Footer Drawers framework migration
+
+This package is now a thin registrant for `packages/footer-drawers` targeting Claude Code 2.1.201. It keeps the Hidden Context projection/frame content seams, but the footer target, key routing, toolbar label, and bottom-overlay mount are owned by `footer-drawers`.
+
+Build it with `--package packages/footer-drawers --package packages/hidden-context-drawer`. Build reports remain `manual_smoke_pending` until interactive footer smoke confirms x-only close and full projection-list content.

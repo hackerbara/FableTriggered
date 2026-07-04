@@ -69,7 +69,7 @@ def build_tray_model(state: MenuState | None, busy_command: str | None) -> TrayM
 def patch_menu_label(patch: PatchMenuItem) -> str:
     if not patch.available:
         return f"{patch.label} — unavailable"
-    if patch.compatibility_status not in {"compatible", "unknown"}:
+    if patch.compatibility_status not in {"compatible", "unknown", "unconstrained"}:
         detail = patch.compatibility_message or patch.compatibility_status
         return f"{patch.label} — {detail}"
     return patch.label
@@ -82,7 +82,7 @@ def patch_item_enabled(patch: PatchMenuItem, *, mutating_enabled: bool) -> bool:
         return True
     if not patch.available:
         return False
-    return patch.compatibility_status in {"compatible", "unknown"}
+    return patch.compatibility_status in {"compatible", "unknown", "unconstrained"}
 
 
 def option_item_enabled(option: OptionMenuItem, *, mutating_enabled: bool) -> bool:

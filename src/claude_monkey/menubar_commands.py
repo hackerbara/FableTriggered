@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 MAX_CAPTURE_CHARS = 120_000
-MAX_LOG_STDERR_CHARS = 2_000
+MAX_LOG_FIELD_CHARS = 2_000
 # Bound on how long finalize() waits for the reader threads to hit EOF after
 # the process itself has exited. A double-forked/backgrounded descendant can
 # inherit the stdout/stderr pipe fds and keep them open indefinitely, which
@@ -152,14 +152,15 @@ class CommandRunner:
                 break
         return items
 
-    def _log(self, command: list[str], returncode: int, stderr: str) -> None:
+    def _log(self, command: list[str], returncode: int, stderr: str, stdout: str = "") -> None:
         stamp = datetime.now(UTC).isoformat()
         line = json.dumps(
             {
                 "timestamp": stamp,
                 "command": command,
                 "returncode": returncode,
-                "stderr": stderr[:MAX_LOG_STDERR_CHARS],
+                "stdout": stdout[:MAX_LOG_FIELD_CHARS],
+                "stderr": stderr[:MAX_LOG_FIELD_CHARS],
             },
             sort_keys=True,
         )
@@ -196,7 +197,7 @@ class CommandRunner:
             result = self._run_command(argv)
             stdout = result.stdout or ""
             stderr = result.stderr or ""
-            self._log(argv, int(result.returncode), stderr)
+            self._log(argv, int(result.returncode), stderr, stdout)
             return self._finalize_json_payload(stdout, stderr, int(result.returncode))
         finally:
             if acquired:
@@ -230,7 +231,12 @@ class CommandRunner:
     def open_path(self, path: Path) -> None:
         expanded = path.expanduser()
         result = self._run_command(["open", str(expanded)])
-        self._log(["open", str(expanded)], int(result.returncode), result.stderr or "")
+        self._log(
+            ["open", str(expanded)],
+            int(result.returncode),
+            result.stderr or "",
+            result.stdout or "",
+        )
 
     def _run_command(self, argv: list[str]) -> CapturedProcess | subprocess.CompletedProcess[str]:
         if self.run is not None:
@@ -362,7 +368,7 @@ class CommandRunner:
                         "exit; capture may be truncated (likely an orphaned descendant "
                         "holding stdio open)]"
                     )
-                self._log(argv, int(returncode), stderr)
+                self._log(argv, int(returncode), stderr, stdout)
                 try:
                     payload = self._finalize_json_payload(stdout, stderr, int(returncode))
                 except Exception as exc:

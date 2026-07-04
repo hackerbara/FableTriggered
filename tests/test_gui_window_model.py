@@ -196,6 +196,11 @@ def test_patch_menu_label_unavailable_overrides_compatibility():
     assert patch_menu_label(patch) == "Fable — unavailable"
 
 
+def test_patch_menu_label_plain_when_unconstrained():
+    patch = PatchMenuItem("p1", "Fable", False, False, True, "unconstrained", None)
+    assert patch_menu_label(patch) == "Fable"
+
+
 def test_patch_item_enabled_false_when_not_mutating():
     patch = PatchMenuItem("p1", "Fable", True, True, True, "compatible", None)
     assert patch_item_enabled(patch, mutating_enabled=False) is False
@@ -218,6 +223,11 @@ def test_patch_item_enabled_false_when_incompatible_and_unchecked():
 
 def test_patch_item_enabled_true_when_compatible_and_unchecked():
     patch = PatchMenuItem("p1", "Fable", False, False, True, "compatible", None)
+    assert patch_item_enabled(patch, mutating_enabled=True) is True
+
+
+def test_patch_item_enabled_true_when_unconstrained_and_unchecked():
+    patch = PatchMenuItem("p1", "Fable", False, False, True, "unconstrained", None)
     assert patch_item_enabled(patch, mutating_enabled=True) is True
 
 

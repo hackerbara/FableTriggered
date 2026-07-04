@@ -89,7 +89,7 @@ def _v3_manifest_as_v2_dict(package_dir: Path) -> dict[str, Any]:
         "id": manifest.id,
         "name": manifest.label,
         "description": manifest.description,
-        "packageVersion": "0.0.0",
+        "packageVersion": str(manifest.raw.get("x-packageVersion") or "0.0.0"),
         "targets": list(manifest.patch.targets),
     }
 

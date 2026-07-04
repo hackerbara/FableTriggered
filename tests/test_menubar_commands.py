@@ -261,3 +261,39 @@ def test_run_streaming_bounded_join_survives_orphaned_grandchild(monkeypatch, tm
             time.sleep(0.05)
     assert second_handle is not None, f"lock never released: {last_error}"
     second_handle.process.wait(timeout=10)
+
+
+def test_runner_logs_stdout_summary_for_json_error_payload(tmp_path):
+    def fake_run(argv, **kwargs):
+        class Result:
+            returncode = 2
+            stdout = json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "ok": False,
+                    "status": "error",
+                    "summary": "build requires enabled patches or at least one --package",
+                    "reportPath": None,
+                    "targetPath": None,
+                    "authorizationRequired": False,
+                    "authorizationMethod": None,
+                    "dryRun": False,
+                    "plannedActions": [],
+                    "error": {
+                        "message": "build requires enabled patches",
+                        "code": "missing_package",
+                    },
+                }
+            )
+            stderr = ""
+
+        return Result()
+
+    runner = CommandRunner(cli_argv=["claude-monkey"], logs_dir=tmp_path, run=fake_run)
+
+    payload = runner.run_json(["build", "--json"], mutating=True)
+
+    assert payload["error"]["code"] == "missing_package"
+    logged = json.loads(runner.log_path.read_text().splitlines()[-1])
+    assert "missing_package" in logged["stdout"]
+    assert "build requires enabled patches" in logged["stdout"]

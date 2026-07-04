@@ -82,3 +82,64 @@ def test_active_profile_never_creates_non_default_profile():
     assert profile is config.profiles["default"]
     assert profile.patches == ["fable-fallback"]
     assert set(config.profiles) == {"default"}
+
+
+def test_legacy_v2_profile_fields_are_migrated_on_read(tmp_path):
+    path = tmp_path / ".claude-monkey" / "config.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        '{"schemaVersion":1,"activeProfile":"default","profiles":{"default":{"enabledPatches":["fable-fallback","reminder-suppression"],"promptProfile":"research"}}}'
+    )
+
+    loaded = load_config(path)
+
+    profile = loaded.profiles["default"]
+    assert profile.patches == ["fable-fallback", "reminder-suppression"]
+    assert profile.prompt == "research"
+    assert profile.options == []
+
+
+def test_legacy_v2_patch_ids_third_tier_fallback_is_honored(tmp_path):
+    path = tmp_path / ".claude-monkey" / "config.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        '{"schemaVersion":1,"activeProfile":"default","profiles":{"default":{"patchIds":["fable-fallback"]}}}'
+    )
+
+    loaded = load_config(path)
+
+    profile = loaded.profiles["default"]
+    assert profile.patches == ["fable-fallback"]
+    assert profile.prompt is None
+    assert profile.options == []
+
+
+def test_patches_field_takes_precedence_over_stale_legacy_fields(tmp_path):
+    path = tmp_path / ".claude-monkey" / "config.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        '{"schemaVersion":1,"activeProfile":"default","profiles":{"default":{'
+        '"patches":["fable-fallback"],'
+        '"enabledPatches":["reminder-suppression"],'
+        '"patchIds":["hotrod-dragons"]'
+        "}}}"
+    )
+
+    loaded = load_config(path)
+
+    assert loaded.profiles["default"].patches == ["fable-fallback"]
+
+
+def test_prompt_field_takes_precedence_over_stale_prompt_profile(tmp_path):
+    path = tmp_path / ".claude-monkey" / "config.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        '{"schemaVersion":1,"activeProfile":"default","profiles":{"default":{'
+        '"prompt":"current",'
+        '"promptProfile":"stale"'
+        "}}}"
+    )
+
+    loaded = load_config(path)
+
+    assert loaded.profiles["default"].prompt == "current"

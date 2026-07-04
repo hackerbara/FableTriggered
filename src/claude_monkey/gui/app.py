@@ -18,7 +18,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
@@ -402,6 +402,17 @@ class Controller:
         self.window.raise_()
         self.window.activateWindow()
 
+    def _dialog_parent(self) -> QWidget | None:
+        if isinstance(self.window, QWidget):
+            return self.window
+        active_window = QApplication.activeWindow()
+        return active_window if isinstance(active_window, QWidget) else None
+
+    def _show_dialog_foreground(self, dialog: QWidget) -> None:
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
     # -- quick ops ---------------------------------------------------------
 
     def _run_quick(self, name: str, argv: list[str], *, page: str) -> None:
@@ -462,11 +473,18 @@ class Controller:
             cancel_allowed_during_run = not bool(payload.get("authorizationRequired", False))
             confirm_text = self._confirm_text_from_payload(payload)
 
+        parent = self._dialog_parent()
         dialog = ProgressDialog(
             title=title,
             confirm_text=confirm_text,
             confirm_button=confirm_button,
             cancel_allowed_during_run=cancel_allowed_during_run,
+            parent=parent,
+        )
+        dialog.setWindowModality(
+            Qt.WindowModality.WindowModal
+            if parent is not None
+            else Qt.WindowModality.ApplicationModal
         )
         dialog.confirmed.connect(lambda: self._on_long_op_confirmed(name, real_argv))
         dialog.cancel_requested.connect(self._on_long_op_cancel)
@@ -475,7 +493,7 @@ class Controller:
         self._dialog = dialog
         self._long_op = name
         self._busy_command = name
-        dialog.show()
+        self._show_dialog_foreground(dialog)
 
     def _on_long_op_confirmed(self, name: str, argv: list[str]) -> None:
         dialog = self._dialog
@@ -551,7 +569,7 @@ class Controller:
         return summary.warning if summary is not None else ""
 
     def _default_confirm_high_risk(self, option_id: str, warning: str) -> bool:
-        parent = self.window if isinstance(self.window, QWidget) else None
+        parent = self._dialog_parent()
         message = warning or "This option is high-risk."
         answer = QMessageBox.question(
             parent,
@@ -566,6 +584,17 @@ class Controller:
         app = QApplication.instance()
         if app is not None:
             app.quit()
+
+
+def build_runner() -> CommandRunner:
+    # Always drive the CLI via this process's own interpreter (`python -m
+    # claude_monkey`) rather than a bare `claude-monkey` PATH lookup: the
+    # GUI must stay version-locked to its own venv/code and must not depend
+    # on `claude-monkey` being installed on the user's PATH.
+    return CommandRunner(
+        cli_argv=[sys.executable, "-m", "claude_monkey"],
+        logs_dir=Path.home() / ".claude-monkey" / "logs",
+    )
 
 
 def main() -> int:
@@ -586,7 +615,7 @@ def main() -> int:
         print("claude-monkey GUI is already running")
         return 0
 
-    runner = CommandRunner(logs_dir=Path.home() / ".claude-monkey" / "logs")
+    runner = build_runner()
     bridge = CommandBridge()
 
     window = SettingsWindow()

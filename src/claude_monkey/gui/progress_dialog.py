@@ -85,8 +85,9 @@ class ProgressDialog(QDialog):
         confirm_text: str,
         confirm_button: str,
         cancel_allowed_during_run: bool,
+        parent: QWidget | None = None,
     ) -> None:
-        super().__init__()
+        super().__init__(parent)
         self.setWindowTitle(title)
         self._cancel_allowed_during_run = cancel_allowed_during_run
         self._phase = "CONFIRM"

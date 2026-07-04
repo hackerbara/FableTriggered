@@ -3,7 +3,7 @@
   "id": "capybara-onsen",
   "name": "Capybara Onsen",
   "description": "A calming twilight Japanese onsen scene with two capybaras \u2014 baked half-block pixel art with 16-phase water/steam animation, drawn via the renderer's native ink-raw-ansi direct-draw path.",
-  "packageVersion": "1.4.0-responsive-spike",
+  "packageVersion": "1.4.2-clipped-gutters-breakpoint-140",
   "targets": [
     {
       "sourceIdentity": {
@@ -34,9 +34,9 @@
               "oldRangeLength": 31,
               "replacement": {
                 "path": "payloads/01-capy-onsen-context-frame-helpers-before-vko-2-1-201.js",
-                "sha256": "ddcb2980f62b15127f04e895b8fd9b674c6500d3367793719098170eecd8d183"
+                "sha256": "cc412d706eed87c4eb7ea51c8ed89bd0d0e7364118f347f25a02b5ed0647b460"
               },
-              "knownBehaviorChange": "Defines explicit side gutters and center-column providers for both fde/useTerminalSize and t4 overlay consumers."
+              "knownBehaviorChange": "Defines clipped 30-column visible side gutters, responsive right-gutter collapse at <=140 columns, and center-column providers for both fde/useTerminalSize and t4 overlay consumers."
             },
             {
               "opId": "capy-onsen-center-columns-a-2-1-201",
@@ -229,7 +229,7 @@
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "__coResponsiveBreakpointV6=130"
+          "value": "__coResponsiveBreakpointV6=140"
         },
         {
           "type": "module_must_contain",
@@ -270,6 +270,21 @@
           "type": "module_must_not_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
           "value": "codex-capy-onsen-v5-width-readout"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__coClipColsV7=2"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__coW=__coArtW-__coClipColsV7"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "function __coCropRunsV7"
         }
       ],
       "manualSmoke": {

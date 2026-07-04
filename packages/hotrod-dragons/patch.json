@@ -3,7 +3,7 @@
   "id": "hotrod-dragons",
   "name": "Hotrod Dragons",
   "description": "Two heraldic fire-breathing dragons flank the terminal \u2014 high-def half-block pixel art with 8-phase baked flame animation, drawn via the renderer's native ink-raw-ansi direct-draw path.",
-  "packageVersion": "1.1.0-responsive-frame",
+  "packageVersion": "1.2.0-clipped-gutters-breakpoint-140",
   "targets": [
     {
       "sourceIdentity": {
@@ -34,9 +34,9 @@
               "oldRangeLength": 31,
               "replacement": {
                 "path": "payloads/01-hotrod-dragons-context-frame-helpers-before-vko-2-1-201.js",
-                "sha256": "e7a6002a2f5da1c3ad8944f5f621df6c5517db1bb99d82ee71d702fdce0ee8a5"
+                "sha256": "f3f9a74d620ca9e5d5cad8afa8b8de4acb018532caee8aa54e00fa95785fbbb0"
               },
-              "knownBehaviorChange": "Defines the dragon side gutters, responsive right-gutter collapse, and center-column providers for both fde/useTerminalSize and t4 overlay consumers."
+              "knownBehaviorChange": "Defines clipped 30-column visible dragon side gutters, responsive right-gutter collapse at <=140 columns, and center-column providers for both fde/useTerminalSize and t4 overlay consumers."
             },
             {
               "opId": "hotrod-dragons-center-columns-a-2-1-201",
@@ -224,7 +224,7 @@
         {
           "type": "module_must_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
-          "value": "__hdResponsiveBreakpointV6=130"
+          "value": "__hdResponsiveBreakpointV6=140"
         },
         {
           "type": "module_must_contain",
@@ -275,6 +275,21 @@
           "type": "module_must_not_contain",
           "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
           "value": "\u2580"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__hdClipColsV7=2"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__hdW=__hdArtW-__hdClipColsV7"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "function __hdCropRunsV7"
         }
       ],
       "manualSmoke": {

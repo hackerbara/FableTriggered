@@ -70,7 +70,10 @@ def test_capybara_onsen_payloads_match_hashes_and_are_mojibake_safe():
     assert "function __coCenterProviderV4" in joined
     assert "function __CodexCapyOnsenMainWindowV4" in joined
     assert "function __CodexCapyOnsenBottomStackV4" in joined
-    assert "__coResponsiveBreakpointV6=130" in joined
+    assert "__coResponsiveBreakpointV6=140" in joined
+    assert "__coClipColsV7=2" in joined
+    assert "__coW=__coArtW-__coClipColsV7" in joined
+    assert "function __coCropRunsV7" in joined
     assert "function __coRightWidthV6" in joined
     assert "codex-capy-onsen-v6-right-responsive" in joined
     assert "codex-capy-onsen-v6-pool-right-responsive" in joined

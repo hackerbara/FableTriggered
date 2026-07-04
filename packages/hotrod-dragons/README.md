@@ -8,7 +8,7 @@ each dragon's open maw toward the center of the screen.
 
 ## What it does
 
-- Renders a **left and right dragon** in 32-cell gutters around the main window.
+- Renders a **left and right dragon** in 30-column visible gutters clipped from 32-column source art around the main window.
   Each dragon has a horned head, open toothy maw, coiling serpentine body, dorsal
   frill, claws, and a tail/castle footer that reaches the bottom chrome.
 - A **flame plume** issues from each maw (8-frame animation: climbing white-hot
@@ -16,8 +16,8 @@ each dragon's open maw toward the center of the screen.
 - Constrains the transcript, prompt/footer stack, and modal/sub-agent overlay
   surfaces into the center column instead of letting text render underneath the
   dragons.
-- Collapses the **right** dragon/tower gutter at terminal widths `<= 130`
-  columns; widths `>= 131` keep both gutters.
+- Collapses the **right** dragon/tower gutter at terminal widths `<= 140`
+  columns; widths `>= 141` keep both gutters.
 
 ## How it works (rendering + layout)
 
@@ -87,7 +87,7 @@ cd /Users/MAC/Documents/Claude-patch
 .venv/bin/claude-monkey build \
   --source /Users/MAC/.local/share/claude/versions/2.1.201 \
   --package packages/hotrod-dragons \
-  --output-dir .development/claude-monkey-builds/hotrod-dragons-2.1.201-responsive-130-spike \
+  --output-dir .development/claude-monkey-builds/hotrod-dragons-2.1.201-clipped-30-gutters-140 \
   --source-version 2.1.201 \
   --source-version-output "2.1.201 (Claude Code)" \
   --platform darwin --arch arm64

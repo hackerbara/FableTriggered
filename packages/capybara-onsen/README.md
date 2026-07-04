@@ -11,14 +11,14 @@ lantern, flicking its ears every few seconds. Steam drifts off the water.
 ## What it does
 
 - Renders **two independent walls** (no mirroring — it's one continuous scene) in
-  the 32-cell gutters: moon, stars, bamboo leaning inward, stepped mossy rocks,
+  30-column visible gutters clipped from 32-column source art: moon, stars, bamboo leaning inward, stepped mossy rocks,
   kakei spout + soaking capybara + floating yuzu (left); stone lantern with a
   warm dithered halo + resting capybara (right).
 - **Animated regions** (bottom 22 cell rows only): the spout stream with
   descending pulses and impact spray, an expanding pool ripple, rising steam
   wisps, and the resting capybara's occasional double ear-flick.
 - Continues the pool water into the composer flanks so the bath reaches the very
-  bottom corners; the bottom chrome parent is tinted deep indigo `rgb(10,12,26)`.
+  bottom corners; the bottom chrome parent is tinted deep indigo `rgb(10,12,26)`. The right gutter collapses at terminal widths `<= 140` columns and returns at `>= 141`.
 
 ## How it works (rendering)
 
@@ -48,22 +48,28 @@ Shared discipline:
 
 ## Target
 
-- Claude Code **2.1.199**, `darwin/arm64` (Bun standalone macho64).
+- Claude Code **2.1.201**, `darwin/arm64` (Bun standalone macho64).
 - Module: `/$bunfs/root/src/entrypoints/cli.js`.
 - Pinned by whole-binary SHA-256, whole-module SHA-256/length, and per-operation
   old-range SHA-256/length.
 
 ## Operations (seams)
 
-All five are `replace_exact` inserts/replacements (non-overlapping), at the same
-anchors as `hotrod-dragons` — the two packages are **mutually exclusive**; the
-builder's byte-range overlap check rejects co-application:
+All eight are `replace_exact` inserts/replacements (non-overlapping), at the same
+full-frame app-shell anchors as `hotrod-dragons` — the two packages are **mutually
+exclusive**; the builder's byte-range overlap check rejects co-application:
 
-1. `…-scene-helpers-before-v8o` — scene components + baked art data.
-2. `…-fullscreen-scene-pe` — mounts the walls in the fullscreen conversation view.
-3. `…-composer-flank-ue` — pool water into the composer flanks.
-4. `…-composer-parent-le` — indigo background on the bottom chrome parent.
-5. `…-fallback-scene-v` — mounts the walls in the non-fullscreen fallback path.
+1. `…-context-frame-helpers-before-vko` — scene components, clipped gutters,
+   responsive right-gutter collapse, and center-column `fde`/`t4` providers.
+2. `…-center-columns-a` — shrinks the app shell's local column context by the
+   left gutter, responsive right gutter, and any sidebar.
+3. `…-main-window-me` — physically wraps the fullscreen main window/transcript row.
+4. `…-bottom-stack-de` — physically/contextually wraps fullscreen prompt/footer
+   bottom chrome.
+5. `…-fullscreen-modal-center-fe` — constrains fullscreen modal/sub-agent overlays.
+6. `…-qde-bottom-stack-ee` — constrains the terminal-scroll-region prompt/footer path.
+7. `…-qde-overlay-center-te` — constrains the terminal-scroll-region overlay path.
+8. `…-fallback-window-v` — applies the same frame in the non-fullscreen fallback path.
 
 ## Build pipeline
 
@@ -76,11 +82,11 @@ from the pinned live source).
 ```bash
 cd /Users/MAC/Documents/Claude-patch
 PYTHONPATH=src python3 -m claude_monkey build \
-  --source /Users/MAC/.local/share/claude/versions/2.1.199 \
+  --source /Users/MAC/.local/share/claude/versions/2.1.201 \
   --package packages/capybara-onsen \
-  --output-dir .development/claude-monkey-builds/capybara-onsen \
-  --source-version 2.1.199 \
-  --source-version-output "2.1.199 (Claude Code)" \
+  --output-dir .development/claude-monkey-builds/capybara-onsen-2.1.201-clipped-30-gutters-140 \
+  --source-version 2.1.201 \
+  --source-version-output "2.1.201 (Claude Code)" \
   --platform darwin --arch arm64
 ```
 

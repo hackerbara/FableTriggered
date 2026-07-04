@@ -71,7 +71,10 @@ def test_hotrod_dragons_payloads_match_hashes_and_are_mojibake_safe():
     assert "function __hdCenterProviderV4" in joined
     assert "function __CodexHotrodMainWindowV4" in joined
     assert "function __CodexHotrodBottomStackV4" in joined
-    assert "__hdResponsiveBreakpointV6=130" in joined
+    assert "__hdResponsiveBreakpointV6=140" in joined
+    assert "__hdClipColsV7=2" in joined
+    assert "__hdW=__hdArtW-__hdClipColsV7" in joined
+    assert "function __hdCropRunsV7" in joined
     assert "function __hdRightWidthV6" in joined
     assert "codex-hotrod-v12-right-responsive" in joined
     assert "codex-hotrod-v12-tower-right-responsive" in joined

@@ -21,6 +21,24 @@ COMMON_INSTALL_TARGETS = (
 
 
 @dataclass(frozen=True)
+class NoticeModel:
+    """Pure description of the shim-update-resilience notice (spec sec4).
+
+    `message` is already de-jargoned, ready to render verbatim. `digest` is
+    the `detectedOfficialSha256` this notice is *about* -- the key the
+    Controller's dismissed-digest set (R5) tracks; it may be `None` for the
+    post-repair informational state, which has no digest to key on and
+    (being non-dismissable in practice, since it carries no action) does not
+    need one. `actions` is a subset of `("repair", "rollout")`, in the order
+    they should render; an empty tuple means informational-only -- no button.
+    """
+
+    message: str
+    digest: str | None
+    actions: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class TrayModel:
     status_lines: tuple[str, ...]
     running_label: str | None
@@ -29,6 +47,7 @@ class TrayModel:
     prompt_items: tuple[PromptMenuItem, ...]
     patch_items: tuple[PatchMenuItem, ...]
     option_items: tuple[OptionMenuItem, ...]
+    notice: NoticeModel | None = None
 
 
 def _status_lines(state: MenuState) -> tuple[str, ...]:
@@ -44,7 +63,11 @@ def _status_lines(state: MenuState) -> tuple[str, ...]:
     )
 
 
-def build_tray_model(state: MenuState | None, busy_command: str | None) -> TrayModel:
+def build_tray_model(
+    state: MenuState | None,
+    busy_command: str | None,
+    notice: NoticeModel | None = None,
+) -> TrayModel:
     if state is None:
         return TrayModel(
             status_lines=("ClaudeMonkey: Error",),
@@ -63,7 +86,148 @@ def build_tray_model(state: MenuState | None, busy_command: str | None) -> TrayM
         prompt_items=state.prompt_items,
         patch_items=state.patch_items,
         option_items=state.option_items,
+        notice=notice,
     )
+
+
+# ---------------------------------------------------------------------------
+# shim-update-resilience notice (spec 2026-07-04 sec4/sec5, R2/R5/R7/R8)
+# ---------------------------------------------------------------------------
+
+
+def _short_digest(digest: str | None) -> str | None:
+    return digest[:8] if digest else None
+
+
+def _repair_needed_message(state: MenuState) -> str:
+    if state.detected_official_version:
+        return f"Claude {state.detected_official_version} available — shim repair needed"
+    short = _short_digest(state.detected_official_sha256)
+    if short:
+        return f"New Claude build available ({short}…) — shim repair needed"
+    return "New Claude build available — shim repair needed"
+
+
+def _rollout_message(state: MenuState) -> str:
+    if state.detected_official_version:
+        return f"Claude {state.detected_official_version} available — rebuild to roll out"
+    short = _short_digest(state.detected_official_sha256)
+    if short:
+        return f"New Claude build available ({short}…) — rebuild to roll out"
+    return "New Claude build available — rebuild to roll out"
+
+
+def build_notice_model(
+    state: MenuState, dismissed_digests: frozenset[str] | set[str]
+) -> NoticeModel | None:
+    """The single choke point deciding the shim-update-resilience notice.
+
+    Pure function of `MenuState` (already-parsed status fields) plus the
+    Controller-held set of dismissed digests (R5: in-memory, per-process --
+    see the GUI report for why that's acceptable for v1). Mirrors
+    `compatibility_display`'s discipline: every label here is already
+    plain-language, per spec sec4 + R7's fallback rule (first 8 hex of the
+    digest when the version couldn't be extracted).
+
+    Two distinct states can produce a notice:
+      - `targetReplacedByOfficial`: an official update clobbered the
+        managed shim. Offers `("repair",)` when `shimRepairAvailable` is
+        also true (it always should be whenever the target was replaced,
+        but this never assumes that without checking -- a notice must
+        never offer a button with no working action behind it).
+      - Post-repair rollout required (`rolloutRequired` true while the shim
+        is installed again): informational only (`actions=()`) -- there is
+        no CLI-safe way to wire a rollout action today (`rebuild` does not
+        consume the repair's newly cached source; see the GUI report's
+        rollout investigation). Not reachable via the current, merged
+        `status.py` (an installed shim always forces `rolloutRequired`
+        false there today) -- modeled here anyway so the label/actions
+        contract is pinned for when that gap closes.
+
+    Returns `None` when neither state applies, or when the replacement's
+    digest has already been dismissed (R5: dismissal is per-digest and
+    recurring -- a new digest always re-raises the notice).
+    """
+    if state.target_replaced_by_official:
+        digest = state.detected_official_sha256
+        if digest is not None and digest in dismissed_digests:
+            return None
+        actions = ("repair",) if state.shim_repair_available else ()
+        return NoticeModel(message=_repair_needed_message(state), digest=digest, actions=actions)
+
+    if state.rollout_required and state.shim_installed:
+        digest = state.detected_official_sha256
+        if digest is not None and digest in dismissed_digests:
+            return None
+        return NoticeModel(message=_rollout_message(state), digest=digest, actions=())
+
+    return None
+
+
+def repair_confirm_text(state: MenuState | None) -> str:
+    """Confirm-dialog body for the repair-shim action (R2: user-triggered).
+
+    `repair-shim` has no `--dry-run`/`--progress` flags (see
+    `src/claude_monkey/cli.py`'s `repair_shim_parser`), so unlike
+    `install_shim`/`uninstall_shim` there is no CLI round-trip to build this
+    text from a live payload -- it is built entirely from the already-known
+    `MenuState`, the same way `Controller._rebuild_confirm_text` builds
+    `rebuild`'s confirm text from state instead of an extra subprocess call.
+    """
+    if state is None or not (state.detected_official_version or state.detected_official_sha256):
+        return (
+            "Repair the ClaudeMonkey shim?\n\n"
+            "This restores launches through PATH to go through ClaudeMonkey."
+        )
+    if state.detected_official_version:
+        detail = f"Claude {state.detected_official_version}"
+    else:
+        detail = f"Claude build {_short_digest(state.detected_official_sha256)}…"
+    return (
+        f"Repair the ClaudeMonkey shim for {detail}?\n\n"
+        "This restores launches through PATH to go through ClaudeMonkey. "
+        "The newly detected official build is cached first so it can still "
+        "be rolled out later."
+    )
+
+
+# Refusal codes raised by `repair.py`'s `RepairRefused` (surfaced via
+# `cli.py`'s `handle_repair_shim` error envelope `error.code`), plus the
+# CLI-layer `missing_target` code from `cli._resolve_cache_or_repair_target`.
+# Every code must map to plain language here -- see `compatibility_display`
+# for the precedent this follows: internal codes must never reach the UI.
+_REPAIR_REFUSAL_MESSAGES = {
+    "already_installed": "The shim is already installed correctly — nothing to repair.",
+    "not_managed": "ClaudeMonkey has no record of managing this Claude target — repair refused.",
+    "target_changed": "Claude changed again — re-checking.",
+    "target_unavailable": "The Claude target is not available right now — re-checking.",
+    "managed_path_refused": (
+        "That target is one of ClaudeMonkey's own managed paths — repair refused."
+    ),
+    "authorization_required": (
+        "This target needs elevated permission — use Install shim instead."
+    ),
+    "cache_failed": "Could not cache the current Claude build — repair refused.",
+    "swap_failed": "Could not install the repaired shim — repair refused.",
+    "no_install_record": "ClaudeMonkey has no install record for this target — repair refused.",
+    "invalid_record": "ClaudeMonkey's install record is unreadable — repair refused.",
+    "missing_target": "No Claude target is known to repair.",
+}
+_REPAIR_REFUSAL_FALLBACK = "Shim repair failed."
+
+
+def repair_refusal_display(code: str | None, fallback: str = _REPAIR_REFUSAL_FALLBACK) -> str:
+    """Map a `repair-shim` refusal `error.code` to plain UI text.
+
+    Every raw code from `repair.py`/`cli.py` is covered by
+    `_REPAIR_REFUSAL_MESSAGES`; an unrecognized or missing code falls back
+    to `fallback` rather than ever rendering the code (or a raw CLI
+    exception string) verbatim -- refusal codes must never appear raw in
+    the UI (plan Global Constraints).
+    """
+    if code is None:
+        return fallback
+    return _REPAIR_REFUSAL_MESSAGES.get(code, fallback)
 
 
 HEALTHY_COMPATIBILITY_STATUSES = frozenset(

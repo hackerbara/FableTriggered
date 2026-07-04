@@ -23,6 +23,7 @@ from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox  # noqa: E402
 
 import claude_monkey.gui.app as app_module  # noqa: E402
 from claude_monkey.gui.settings_window import SettingsWindow  # noqa: E402
+from claude_monkey.gui.window_model import NoticeModel  # noqa: E402
 from claude_monkey.menubar_state import (  # noqa: E402
     HighRiskOptionSummary,
     MenuState,
@@ -153,6 +154,97 @@ def test_open_report_button_emits_open_path_action(qtbot, fake_state):
         qtbot.mouseClick(window.overview_page.open_report_button, Qt.MouseButton.LeftButton)
 
     assert blocker.args == ["open_path", {"path": str(fake_state.latest_build_report_path)}]
+
+
+# ---------------------------------------------------------------------------
+# shim-update-resilience notice (spec sec4/sec5, R2/R5)
+# ---------------------------------------------------------------------------
+
+
+def test_notice_hidden_by_default(qtbot):
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+
+    assert window.overview_page.notice_label.isVisible() is False
+    assert window.overview_page.notice_repair_button.isVisible() is False
+    assert window.overview_page.notice_dismiss_button.isVisible() is False
+
+
+def test_render_notice_shows_message_and_repair_button(qtbot):
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.show()
+    notice = NoticeModel(
+        message="Claude 2.1.201 available — shim repair needed",
+        digest="abcd1234",
+        actions=("repair",),
+    )
+
+    window.render_notice(notice)
+
+    assert window.overview_page.notice_label.isVisible() is True
+    assert notice.message in window.overview_page.notice_label.text()
+    assert window.overview_page.notice_repair_button.isVisible() is True
+    assert window.overview_page.notice_dismiss_button.isVisible() is True
+
+
+def test_render_notice_hides_repair_button_when_no_repair_action(qtbot):
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.show()
+    notice = NoticeModel(message="rebuild to roll out", digest=None, actions=())
+
+    window.render_notice(notice)
+
+    assert window.overview_page.notice_label.isVisible() is True
+    assert window.overview_page.notice_repair_button.isVisible() is False
+    assert window.overview_page.notice_dismiss_button.isVisible() is False
+
+
+def test_render_notice_none_hides_everything(qtbot):
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.render_notice(
+        NoticeModel(message="repair needed", digest="abcd1234", actions=("repair",))
+    )
+
+    window.render_notice(None)
+
+    assert window.overview_page.notice_label.isVisible() is False
+    assert window.overview_page.notice_repair_button.isVisible() is False
+    assert window.overview_page.notice_dismiss_button.isVisible() is False
+
+
+def test_notice_repair_button_emits_repair_shim_action(qtbot):
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.show()
+    window.render_notice(
+        NoticeModel(message="repair needed", digest="abcd1234", actions=("repair",))
+    )
+
+    with qtbot.waitSignal(window.action, timeout=1000) as blocker:
+        qtbot.mouseClick(
+            window.overview_page.notice_repair_button, Qt.MouseButton.LeftButton
+        )
+
+    assert blocker.args == ["repair_shim", {}]
+
+
+def test_notice_dismiss_button_emits_dismiss_notice_with_digest(qtbot):
+    window = SettingsWindow()
+    qtbot.addWidget(window)
+    window.show()
+    window.render_notice(
+        NoticeModel(message="repair needed", digest="abcd1234", actions=("repair",))
+    )
+
+    with qtbot.waitSignal(window.action, timeout=1000) as blocker:
+        qtbot.mouseClick(
+            window.overview_page.notice_dismiss_button, Qt.MouseButton.LeftButton
+        )
+
+    assert blocker.args == ["dismiss_notice", {"digest": "abcd1234"}]
 
 
 def test_close_hides_instead_of_destroying(qtbot):

@@ -2,6 +2,86 @@ from __future__ import annotations
 
 from claude_monkey.menubar_state import parse_command_envelope, parse_menu_state
 
+# ---------------------------------------------------------------------------
+# shim-update-resilience stage 1 fields (spec 2026-07-04, section 1)
+# ---------------------------------------------------------------------------
+#
+# `status --json` additively carries six fields describing a shim replaced
+# by an official Claude update: shimPreviouslyManaged, targetReplacedByOfficial,
+# detectedOfficialSha256, detectedOfficialVersion, shimRepairAvailable,
+# rolloutRequired. `MenuState` must expose all six so the GUI notice model
+# (window_model.build_notice_model) can decide what to show without ever
+# reaching back into raw status JSON.
+
+
+def _minimal_status_raw(**overrides) -> dict:
+    base = {
+        "schemaVersion": 1,
+        "status": "ok",
+        "sourceClaudeVersion": None,
+        "sourceClaudePath": None,
+        "installMode": "shim",
+        "shimInstalled": True,
+        "activeProfile": "default",
+        "activePrompt": None,
+        "desiredPatchIds": [],
+        "activePatchIds": [],
+        "rebuildRequired": False,
+        "latestBuildReportPath": None,
+        "activePatchSet": None,
+        "currentClaudePath": None,
+        "shimTargetPath": None,
+        "installRecordPath": None,
+        "stateDir": "/tmp/state",
+        "logsDir": "/tmp/state/logs",
+        "lastError": None,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_parse_menu_state_reads_official_replacement_fields():
+    state = parse_menu_state(
+        _minimal_status_raw(
+            shimInstalled=False,
+            shimPreviouslyManaged=True,
+            targetReplacedByOfficial=True,
+            detectedOfficialSha256="a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd",
+            detectedOfficialVersion="2.1.201",
+            shimRepairAvailable=True,
+            rolloutRequired=True,
+        ),
+        {"schemaVersion": 1, "patches": []},
+        {"schemaVersion": 1, "prompts": []},
+    )
+    assert state.shim_previously_managed is True
+    assert state.target_replaced_by_official is True
+    assert (
+        state.detected_official_sha256
+        == "a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd"
+    )
+    assert state.detected_official_version == "2.1.201"
+    assert state.shim_repair_available is True
+    assert state.rollout_required is True
+
+
+def test_parse_menu_state_defaults_official_replacement_fields_when_absent():
+    # Real status --json always includes these six fields (they're additive
+    # but unconditional), but MenuState must not blow up on an older/partial
+    # payload -- same additive-and-optional discipline as every other v3
+    # status field.
+    state = parse_menu_state(
+        _minimal_status_raw(),
+        {"schemaVersion": 1, "patches": []},
+        {"schemaVersion": 1, "prompts": []},
+    )
+    assert state.shim_previously_managed is False
+    assert state.target_replaced_by_official is False
+    assert state.detected_official_sha256 is None
+    assert state.detected_official_version is None
+    assert state.shim_repair_available is False
+    assert state.rollout_required is False
+
 
 def test_parse_menu_state_applies_status_precedence():
     state = parse_menu_state(

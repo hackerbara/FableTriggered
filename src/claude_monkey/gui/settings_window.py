@@ -43,7 +43,7 @@ from claude_monkey.gui.pages.install_page import InstallPage
 from claude_monkey.gui.pages.options_page import OptionsPage
 from claude_monkey.gui.pages.patches_page import PatchesPage
 from claude_monkey.gui.pages.prompts_page import PromptsPage
-from claude_monkey.gui.window_model import build_tray_model
+from claude_monkey.gui.window_model import NoticeModel, build_tray_model
 from claude_monkey.menubar_state import MenuState
 
 __all__ = [
@@ -94,6 +94,26 @@ class OverviewPage(QWidget):
         layout = QVBoxLayout(self)
         self.banner = _Banner()
         layout.addWidget(self.banner)
+
+        # shim-update-resilience notice (spec sec4/sec5, R2/R5): a plain
+        # message line plus two optional buttons, all hidden until
+        # `render_notice` supplies a `NoticeModel`. `notice_repair_button`
+        # only shows when the model's `actions` includes "repair" (R2:
+        # never automatic); `notice_dismiss_button` only shows when the
+        # notice carries a digest to dismiss by (R5).
+        self._notice: NoticeModel | None = None
+        notice_row = QHBoxLayout()
+        self.notice_label = QLabel()
+        self.notice_label.setWordWrap(True)
+        self.notice_label.hide()
+        notice_row.addWidget(self.notice_label, 1)
+        self.notice_repair_button = QPushButton("Repair shim…")
+        self.notice_repair_button.hide()
+        notice_row.addWidget(self.notice_repair_button)
+        self.notice_dismiss_button = QPushButton("Dismiss")
+        self.notice_dismiss_button.hide()
+        notice_row.addWidget(self.notice_dismiss_button)
+        layout.addLayout(notice_row)
 
         self.status_label = QLabel()
         self.version_label = QLabel()
@@ -167,6 +187,18 @@ class OverviewPage(QWidget):
         )
         self.report_path = state.latest_build_report_path
         self.open_report_button.setEnabled(self.report_path is not None)
+
+    def render_notice(self, notice: NoticeModel | None) -> None:
+        self._notice = notice
+        if notice is None:
+            self.notice_label.hide()
+            self.notice_repair_button.hide()
+            self.notice_dismiss_button.hide()
+            return
+        self.notice_label.setText(notice.message)
+        self.notice_label.show()
+        self.notice_repair_button.setVisible("repair" in notice.actions)
+        self.notice_dismiss_button.setVisible(notice.digest is not None)
 
 
 class LogsPage(QWidget):
@@ -298,6 +330,10 @@ class SettingsWindow(QMainWindow):
 
         self.overview_page.rebuild_button.clicked.connect(lambda: self.action.emit("rebuild", {}))
         self.overview_page.open_report_button.clicked.connect(self._open_overview_report)
+        self.overview_page.notice_repair_button.clicked.connect(
+            lambda: self.action.emit("repair_shim", {})
+        )
+        self.overview_page.notice_dismiss_button.clicked.connect(self._emit_dismiss_notice)
         self.logs_page.open_report_button.clicked.connect(self._open_logs_report)
         self.logs_page.open_logs_folder_button.clicked.connect(self._open_logs_folder)
         self.logs_page.open_state_folder_button.clicked.connect(self._open_state_folder)
@@ -328,6 +364,21 @@ class SettingsWindow(QMainWindow):
         if banner is None:
             raise ValueError(f"unknown settings page: {page!r}")
         banner.show_message(message)
+
+    def render_notice(self, notice: NoticeModel | None) -> None:
+        """Render the shim-update-resilience notice (spec sec4) on Overview.
+
+        Controller calls this alongside `render(state)` (both from
+        `refresh()` and from `_action_dismiss_notice`) with the output of
+        `window_model.build_notice_model` -- this method never re-derives
+        the decision, only pushes the already-decided model into the page.
+        """
+        self.overview_page.render_notice(notice)
+
+    def _emit_dismiss_notice(self) -> None:
+        notice = self.overview_page._notice
+        digest = notice.digest if notice is not None else None
+        self.action.emit("dismiss_notice", {"digest": digest})
 
     def _open_overview_report(self) -> None:
         path = self.overview_page.report_path

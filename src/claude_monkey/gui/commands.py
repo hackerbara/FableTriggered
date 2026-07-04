@@ -107,6 +107,23 @@ def command_for_remove_package(package_id: str, kind: str) -> list[str]:
     return [action, package_id, "--json"]
 
 
+def command_for_repair_shim() -> list[str]:
+    """Build argv to repair the managed shim after an official update.
+
+    Deliberately takes no `target` argument: `repair-shim` (see
+    `cli.py`'s `repair_shim_parser`) has no `--dry-run`/`--progress` flags,
+    and when `--target` is omitted it resolves the target itself from the
+    install record's own `targetPath`
+    (`cli._resolve_cache_or_repair_target`) -- the exact target this
+    action means to repair. This also sidesteps a real gap in `status
+    --json`: `shimTargetPath`/`installRecordPath` are both `None`
+    precisely when repair is needed (they're gated on `shimInstalled`,
+    which is false in exactly that state), so `MenuState` has no target
+    path for the GUI to pass explicitly anyway.
+    """
+    return ["repair-shim", "--json"]
+
+
 def command_for_add_prompt_file(
     path: Path | str, package_id: str, name: str | None = None
 ) -> list[str]:

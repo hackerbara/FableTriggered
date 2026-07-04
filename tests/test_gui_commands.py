@@ -271,3 +271,16 @@ def test_add_prompt_file_with_name():
 def test_add_prompt_file_default_name_is_none():
     result = commands.command_for_add_prompt_file("/p/prompt.md", "pkg-id")
     assert result == ["add-prompt", "/p/prompt.md", "--id", "pkg-id", "--json"]
+
+
+# ---------------------------------------------------------------------------
+# 10. command_for_repair_shim
+# ---------------------------------------------------------------------------
+
+
+def test_repair_shim_takes_no_args_and_is_exact():
+    # `repair-shim` (cli.py's repair_shim_parser) has no --dry-run/--progress
+    # flags, and always resolves its target from the install record when
+    # --target is omitted (cli._resolve_cache_or_repair_target) -- the exact
+    # target the GUI wants to repair, so no --target is passed here either.
+    assert commands.command_for_repair_shim() == ["repair-shim", "--json"]

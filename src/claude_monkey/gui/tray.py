@@ -50,6 +50,7 @@ class Tray(QObject):
             self._add_action(self.menu, line, enabled=False)
         if model.running_label is not None:
             self._add_action(self.menu, model.running_label, enabled=False)
+        self._add_notice(model)
         self.menu.addSeparator()
 
         self._add_action(self.menu, "Open ClaudeMonkey…", action_id="open_window")
@@ -77,6 +78,28 @@ class Tray(QObject):
         self.menu.addSeparator()
         self._add_action(self.menu, "Refresh", action_id="refresh")
         self._add_action(self.menu, "Quit", action_id="quit")
+
+    def _add_notice(self, model: TrayModel) -> None:
+        """Render the shim-update-resilience notice (spec sec4), if any.
+
+        Every piece of this comes straight off `model.notice`
+        (`window_model.build_notice_model`'s output) -- the message line is
+        always shown, disabled, purely informational; "Repair shim…" only
+        appears when `"repair"` is in `notice.actions` (R2: never an
+        automatic action, always a user-triggered button), matching how
+        `render()` already gates "Install shim…" on `show_install_shim`.
+        """
+        notice = model.notice
+        if notice is None:
+            return
+        self._add_action(self.menu, notice.message, enabled=False)
+        if "repair" in notice.actions:
+            self._add_action(
+                self.menu,
+                "Repair shim…",
+                action_id="repair_shim",
+                enabled=model.mutating_enabled,
+            )
 
     def _add_prompts_submenu(self, model: TrayModel) -> None:
         submenu = self.menu.addMenu("Prompts")

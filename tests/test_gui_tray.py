@@ -21,7 +21,7 @@ from PySide6.QtGui import QAction  # noqa: E402
 from PySide6.QtWidgets import QMenu  # noqa: E402
 
 from claude_monkey.gui.tray import Tray  # noqa: E402
-from claude_monkey.gui.window_model import TrayModel  # noqa: E402
+from claude_monkey.gui.window_model import NoticeModel, TrayModel  # noqa: E402
 from claude_monkey.menubar_state import OptionMenuItem, PatchMenuItem, PromptMenuItem  # noqa: E402
 
 
@@ -272,6 +272,68 @@ def test_invalid_option_disabled_via_option_item_enabled(qapp):
     item = _find_action(options_menu.actions(), "Broken option")
     assert item is not None
     assert item.isEnabled() is False
+
+
+# ---------------------------------------------------------------------------
+# shim-update-resilience notice (spec sec4)
+# ---------------------------------------------------------------------------
+
+
+def test_no_notice_renders_no_extra_line_or_repair_action(qapp):
+    _, on_action = _recorder()
+    tray = Tray(on_action=on_action)
+    tray.render(_model(notice=None))
+
+    assert _find_action(tray.menu.actions(), "Repair shim…") is None
+
+
+def test_notice_message_renders_disabled_line(qapp):
+    _, on_action = _recorder()
+    tray = Tray(on_action=on_action)
+    notice = NoticeModel(
+        message="Claude 2.1.201 available — shim repair needed",
+        digest="abcd1234",
+        actions=("repair",),
+    )
+    tray.render(_model(notice=notice))
+
+    action = _find_action(tray.menu.actions(), notice.message)
+    assert action is not None
+    assert action.isEnabled() is False
+
+
+def test_notice_with_repair_action_shows_repair_menu_item(qapp):
+    calls, on_action = _recorder()
+    tray = Tray(on_action=on_action)
+    notice = NoticeModel(message="repair needed", digest="abcd1234", actions=("repair",))
+    tray.render(_model(notice=notice))
+
+    action = _find_action(tray.menu.actions(), "Repair shim…")
+    assert action is not None
+    assert action.isEnabled() is True
+    action.trigger()
+
+    assert calls == [("repair_shim", {})]
+
+
+def test_notice_without_repair_action_hides_repair_menu_item(qapp):
+    _, on_action = _recorder()
+    tray = Tray(on_action=on_action)
+    notice = NoticeModel(message="rebuild to roll out", digest=None, actions=())
+    tray.render(_model(notice=notice))
+
+    assert _find_action(tray.menu.actions(), "Repair shim…") is None
+
+
+def test_notice_repair_action_disabled_while_busy(qapp):
+    _, on_action = _recorder()
+    tray = Tray(on_action=on_action)
+    notice = NoticeModel(message="repair needed", digest="abcd1234", actions=("repair",))
+    tray.render(_model(notice=notice, mutating_enabled=False))
+
+    action = _find_action(tray.menu.actions(), "Repair shim…")
+    assert action is not None
+    assert action.isEnabled() is False
 
 
 # ---------------------------------------------------------------------------

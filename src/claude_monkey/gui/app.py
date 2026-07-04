@@ -36,12 +36,20 @@ from claude_monkey.gui.commands import (
     command_for_prompt,
     command_for_rebuild_apply,
     command_for_remove_package,
+    command_for_repair_shim,
     command_for_uninstall_shim,
 )
 from claude_monkey.gui.progress_dialog import ProgressDialog
 from claude_monkey.gui.settings_window import SettingsWindow
 from claude_monkey.gui.tray import Tray
-from claude_monkey.gui.window_model import InstallTargetSelection, build_tray_model
+from claude_monkey.gui.window_model import (
+    InstallTargetSelection,
+    NoticeModel,
+    build_notice_model,
+    build_tray_model,
+    repair_confirm_text,
+    repair_refusal_display,
+)
 from claude_monkey.menubar_commands import CommandRunner
 from claude_monkey.menubar_state import MenuState, parse_menu_state
 
@@ -262,6 +270,22 @@ class Controller:
       - `open_path` -> `runner.open_path`. `quit` cancels any live
         streaming handle and calls `quit_callback` (defaults to
         `QApplication.quit`).
+      - `repair_shim` (shim-update-resilience notice, spec sec4/sec5):
+        neither a quick op nor a long op in the existing sense --
+        `repair-shim` (see `commands.command_for_repair_shim`) has no
+        `--dry-run`/`--progress` flags in `cli.py`, so there is no dry-run
+        payload to fetch and no progress stream to bridge into a
+        `ProgressDialog`. Instead: `confirm_repair` (same
+        injectable-callable shape as `confirm_high_risk`) gates the
+        mutation with text from `window_model.repair_confirm_text`, then
+        the real command runs through the ordinary quick-op path
+        (`run_background`, page `"overview"`). A refusal is mapped through
+        `window_model.repair_refusal_display` before it ever reaches
+        `window.show_banner` -- raw `RepairRefused` codes (`target_changed`,
+        `already_installed`, `authorization_required`, ...) must never
+        reach the UI. `dismiss_notice` is pure Controller state (R5: an
+        in-memory, per-digest dismissed set) -- no CLI call, just a
+        `_render_notice()` re-push to tray/window.
 
     Every window/dialog `Controller` presents (`show_window`,
     `_show_dialog_foreground`'s `ProgressDialog`, `_default_confirm_high_risk`'s
@@ -282,6 +306,7 @@ class Controller:
         tray: Any,
         window: Any,
         confirm_high_risk: Callable[[str, str], bool] | None = None,
+        confirm_repair: Callable[[str], bool] | None = None,
         quit_callback: Callable[[], None] | None = None,
     ) -> None:
         self.runner = runner
@@ -289,11 +314,19 @@ class Controller:
         self.tray = tray
         self.window = window
         self._confirm_high_risk = confirm_high_risk or self._default_confirm_high_risk
+        self._confirm_repair = confirm_repair or self._default_confirm_repair
         self._quit_callback = quit_callback or self._default_quit
 
         self._state: MenuState | None = None
         self._busy_command: str | None = None
         self._install_selection = InstallTargetSelection()
+        # R5: dismissable-but-recurring notice state. In-memory/per-process
+        # is a deliberate v1 choice (see GUI report) -- a digest dismissed in
+        # one GUI session simply re-raises after a restart, which is
+        # preferable to a persisted dismissal silently hiding a *future*,
+        # different official update forever if the persistence keying ever
+        # drifted.
+        self._dismissed_digests: set[str] = set()
 
         self._dialog: ProgressDialog | None = None
         self._handle: Any | None = None
@@ -404,6 +437,35 @@ class Controller:
             page="install",
         )
 
+    def _action_repair_shim(self, payload: dict[str, Any]) -> None:
+        # R2: repair is user-triggered only -- an explicit confirm dialog
+        # always gates the mutation, regardless of whether the trigger came
+        # from the tray's "Repair shim..." item or the window's notice
+        # banner (both funnel into this one handler). Unlike
+        # `_action_install_shim`/`_action_uninstall_shim`, there is no
+        # dry-run round trip to build this text from: `repair-shim` has no
+        # `--dry-run` flag (see `commands.command_for_repair_shim`'s
+        # docstring), so the confirm text is built straight from the
+        # already-known `MenuState`, the same way `_rebuild_confirm_text`
+        # does for `rebuild`.
+        if self._busy_command is not None:
+            return
+        message = repair_confirm_text(self._state)
+        if not self._confirm_repair(message):
+            return
+        argv = command_for_repair_shim()
+        self._run_quick("repair_shim", argv, page="overview")
+
+    def _action_dismiss_notice(self, payload: dict[str, Any]) -> None:
+        # R5: dismissal is keyed per-digest and recurring -- it only
+        # suppresses the notice for the exact `detectedOfficialSha256` it
+        # was raised for; a later, different digest re-raises it. No CLI
+        # call: dismissal is pure Controller-held UI state.
+        digest = payload.get("digest")
+        if digest:
+            self._dismissed_digests.add(digest)
+        self._render_notice()
+
     def _action_uninstall_shim(self, payload: dict[str, Any]) -> None:
         # Prefer the recorded install target over the (forward-looking)
         # install-target selection: uninstall should act on what's actually
@@ -431,13 +493,29 @@ class Controller:
             state = parse_menu_state(status_raw, patches_raw, prompts_raw, options_raw)
         except Exception:
             self._state = None
-            self.tray.render(build_tray_model(None, self._busy_command))
             self.window.render(None)
+            self._render_notice()
             return
 
         self._state = state
-        self.tray.render(build_tray_model(state, self._busy_command))
         self.window.render(state)
+        self._render_notice()
+
+    def _render_notice(self) -> NoticeModel | None:
+        """Recompute the shim-update-resilience notice and push it to both
+        the tray (as part of a fresh `TrayModel`) and the window (via
+        `render_notice`), from `self._state` and the current dismissed-digest
+        set. Shared by `refresh()` and `_action_dismiss_notice` so dismissing
+        a notice re-renders both surfaces without an extra CLI round trip.
+        """
+        notice = (
+            build_notice_model(self._state, frozenset(self._dismissed_digests))
+            if self._state is not None
+            else None
+        )
+        self.tray.render(build_tray_model(self._state, self._busy_command, notice=notice))
+        self.window.render_notice(notice)
+        return notice
 
     def show_window(self) -> None:
         activate_app_for_window()
@@ -584,8 +662,24 @@ class Controller:
         self._busy_command = None
         page = self._pending_quick_pages.pop(name, None)
         if not payload.get("ok", True) and page is not None:
-            self.window.show_banner(page, payload.get("summary") or "command failed")
+            self.window.show_banner(page, self._quick_op_failure_message(name, payload))
         self.refresh()
+
+    def _quick_op_failure_message(self, name: str, payload: dict[str, Any]) -> str:
+        summary = payload.get("summary") or "command failed"
+        if name != "repair_shim":
+            return summary
+        # Refusal codes must never appear raw in the UI (plan Global
+        # Constraints) -- repair-shim's own `RepairRefused.code` is mapped
+        # through `repair_refusal_display` the same way `compatibility_display`
+        # maps compatibility status words. `target_changed` in particular
+        # reads as "Claude changed again -- re-checking" per spec R3 (an
+        # abort here is a fresh detection round, not an error) -- the
+        # unconditional `self.refresh()` call below already re-runs
+        # detection every time, satisfying "trigger a refresh".
+        error = payload.get("error")
+        code = error.get("code") if isinstance(error, dict) else None
+        return repair_refusal_display(code, summary)
 
     def _finish_long_op(self, payload: dict[str, Any]) -> None:
         dialog = self._dialog
@@ -619,6 +713,17 @@ class Controller:
         answer = QMessageBox.question(
             parent,
             "Confirm high-risk option",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def _default_confirm_repair(self, message: str) -> bool:
+        parent = self._dialog_parent()
+        activate_app_for_window()
+        answer = QMessageBox.question(
+            parent,
+            "Repair shim",
             message,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )

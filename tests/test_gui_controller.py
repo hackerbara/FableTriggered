@@ -97,9 +97,13 @@ class FakeWindow:
     def __init__(self) -> None:
         self.rendered: list = []
         self.banners: list[tuple[str, str]] = []
+        self.notices: list = []
 
     def render(self, state) -> None:
         self.rendered.append(state)
+
+    def render_notice(self, notice) -> None:
+        self.notices.append(notice)
 
     def show_banner(self, page: str, message: str) -> None:
         self.banners.append((page, message))
@@ -149,7 +153,12 @@ def _envelope(*, ok: bool = True, authorization_required: bool = False, **overri
 
 
 @pytest.fixture
-def controller_parts():
+def confirm_repair_calls():
+    return []
+
+
+@pytest.fixture
+def controller_parts(confirm_repair_calls):
     runner = StubRunner()
     bridge = CommandBridge()
     tray = FakeTray()
@@ -164,6 +173,7 @@ def controller_parts():
             (option_id, warning)
         )
         or True,
+        confirm_repair=lambda message: confirm_repair_calls.append(message) or True,
         quit_callback=lambda: None,
     )
     return controller, runner, bridge, tray, window, confirm_calls
@@ -516,3 +526,180 @@ def test_remove_package_routes_banner_by_kind(controller_parts):
     ]
     bridge.command_finished.emit("remove_package", _envelope(ok=False, summary="in use"))
     assert window.banners == [("prompts", "in use")]
+
+
+# ---------------------------------------------------------------------------
+# repair_shim (shim-update-resilience GUI notice, spec sec4/sec5, R2/R3/R8)
+# ---------------------------------------------------------------------------
+
+
+def _replaced_status_raw(**overrides) -> dict:
+    base = _status_raw(
+        shimInstalled=False,
+        shimPreviouslyManaged=True,
+        targetReplacedByOfficial=True,
+        detectedOfficialSha256="a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd",
+        detectedOfficialVersion="2.1.201",
+        shimRepairAvailable=True,
+        rolloutRequired=True,
+    )
+    base.update(overrides)
+    return base
+
+
+def test_repair_shim_confirmed_runs_background_with_no_target(
+    controller_parts, confirm_repair_calls
+):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("repair_shim", {})
+
+    assert runner.background_calls == [("repair_shim", ["repair-shim", "--json"], True)]
+    assert len(confirm_repair_calls) == 1  # explicit user confirmation happened (R2)
+
+
+def test_repair_shim_declined_does_not_run_command(confirm_repair_calls):
+    runner = StubRunner()
+    bridge = CommandBridge()
+    tray = FakeTray()
+    window = FakeWindow()
+    controller = Controller(
+        runner=runner,
+        bridge=bridge,
+        tray=tray,
+        window=window,
+        confirm_repair=lambda message: False,
+        quit_callback=lambda: None,
+    )
+
+    controller.on_action("repair_shim", {})
+
+    assert runner.background_calls == []
+
+
+def test_repair_shim_confirm_text_reflects_detected_version(controller_parts, confirm_repair_calls):
+    controller, runner, bridge, tray, window, _ = controller_parts
+    runner.run_json_results[("status", "--json")] = _replaced_status_raw()
+    controller.refresh()
+
+    controller.on_action("repair_shim", {})
+
+    assert "2.1.201" in confirm_repair_calls[0]
+
+
+def test_repair_shim_busy_ignores_second_trigger(controller_parts, confirm_repair_calls):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("repair_shim", {})
+    controller.on_action("repair_shim", {})
+
+    assert len(runner.background_calls) == 1
+    assert len(confirm_repair_calls) == 1
+
+
+def test_repair_shim_refusal_shows_dejargoned_banner(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("repair_shim", {})
+    bridge.command_finished.emit(
+        "repair_shim",
+        _envelope(ok=False, summary="target changed since it was classified/cached")
+        | {"error": {"message": "target changed", "code": "target_changed"}},
+    )
+
+    assert window.banners == [("overview", "Claude changed again — re-checking.")]
+    assert controller._busy_command is None
+
+
+def test_repair_shim_refusal_unknown_code_falls_back_without_raw_code(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("repair_shim", {})
+    bridge.command_finished.emit(
+        "repair_shim",
+        _envelope(ok=False, summary="boom")
+        | {"error": {"message": "boom", "code": "some_new_code"}},
+    )
+
+    message = window.banners[0][1]
+    assert message != "some_new_code"
+    assert "some_new_code" not in message
+
+
+def test_repair_shim_success_triggers_refresh(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("repair_shim", {})
+    calls_before = len(runner.run_json_calls)
+    bridge.command_finished.emit("repair_shim", _envelope(ok=True))
+
+    # refresh() re-fetches status/patches/prompts/options.
+    assert len(runner.run_json_calls) > calls_before
+
+
+# ---------------------------------------------------------------------------
+# notice model wiring: refresh() / dismiss_notice
+# ---------------------------------------------------------------------------
+
+
+def test_refresh_pushes_notice_to_tray_and_window(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+    runner.run_json_results[("status", "--json")] = _replaced_status_raw()
+
+    controller.refresh()
+
+    assert window.notices[-1] is not None
+    assert window.notices[-1].actions == ("repair",)
+    assert tray.rendered[-1].notice is window.notices[-1]
+
+
+def test_refresh_no_replacement_pushes_none_notice(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.refresh()
+
+    assert window.notices[-1] is None
+    assert tray.rendered[-1].notice is None
+
+
+def test_refresh_failure_pushes_none_notice(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+    runner.run_json_results[("status", "--json")] = RuntimeError("boom")
+
+    controller.refresh()
+
+    assert window.notices == [None]
+
+
+def test_dismiss_notice_hides_it_until_refresh_recomputes(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+    runner.run_json_results[("status", "--json")] = _replaced_status_raw()
+    controller.refresh()
+    digest = window.notices[-1].digest
+
+    controller.on_action("dismiss_notice", {"digest": digest})
+
+    assert window.notices[-1] is None
+    assert tray.rendered[-1].notice is None
+
+    # A NEW digest (a later official update) re-raises even though the old
+    # one is dismissed (R5).
+    runner.run_json_results[("status", "--json")] = _replaced_status_raw(
+        detectedOfficialSha256="b" * 64, detectedOfficialVersion="2.1.202"
+    )
+    controller.refresh()
+
+    assert window.notices[-1] is not None
+    assert window.notices[-1].digest == "b" * 64
+
+
+def test_dismiss_notice_same_digest_stays_hidden_across_refresh(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+    runner.run_json_results[("status", "--json")] = _replaced_status_raw()
+    controller.refresh()
+    digest = window.notices[-1].digest
+
+    controller.on_action("dismiss_notice", {"digest": digest})
+    controller.refresh()
+
+    assert window.notices[-1] is None

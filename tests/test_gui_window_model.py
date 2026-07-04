@@ -30,6 +30,8 @@ import pytest
 from claude_monkey.gui import window_model
 from claude_monkey.gui.window_model import (
     InstallTargetSelection,
+    NoticeModel,
+    build_notice_model,
     build_tray_model,
     compatibility_display,
     default_install_target,
@@ -38,6 +40,8 @@ from claude_monkey.gui.window_model import (
     patch_item_enabled,
     patch_menu_label,
     remove_enabled,
+    repair_confirm_text,
+    repair_refusal_display,
 )
 from claude_monkey.menubar_install import managed_user_target
 from claude_monkey.menubar_state import MenuState, OptionMenuItem, PatchMenuItem, PromptMenuItem
@@ -163,6 +167,20 @@ def test_none_state_yields_error_model():
     assert model.prompt_items == ()
     assert model.patch_items == ()
     assert model.option_items == ()
+
+
+def test_tray_model_defaults_notice_to_none(state_without_shim):
+    assert build_tray_model(state_without_shim, None).notice is None
+
+
+def test_tray_model_carries_notice_through(state_without_shim):
+    notice = NoticeModel(
+        message="Claude 2.1.201 available — shim repair needed",
+        digest="abcd",
+        actions=("repair",),
+    )
+    model = build_tray_model(state_without_shim, None, notice=notice)
+    assert model.notice is notice
 
 
 # ---------------------------------------------------------------------------
@@ -449,3 +467,165 @@ def test_remove_enabled_allows_inactive_option(state_without_shim):
     ok, reason = remove_enabled("option", "local-proxy", state_without_shim)
     assert ok is True
     assert reason == ""
+
+
+# ---------------------------------------------------------------------------
+# build_notice_model (shim-update-resilience GUI notice, spec sec4 + R2/R5/R7)
+# ---------------------------------------------------------------------------
+
+
+def _replaced_state(tmp_path: Path, **overrides) -> MenuState:
+    defaults = dict(
+        shim_installed=False,
+        shim_previously_managed=True,
+        target_replaced_by_official=True,
+        detected_official_sha256="a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd",
+        detected_official_version="2.1.201",
+        shim_repair_available=True,
+        rollout_required=True,
+    )
+    defaults.update(overrides)
+    return _state(tmp_path, **defaults)
+
+
+def test_build_notice_model_none_when_no_replacement(tmp_path):
+    state = _state(tmp_path)  # default fixture: no replacement fields set
+    assert build_notice_model(state, frozenset()) is None
+
+
+def test_build_notice_model_repair_needed_known_version(tmp_path):
+    state = _replaced_state(tmp_path)
+
+    notice = build_notice_model(state, frozenset())
+
+    assert notice == NoticeModel(
+        message="Claude 2.1.201 available — shim repair needed",
+        digest="a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd",
+        actions=("repair",),
+    )
+
+
+def test_build_notice_model_repair_needed_unknown_version(tmp_path):
+    state = _replaced_state(tmp_path, detected_official_version=None)
+
+    notice = build_notice_model(state, frozenset())
+
+    assert notice is not None
+    assert notice.message == "New Claude build available (a0852d76…) — shim repair needed"
+    assert notice.actions == ("repair",)
+
+
+def test_build_notice_model_no_actions_when_repair_not_available(tmp_path):
+    # targetReplacedByOfficial can in principle be True while
+    # shimRepairAvailable is False (e.g. a still-installed shim per
+    # status.py's own gating) -- the notice must never offer a "repair"
+    # button it cannot back with a working action.
+    state = _replaced_state(tmp_path, shim_repair_available=False)
+
+    notice = build_notice_model(state, frozenset())
+
+    assert notice is not None
+    assert notice.actions == ()
+
+
+def test_build_notice_model_post_repair_rollout(tmp_path):
+    # Labeled state from the brief: shim reinstalled (shim_installed=True)
+    # but rollout still required. Not reachable via the current, merged
+    # status.py (see repair-3-report.md investigation) -- constructed
+    # directly here to pin the label/actions contract for when that gap is
+    # closed.
+    state = _state(
+        tmp_path,
+        shim_installed=True,
+        target_replaced_by_official=False,
+        detected_official_sha256=None,
+        detected_official_version="2.1.201",
+        shim_repair_available=False,
+        rollout_required=True,
+    )
+
+    notice = build_notice_model(state, frozenset())
+
+    assert notice is not None
+    assert notice.message == "Claude 2.1.201 available — rebuild to roll out"
+    # No CLI-safe way to wire a rollout button today (rebuild does not
+    # consume the repaired install record's cached source) -- informational
+    # only. See report for the investigation.
+    assert notice.actions == ()
+
+
+def test_build_notice_model_dismissed_digest_suppresses(tmp_path):
+    state = _replaced_state(tmp_path)
+    dismissed = frozenset({state.detected_official_sha256})
+
+    assert build_notice_model(state, dismissed) is None
+
+
+def test_build_notice_model_new_digest_re_raises(tmp_path):
+    state = _replaced_state(tmp_path)
+    dismissed = frozenset({"some-other-previously-dismissed-digest"})
+
+    notice = build_notice_model(state, dismissed)
+
+    assert notice is not None
+    assert notice.digest == state.detected_official_sha256
+
+
+# ---------------------------------------------------------------------------
+# repair_confirm_text / repair_refusal_display
+# ---------------------------------------------------------------------------
+
+
+def test_repair_confirm_text_includes_known_version(tmp_path):
+    state = _replaced_state(tmp_path)
+    text = repair_confirm_text(state)
+    assert "2.1.201" in text
+
+
+def test_repair_confirm_text_falls_back_to_digest(tmp_path):
+    state = _replaced_state(tmp_path, detected_official_version=None)
+    text = repair_confirm_text(state)
+    assert "a0852d76" in text
+
+
+def test_repair_confirm_text_handles_none_state():
+    assert repair_confirm_text(None) != ""
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "already_installed",
+        "not_managed",
+        "target_changed",
+        "target_unavailable",
+        "managed_path_refused",
+        "authorization_required",
+        "cache_failed",
+        "swap_failed",
+        "no_install_record",
+        "invalid_record",
+        "missing_target",
+    ],
+)
+def test_repair_refusal_display_maps_every_known_code(code):
+    display = repair_refusal_display(code)
+    assert display != ""
+    assert display != code  # raw code must never reach the UI
+
+
+def test_repair_refusal_display_target_changed_reads_as_recheck():
+    # Spec R3: an abort because the target changed mid-repair is a fresh
+    # detection round, not an error -- the message must read that way.
+    assert repair_refusal_display("target_changed") == "Claude changed again — re-checking."
+
+
+def test_repair_refusal_display_falls_back_for_unknown_code():
+    display = repair_refusal_display("some_future_code")
+    assert display != ""
+    assert display != "some_future_code"
+
+
+def test_repair_refusal_display_falls_back_for_none_code():
+    display = repair_refusal_display(None, fallback="repair failed")
+    assert display == "repair failed"

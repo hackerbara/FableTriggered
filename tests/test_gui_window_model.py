@@ -703,6 +703,15 @@ def test_remove_enabled_allows_inactive_option(state_without_shim):
     assert reason == ""
 
 
+def test_remove_enabled_rejects_unknown_kind(state_without_shim):
+    # The real callers (options_page.py/patches_page.py/prompts_page.py) only
+    # ever pass "patch"/"prompt"/"option" -- an unrecognized kind previously
+    # fell through the if/elif chain leaving `referenced` False, silently
+    # ALLOWING removal. A future typo/new-kind must raise instead.
+    with pytest.raises(ValueError):
+        remove_enabled("bogus", "whatever", state_without_shim)
+
+
 # ---------------------------------------------------------------------------
 # build_notice_model (shim-update-resilience GUI notice, spec sec4 + R2/R5/R7)
 # ---------------------------------------------------------------------------

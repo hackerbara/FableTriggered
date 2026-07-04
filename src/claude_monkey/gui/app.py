@@ -175,6 +175,19 @@ class SingleInstance(QObject):
         self.is_primary = self._claim()
 
     def _claim(self) -> bool:
+        # Residual TOCTOU (deliberately left unfixed): the probe below
+        # (connectToServer + waitForConnected) and the claim further down
+        # (removeServer + listen) are not atomic across processes. Two GUI
+        # launches racing in the same tiny window could both observe "no
+        # live primary" during their probes, then both proceed to
+        # removeServer()+listen(). Normal OS socket semantics mean at most
+        # one listen() call actually succeeds -- see the "Listen failed for
+        # some other reason" comment below, which already handles that loser
+        # gracefully -- but the race itself is real, just practically
+        # unreachable outside a near-simultaneous double-launch. No lock
+        # file / atomic cross-process claim primitive is added for it: the
+        # cost isn't justified for a single-user desktop app.
+        #
         # Probe for a live primary first: if one is listening, connect,
         # announce ourselves, and give up primary status. We must not call
         # QLocalServer.removeServer() before this probe, since on Unix that

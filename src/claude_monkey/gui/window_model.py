@@ -572,14 +572,21 @@ def remove_enabled(item_kind: str, package_id: str, state: MenuState) -> tuple[b
     active profile still references the package -- a patch in the desired
     set, the active prompt, or an enabled option. Whether the package is
     baked into the currently built/active binary does NOT block removal.
+
+    `item_kind` is a closed set of `{"patch", "prompt", "option"}` -- the
+    only kinds the real callers (options_page.py/patches_page.py/
+    prompts_page.py) ever pass. An unrecognized kind raises rather than
+    silently leaving `referenced` False (which would have ALLOWED removal
+    for a typo'd/new kind -- the wrong failure direction for a guard).
     """
-    referenced = False
     if item_kind == "patch":
         referenced = package_id in state.desired_patch_ids
     elif item_kind == "prompt":
         referenced = package_id == state.active_prompt
     elif item_kind == "option":
         referenced = package_id in state.active_option_ids
+    else:
+        raise ValueError(f"unknown item kind: {item_kind!r}")
 
     if referenced:
         return False, f"{package_id} is referenced by the active profile; disable it first."

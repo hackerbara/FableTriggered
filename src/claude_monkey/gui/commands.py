@@ -92,9 +92,20 @@ def command_for_uninstall_shim(
 
 
 def command_for_add_package(path: Path | str, kind: str) -> list[str]:
-    """Build argv to add a patch or option package located at `path`."""
-    action = "add-patch" if kind == "patch" else "add-option"
-    return [action, str(path), "--json"]
+    """Build argv to add a patch or option package located at `path`.
+
+    `kind` is a closed set of `{"patch", "option"}` -- the only two kinds
+    `Controller._action_add_package` ever passes (prompts go through
+    `command_for_add_prompt_file`/`add_prompt_file` instead, a separate
+    action/command). An unrecognized `kind` raises rather than silently
+    falling through to "add-option", matching `command_for_remove_package`'s
+    dict-literal `KeyError` behavior for the same kind of guard.
+    """
+    if kind == "patch":
+        return ["add-patch", str(path), "--json"]
+    if kind == "option":
+        return ["add-option", str(path), "--json"]
+    raise ValueError(f"unknown package kind: {kind!r}")
 
 
 def command_for_remove_package(package_id: str, kind: str) -> list[str]:

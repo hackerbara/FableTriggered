@@ -217,6 +217,15 @@ def test_add_package_accepts_path():
     ]
 
 
+def test_add_package_rejects_unknown_kind():
+    # The real call site (`Controller._action_add_package`) only ever passes
+    # "patch"/"option" -- prompts go through `add_prompt_file` instead (a
+    # separate action/command). A future typo/new-kind must raise rather
+    # than silently falling through to "add-option".
+    with pytest.raises(ValueError):
+        commands.command_for_add_package("/dir/x", "prompt")
+
+
 # ---------------------------------------------------------------------------
 # 8. command_for_remove_package
 # ---------------------------------------------------------------------------

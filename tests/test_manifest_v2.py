@@ -308,3 +308,36 @@ def test_relationship_metadata_rejects_non_string_list():
     data["requiresPackages"] = "footer-drawers"
     with pytest.raises(ManifestV2Error, match="requiresPackages"):
         load_manifest_v2_dict(data)
+
+
+
+def test_insertion_context_marker_counts_must_be_one():
+    with pytest.raises(ManifestV2Error, match="expectedStartMarkerCount"):
+        load_manifest_v2_dict(
+            _manifest_with_op(
+                _insert_op(
+                    startMarker="function one(){",
+                    endMarker="}",
+                    expectedStartMarkerCount=2,
+                )
+            )
+        )
+
+
+def test_replace_substring_within_marker_counts_must_be_one():
+    with pytest.raises(ManifestV2Error, match="expectedEndMarkerCount"):
+        load_manifest_v2_dict(_manifest_with_op(_subspan_op(expectedEndMarkerCount=2)))
+
+
+@pytest.mark.parametrize("field", ["expectedAnchorCount", "expectedSubExactCount"])
+def test_legacy_operations_reject_ignored_structured_count_fields(field):
+    op = {
+        "opId": "legacy-count",
+        "label": "Legacy count",
+        "type": "replace_exact",
+        "exact": "OLD",
+        field: 2,
+        "replacement": {"inline": "NEW"},
+    }
+    with pytest.raises(ManifestV2Error, match=field):
+        load_manifest_v2_dict(_manifest_with_op(op))

@@ -28,6 +28,7 @@ from claude_monkey.module_patch import (
     plan_module_operations,
     planned_operation_render_order,
     render_changed_module,
+    shared_insertion_points,
     verify_insertions,
 )
 from claude_monkey.package_model import PackageKind, PackageValidationError, load_package_manifest
@@ -350,13 +351,6 @@ def _assert_condition_v2(
     }
 
 
-def _check_overlaps(planned: list[PlannedModuleOperation]) -> None:
-    try:
-        check_planned_conflicts(planned)
-    except ModulePatchError as exc:
-        raise ValueError(str(exc)) from exc
-
-
 def _short_sha(value: str) -> str:
     return f"{value[:12]}…"
 
@@ -449,6 +443,7 @@ def _select_packages(
 ) -> tuple[list[tuple[Path, ManifestV2, TargetV2]], BuildReportV2 | None]:
     selected: list[tuple[Path, ManifestV2, TargetV2]] = []
     enabled: list[str] = []
+    seen_ids: set[str] = set()
     for package_dir in request.package_dirs:
         try:
             manifest = load_manifest_v2(package_dir)
@@ -467,6 +462,15 @@ def _select_packages(
             return selected, _write_failed(
                 request, report_path, reason, source=source, enabled=enabled
             )
+        if manifest.id in seen_ids:
+            return selected, _write_failed(
+                request,
+                report_path,
+                f"duplicate_package_id:{manifest.id}:{package_dir.name}",
+                source=source,
+                enabled=enabled,
+            )
+        seen_ids.add(manifest.id)
         enabled.append(manifest.id)
         matching = [
             target for target in manifest.targets if target_matches(target, request, source)
@@ -543,21 +547,25 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
                     manifest.id, module_target.path, module.content, operation_inputs
                 )
                 planned_by_module.setdefault(module_target.path, []).extend(planned)
-        for planned in planned_by_module.values():
-            _check_overlaps(planned)
-        shared_anchors: set[str] = set()
-        for planned in planned_by_module.values():
-            insertion_points: dict[int, list[PlannedModuleOperation]] = {}
-            for item in planned:
-                if item.kind == "insertion":
-                    insertion_points.setdefault(item.module_start, []).append(item)
-            for items in insertion_points.values():
+        shared_anchors_by_module: dict[str, set[str]] = {}
+        for module_path, planned in planned_by_module.items():
+            check_planned_conflicts(planned)
+            for items in shared_insertion_points(planned).values():
                 if len(items) > 1:
-                    shared_anchors.update(item.anchor for item in items if item.anchor)
-        if shared_anchors:
+                    shared_anchors_by_module.setdefault(module_path, set()).update(
+                        item.anchor for item in items if item.anchor
+                    )
+        if shared_anchors_by_module:
+            all_shared_anchors = {
+                anchor for anchors in shared_anchors_by_module.values() for anchor in anchors
+            }
             for _, manifest, target in selected:
                 for assertion in target.postconditions:
-                    if any(anchor in assertion.value for anchor in shared_anchors):
+                    if assertion.module_path is None:
+                        anchors = all_shared_anchors
+                    else:
+                        anchors = shared_anchors_by_module.get(assertion.module_path, set())
+                    if any(anchor in assertion.value for anchor in anchors):
                         raise ValueError(
                             "postcondition_composition_sensitive:"
                             f"{manifest.id}:{assertion.value[:60]}"

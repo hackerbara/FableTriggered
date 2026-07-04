@@ -9,6 +9,7 @@ from claude_monkey.module_patch import (
     ModulePatchError,
     plan_module_operations,
     render_changed_module,
+    verify_insertions,
 )
 
 MODULE = b"function render(){OLD_RENDER}\nfunction after(){return 1}\n"
@@ -259,8 +260,6 @@ def test_replace_substring_within_old_range_applies_to_subspan():
 
 
 
-from claude_monkey.module_patch import check_planned_conflicts
-
 
 def _plan(ops):
     return plan_module_operations("pkg", "/$bunfs/root/src/entrypoints/cli.js", MODULE, ops)
@@ -296,7 +295,10 @@ def test_single_insertion_needs_no_insert_order():
 def test_insertion_inside_claimed_range_fails():
     # replacement claims [render-start, "function after(){"); insertion point lands inside it
     replacement_op = op(b"function render(){NEW}\n")  # existing replace_between helper
-    inside = make_op(op_id="inside", anchor="function render(){")  # insert_after -> point inside claimed range
+    inside = make_op(
+        op_id="inside",
+        anchor="function render(){",  # insert_after -> point inside claimed range
+    )
     with pytest.raises(ModulePatchError, match="patch_conflict:insert_inside_claimed_range"):
         _plan([(replacement_op, b"function render(){NEW}\n"), (inside, b",X")])
 
@@ -342,8 +344,6 @@ def test_insertion_at_replacement_end_boundary_with_outside_anchor_is_allowed():
     assert b"function render(){NEW}" in changed
 
 
-
-from claude_monkey.module_patch import verify_insertions
 
 
 def test_render_orders_same_point_insertions_by_insert_order_not_list_order():

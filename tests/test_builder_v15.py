@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from tests.fixtures_bun import MODULE_0, build_aligned_macho_fixture
+from tests.fixtures_bun import MODULE_0, MODULE_1, MODULE_PATH_1, build_aligned_macho_fixture
 
 from claude_monkey.builder_v15 import BuildRequestV15, build_patchset_v15
 from claude_monkey.smoke import CommandResult
@@ -398,3 +398,94 @@ def test_operations_applied_report_uses_render_order_for_shared_insertions(tmp_p
     assert [item["finalOffset"] for item in report.operationsApplied] == sorted(
         item["finalOffset"] for item in report.operationsApplied
     )
+
+
+
+def write_module1_marker_package(package: Path, binary: Path) -> None:
+    manifest = {
+        "schemaVersion": 2,
+        "id": "module-one-guard",
+        "name": "Module One Guard",
+        "description": "Module one postcondition fixture",
+        "packageVersion": "0.1.0",
+        "targets": [
+            {
+                "sourceIdentity": {
+                    "claudeVersion": "fixture",
+                    "versionOutput": "fixture (Claude Code)",
+                    "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+                    "sizeBytes": binary.stat().st_size,
+                    "platform": "darwin",
+                    "arch": "arm64",
+                },
+                "requiredEngine": "bun_graph_repack",
+                "requiredBinaryFormat": "bun_standalone_macho64",
+                "modules": [
+                    {
+                        "path": MODULE_PATH_1,
+                        "contentSha256": hashlib.sha256(MODULE_1).hexdigest(),
+                        "contentLength": len(MODULE_1),
+                        "operations": [
+                            {
+                                "opId": "noop-other",
+                                "label": "Keep other module stable",
+                                "type": "replace_exact",
+                                "exact": "true",
+                                "replacement": {"inline": "true"},
+                            }
+                        ],
+                    }
+                ],
+                "postconditions": [
+                    {
+                        "type": "module_must_not_contain",
+                        "modulePath": MODULE_PATH_1,
+                        "value": "OLD_RENDER",
+                    }
+                ],
+            }
+        ],
+    }
+    package.mkdir()
+    (package / "patch.json").write_text(json.dumps(manifest))
+
+
+def test_composition_sensitive_postcondition_scoped_to_assertion_module(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg_a = tmp_path / "pkg-a"
+    pkg_b = tmp_path / "pkg-b"
+    guard = tmp_path / "module-one-guard"
+    write_insertion_package(
+        pkg_a, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    write_insertion_package(
+        pkg_b, source, package_id="pkg-b", payload=",B_ENTRY",
+        insert_order=200, postcondition_value="B_ENTRY",
+    )
+    write_module1_marker_package(guard, source)
+
+    report = _build(tmp_path, source, [pkg_a, pkg_b, guard])
+
+    assert report.automatedStatus == "passed"
+
+
+def test_duplicate_package_id_fails_before_planning(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg_a = tmp_path / "pkg-a"
+    pkg_copy = tmp_path / "pkg-a-copy"
+    write_insertion_package(
+        pkg_a, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    write_insertion_package(
+        pkg_copy, source, package_id="pkg-a", payload=",COPY_ENTRY",
+        insert_order=200, postcondition_value="COPY_ENTRY",
+    )
+
+    report = _build(tmp_path, source, [pkg_a, pkg_copy])
+
+    assert report.status == "failed"
+    assert report.failureReason == "duplicate_package_id:pkg-a:pkg-a-copy"

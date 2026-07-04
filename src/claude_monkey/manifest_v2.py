@@ -217,9 +217,7 @@ def parse_operation(value: Any) -> ModuleOperationV2:
     op_type = require_string(op, "type")
     if op_type not in SUPPORTED_OPERATION_TYPES:
         raise ManifestV2Error(f"unsupported operation type: {op_type}")
-    require_within = op.get("requireWithinRange", [])
-    if not isinstance(require_within, list) or not all(isinstance(x, str) for x in require_within):
-        raise ManifestV2Error("requireWithinRange must be a list of strings")
+    require_within = optional_string_list(op, "requireWithinRange")
     operation = ModuleOperationV2(
         op_id=require_string(op, "opId"),
         label=require_string(op, "label"),
@@ -233,7 +231,7 @@ def parse_operation(value: Any) -> ModuleOperationV2:
         expected_end_marker_count=require_int(op, "expectedEndMarkerCount")
         if "expectedEndMarkerCount" in op
         else 1,
-        require_within_range=tuple(require_within),
+        require_within_range=require_within,
         old_range_sha256=optional_sha256(op, "oldRangeSha256"),
         old_range_length=optional_non_negative_int(op, "oldRangeLength"),
         replacement=parse_payload(op.get("replacement")),
@@ -254,6 +252,17 @@ def parse_operation(value: Any) -> ModuleOperationV2:
     return operation
 
 
+def _require_supported_marker_counts(operation: ModuleOperationV2) -> None:
+    if operation.expected_start_marker_count != 1:
+        raise ManifestV2Error(
+            f"{operation.op_id}: expectedStartMarkerCount must be 1 (other values unsupported)"
+        )
+    if operation.expected_end_marker_count != 1:
+        raise ManifestV2Error(
+            f"{operation.op_id}: expectedEndMarkerCount must be 1 (other values unsupported)"
+        )
+
+
 def _validate_operation_shape(operation: ModuleOperationV2) -> None:
     if operation.type in {"insert_before", "insert_after"}:
         if operation.anchor is None:
@@ -270,6 +279,8 @@ def _validate_operation_shape(operation: ModuleOperationV2) -> None:
             raise ManifestV2Error(
                 f"{operation.op_id}: contextSha256 requires context markers"
             )
+        if operation.start_marker is not None:
+            _require_supported_marker_counts(operation)
         if operation.exact is not None or operation.sub_exact is not None:
             raise ManifestV2Error(
                 f"{operation.op_id}: exact/subExact not allowed on insertions"
@@ -291,6 +302,7 @@ def _validate_operation_shape(operation: ModuleOperationV2) -> None:
             raise ManifestV2Error(
                 f"{operation.op_id}: replace_substring_within requires subExact"
             )
+        _require_supported_marker_counts(operation)
         if operation.expected_sub_exact_count != 1:
             raise ManifestV2Error(
                 f"{operation.op_id}: expectedSubExactCount must be 1 (other values unsupported)"
@@ -301,9 +313,18 @@ def _validate_operation_shape(operation: ModuleOperationV2) -> None:
             or operation.exact is not None
         ):
             raise ManifestV2Error(
-                f"{operation.op_id}: anchor/insertOrder/exact not allowed on replace_substring_within"
+                f"{operation.op_id}: anchor/insertOrder/exact not allowed on "
+                "replace_substring_within"
             )
     else:
+        if operation.expected_anchor_count != 1:
+            raise ManifestV2Error(
+                f"{operation.op_id}: expectedAnchorCount must be 1 (other values unsupported)"
+            )
+        if operation.expected_sub_exact_count != 1:
+            raise ManifestV2Error(
+                f"{operation.op_id}: expectedSubExactCount must be 1 (other values unsupported)"
+            )
         if (
             operation.anchor is not None
             or operation.insert_order is not None

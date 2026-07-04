@@ -23,7 +23,6 @@ class PlannedModuleOperation:
     delta: int
     old_sha256: str
     replacement: bytes
-    kind: str = "replacement"
     op_type: str = "replace_exact"
     insert_order: int | None = None
     context_start: int | None = None
@@ -31,6 +30,20 @@ class PlannedModuleOperation:
     evidence_spans: tuple[tuple[int, int], ...] = ()
     anchor: str | None = None
     seam_hint: str | None = None
+
+    @property
+    def kind(self) -> str:
+        return kind_for_operation_type(self.op_type)
+
+
+def kind_for_operation_type(op_type: str) -> str:
+    if op_type in {"replace_between", "replace_exact"}:
+        return "replacement"
+    if op_type in {"insert_before", "insert_after"}:
+        return "insertion"
+    if op_type == "replace_substring_within":
+        return "subspan_replacement"
+    return "unknown"
 
 
 def _b(value: str) -> bytes:
@@ -54,7 +67,6 @@ def _count(source: bytes, needle: bytes) -> int:
 class _Resolved:
     start: int
     end: int
-    kind: str
     context_start: int | None = None
     context_end: int | None = None
     evidence_spans: tuple[tuple[int, int], ...] = ()
@@ -138,7 +150,6 @@ def _resolve_operation(module: bytes, operation: ModuleOperationV2) -> _Resolved
         return _Resolved(
             start=point,
             end=point,
-            kind="insertion",
             context_start=ctx_start,
             context_end=ctx_end,
             evidence_spans=ctx_spans + ((found, found + len(anchor)),),
@@ -158,7 +169,6 @@ def _resolve_operation(module: bytes, operation: ModuleOperationV2) -> _Resolved
         return _Resolved(
             start=start,
             end=start + len(sub),
-            kind="subspan_replacement",
             context_start=ctx_start,
             context_end=ctx_end,
         )
@@ -166,7 +176,8 @@ def _resolve_operation(module: bytes, operation: ModuleOperationV2) -> _Resolved
         raise ModulePatchError(f"{operation.op_id}: unsupported operation type {operation.type}")
     if start < 0 or end < 0 or end < start:
         raise ModulePatchError(f"{operation.op_id}: invalid module range [{start},{end})")
-    return _Resolved(start, end, "replacement")
+    return _Resolved(start, end)
+
 
 def plan_module_operations(
     package_id: str,
@@ -210,7 +221,6 @@ def plan_module_operations(
                 delta=len(replacement) - len(old),
                 old_sha256=old_sha,
                 replacement=replacement,
-                kind=resolved.kind,
                 op_type=operation.type,
                 insert_order=operation.insert_order,
                 context_start=resolved.context_start,
@@ -220,7 +230,7 @@ def plan_module_operations(
                 seam_hint=operation.seam_hint,
             )
         )
-    planned.sort(key=_render_order)
+    planned.sort(key=planned_operation_render_order)
     check_planned_conflicts(planned)
     return planned
 
@@ -235,12 +245,18 @@ def planned_operation_render_order(item: PlannedModuleOperation) -> tuple:
     )
 
 
-def _render_order(item: PlannedModuleOperation) -> tuple:
-    return planned_operation_render_order(item)
+def shared_insertion_points(
+    planned: list[PlannedModuleOperation],
+) -> dict[int, list[PlannedModuleOperation]]:
+    points: dict[int, list[PlannedModuleOperation]] = {}
+    for item in sorted(planned, key=planned_operation_render_order):
+        if item.kind == "insertion":
+            points.setdefault(item.module_start, []).append(item)
+    return points
 
 
 def check_planned_conflicts(planned: list[PlannedModuleOperation]) -> None:
-    ordered = sorted(planned, key=_render_order)
+    ordered = sorted(planned, key=planned_operation_render_order)
     for left, right in zip(ordered, ordered[1:], strict=False):
         if left.module_end > right.module_start:
             if "insertion" in (left.kind, right.kind):
@@ -253,11 +269,7 @@ def check_planned_conflicts(planned: list[PlannedModuleOperation]) -> None:
                 "patch_conflict:range_overlap:"
                 f"{left.package_id}:{left.op_id}:{right.package_id}:{right.op_id}"
             )
-    points: dict[int, list[PlannedModuleOperation]] = {}
-    for item in ordered:
-        if item.kind == "insertion":
-            points.setdefault(item.module_start, []).append(item)
-    for offset, items in sorted(points.items()):
+    for offset, items in sorted(shared_insertion_points(ordered).items()):
         if len(items) < 2:
             continue
         if any(item.insert_order is None for item in items):
@@ -289,7 +301,7 @@ def check_planned_conflicts(planned: list[PlannedModuleOperation]) -> None:
 def render_changed_module(module_content: bytes, planned: list[PlannedModuleOperation]) -> bytes:
     output = bytearray()
     cursor = 0
-    for item in sorted(planned, key=_render_order):
+    for item in sorted(planned, key=planned_operation_render_order):
         output.extend(module_content[cursor : item.module_start])
         output.extend(item.replacement)
         cursor = item.module_end
@@ -302,7 +314,7 @@ def verify_insertions(
 ) -> list[dict]:
     results: list[dict] = []
     delta = 0
-    for item in sorted(planned, key=_render_order):
+    for item in sorted(planned, key=planned_operation_render_order):
         final_start = item.module_start + delta
         if item.kind == "insertion":
             verified = rendered[final_start : final_start + item.new_len] == item.replacement

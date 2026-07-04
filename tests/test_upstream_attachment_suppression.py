@@ -12,10 +12,11 @@ from claude_monkey.builder_v15 import ValidationRequestV15, validate_package
 from claude_monkey.macho import find_macho_layout
 from claude_monkey.manifest_v2 import load_manifest_v2_dict
 from claude_monkey.payloads import load_payload_bytes
+from tests.claude_binary import claude_version_path
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = ROOT / "packages" / "upstream-attachment-suppression"
-LIVE_2_1_199 = Path("/Users/MAC/.local/share/claude/versions/2.1.199")
+LIVE_2_1_199 = claude_version_path("2.1.199")
 MODULE_PATH = "/$bunfs/root/src/entrypoints/cli.js"
 EXPECTED_SOURCE_SHA = "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0"
 EXPECTED_MODULE_SHA = "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55"

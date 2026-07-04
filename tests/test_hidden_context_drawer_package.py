@@ -2,9 +2,11 @@ import hashlib
 import json
 from pathlib import Path
 
+from tests.claude_binary import claude_version_path
+
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "hidden-context-drawer"
-LIVE_2_1_201 = Path("/Users/MAC/.local/share/claude/versions/2.1.201")
+LIVE_2_1_201 = claude_version_path("2.1.201")
 EXPECTED_BINARY_SHA = "a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd"
 EXPECTED_BINARY_SIZE = 231708784
 EXPECTED_MODULE_SHA = "46db617a7b13c062fb31595f6244819b11f7cdc6e6fed8e2c3f74a27fb6da1bd"
@@ -94,6 +96,6 @@ def test_hidden_context_operations_match_source_and_payload_hashes() -> None:
 
 if __name__ == "__main__":
     test_hidden_context_drawer_targets_claude_2_1_201()
-    test_hidden_context_drawer_thin_package_keeps_x_only_contract()
+    test_hidden_context_drawer_real_target_panel_keeps_x_only_contract()
     test_hidden_context_operations_match_source_and_payload_hashes()
     print("hidden-context drawer package checks passed")

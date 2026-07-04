@@ -5,9 +5,11 @@ import subprocess
 import textwrap
 from pathlib import Path
 
+from tests.claude_binary import claude_version_path
+
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "packages" / "thinking-text-drawer"
-LIVE_2_1_201 = Path("/Users/MAC/.local/share/claude/versions/2.1.201")
+LIVE_2_1_201 = claude_version_path("2.1.201")
 
 EXPECTED_BINARY_SHA = "a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd"
 EXPECTED_BINARY_SIZE = 231708784

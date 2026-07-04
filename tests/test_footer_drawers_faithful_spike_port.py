@@ -8,10 +8,11 @@ import pytest
 from claude_monkey.bun_graph import parse_bun_section
 from claude_monkey.builder_v15 import BuildRequestV15, build_patchset_v15, load_manifest_v2
 from claude_monkey.macho import find_macho_layout
+from tests.claude_binary import claude_version_path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = "/$bunfs/root/src/entrypoints/cli.js"
-SOURCE = Path("/Users/MAC/.local/share/claude/versions/2.1.201")
+SOURCE = claude_version_path("2.1.201")
 MODULE_DUMP = ROOT / ".development" / "artifacts" / "claude-2.1.201-framework-source-module0.js"
 FOOTER = ROOT / "packages" / "footer-drawers"
 HC = ROOT / "packages" / "hidden-context-drawer"

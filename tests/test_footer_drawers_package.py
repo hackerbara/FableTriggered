@@ -9,10 +9,11 @@ import pytest
 
 from claude_monkey.builder_v15 import BuildRequestV15, build_patchset_v15, load_manifest_v2
 from claude_monkey.payloads import load_payload_bytes
+from tests.claude_binary import claude_version_path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = "/$bunfs/root/src/entrypoints/cli.js"
-SOURCE_2_1_201 = Path("/Users/MAC/.local/share/claude/versions/2.1.201")
+SOURCE_2_1_201 = claude_version_path("2.1.201")
 MODULE_DUMP_2_1_201 = ROOT / ".development" / "artifacts" / "claude-2.1.201-framework-source-module0.js"
 FOOTER_DRAWERS = ROOT / "packages" / "footer-drawers"
 HC = ROOT / "packages" / "hidden-context-drawer"

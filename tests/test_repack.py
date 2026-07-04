@@ -71,9 +71,13 @@ def test_repack_plus_one_preserves_aligned_segment_and_linkedit_offsets():
 
 
 def test_real_spike_plus_one_preserves_linkedit_alignment_if_artifact_exists():
-    artifact = Path(
-        "/Users/MAC/Documents/Claude-patch/.development/repack-spike-20260702-codex/"
-        "artifacts/claude-2.1.198.graph-repack-floating-blue-box-v4-grow16384"
+    root = Path(__file__).resolve().parents[1]
+    artifact = (
+        root
+        / ".development"
+        / "repack-spike-20260702-codex"
+        / "artifacts"
+        / "claude-2.1.198.graph-repack-floating-blue-box-v4-grow16384"
     )
     if not artifact.exists():
         pytest.skip("local real repack spike artifact is not present")

@@ -10,6 +10,7 @@ import pytest
 from claude_monkey.builder_v15 import ValidationRequestV15, validate_package
 from claude_monkey.manifest_v2 import load_manifest_v2_dict
 from claude_monkey.payloads import load_payload_bytes
+from tests.claude_binary import claude_bin_candidates, claude_version_path
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_DIRS = [
@@ -24,8 +25,8 @@ PACKAGE_DIRS = [
 def source_for_identity(identity) -> Path | None:
     candidates = [
         Path.home() / ".claude-monkey" / "sources" / identity.sha256 / "claude",
-        Path("/Users/MAC/.local/bin/claude"),
-        Path("/Users/MAC/.local/share/claude/versions") / identity.claude_version,
+        *claude_bin_candidates(),
+        claude_version_path(identity.claude_version),
     ]
     for candidate in candidates:
         if not candidate.exists():

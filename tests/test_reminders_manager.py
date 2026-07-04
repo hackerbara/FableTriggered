@@ -10,11 +10,12 @@ import pytest
 from claude_monkey.builder_v15 import BuildRequestV15, build_patchset_v15, load_manifest_v2
 from claude_monkey.manifest_v2 import load_manifest_v2_dict
 from claude_monkey.payloads import load_payload_bytes
+from tests.claude_binary import claude_version_path
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = ROOT / "packages" / "reminders-manager"
 FOOTER_DRAWERS_DIR = ROOT / "packages" / "footer-drawers"
-LIVE_2_1_201 = Path("/Users/MAC/.local/share/claude/versions/2.1.201")
+LIVE_2_1_201 = claude_version_path("2.1.201")
 MODULE_DUMP = ROOT / ".development" / "artifacts" / "claude-2.1.201-framework-source-module0.js"
 MODULE_PATH = "/$bunfs/root/src/entrypoints/cli.js"
 EXPECTED_SOURCE_SHA = "a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd"

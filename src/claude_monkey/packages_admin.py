@@ -257,7 +257,7 @@ def remove_package(package_id: str, kind: str, home: Path, profile: dict) -> dic
     try:
         validate_package_id(package_id)
     except PackageValidationError as exc:
-        return _envelope(False, f"invalid package id {package_id!r}: {exc}", code="invalid_package")
+        return invalid_package_error(f"invalid package id {package_id!r}: {exc}")
 
     target = home / _BUCKETS[kind] / package_id
     if not target.is_dir():

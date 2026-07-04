@@ -15,7 +15,7 @@ constructing this against a live `CommandRunner`/`CommandBridge` and wiring
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from PySide6.QtCore import QObject
@@ -68,9 +68,44 @@ class Tray(QObject):
         self._add_action(self.menu, "Open ClaudeMonkey…", action_id="open_window")
         self.menu.addSeparator()
 
-        self._add_prompts_submenu(model)
-        self._add_patches_submenu(model)
-        self._add_options_submenu(model)
+        self._add_items_submenu(
+            model,
+            title="Prompts",
+            items=model.prompt_items,
+            action_id="set_prompt",
+            label_fn=lambda prompt: prompt.label,
+            kwargs_fn=lambda prompt: {"prompt_id": prompt.prompt_id},
+            enabled_fn=lambda _prompt: model.mutating_enabled,
+            checked_fn=lambda prompt: prompt.checked,
+        )
+        self._add_items_submenu(
+            model,
+            title="Patches",
+            items=model.patch_items,
+            action_id="toggle_patch",
+            label_fn=patch_menu_label,
+            kwargs_fn=lambda patch: {"patch_id": patch.patch_id, "enabled": patch.checked},
+            enabled_fn=lambda patch: patch_item_enabled(
+                patch, mutating_enabled=model.mutating_enabled
+            ),
+            checked_fn=lambda patch: patch.checked,
+        )
+        self._add_items_submenu(
+            model,
+            title="Options",
+            items=model.option_items,
+            action_id="toggle_option",
+            label_fn=lambda option: option.label,
+            kwargs_fn=lambda option: {
+                "option_id": option.option_id,
+                "enabled": option.enabled,
+                "requires_confirmation": option.requires_confirmation,
+            },
+            enabled_fn=lambda option: option_item_enabled(
+                option, mutating_enabled=model.mutating_enabled
+            ),
+            checked_fn=lambda option: option.enabled,
+        )
 
         self.menu.addSeparator()
         self._add_action(
@@ -113,50 +148,36 @@ class Tray(QObject):
                 enabled=model.mutating_enabled,
             )
 
-    def _add_prompts_submenu(self, model: TrayModel) -> None:
-        submenu = self.menu.addMenu("Prompts")
-        submenu.menuAction().setEnabled(model.mutating_enabled)
-        for prompt in model.prompt_items:
-            self._add_action(
-                submenu,
-                prompt.label,
-                action_id="set_prompt",
-                kwargs={"prompt_id": prompt.prompt_id},
-                enabled=model.mutating_enabled,
-                checkable=True,
-                checked=prompt.checked,
-            )
+    def _add_items_submenu(
+        self,
+        model: TrayModel,
+        *,
+        title: str,
+        items: Sequence[Any],
+        action_id: str,
+        label_fn: Callable[[Any], str],
+        kwargs_fn: Callable[[Any], dict[str, Any]],
+        enabled_fn: Callable[[Any], bool],
+        checked_fn: Callable[[Any], bool],
+    ) -> None:
+        """Build one checkable submenu (Prompts/Patches/Options), item-by-item.
 
-    def _add_patches_submenu(self, model: TrayModel) -> None:
-        submenu = self.menu.addMenu("Patches")
+        The three real submenus only differ in the title, the item
+        collection, the emitted action id, and how each item's
+        label/kwargs/enabled/checked are derived -- this parameterizes that
+        shape once instead of near-duplicating the same loop three times.
+        """
+        submenu = self.menu.addMenu(title)
         submenu.menuAction().setEnabled(model.mutating_enabled)
-        for patch in model.patch_items:
+        for item in items:
             self._add_action(
                 submenu,
-                patch_menu_label(patch),
-                action_id="toggle_patch",
-                kwargs={"patch_id": patch.patch_id, "enabled": patch.checked},
-                enabled=patch_item_enabled(patch, mutating_enabled=model.mutating_enabled),
+                label_fn(item),
+                action_id=action_id,
+                kwargs=kwargs_fn(item),
+                enabled=enabled_fn(item),
                 checkable=True,
-                checked=patch.checked,
-            )
-
-    def _add_options_submenu(self, model: TrayModel) -> None:
-        submenu = self.menu.addMenu("Options")
-        submenu.menuAction().setEnabled(model.mutating_enabled)
-        for option in model.option_items:
-            self._add_action(
-                submenu,
-                option.label,
-                action_id="toggle_option",
-                kwargs={
-                    "option_id": option.option_id,
-                    "enabled": option.enabled,
-                    "requires_confirmation": option.requires_confirmation,
-                },
-                enabled=option_item_enabled(option, mutating_enabled=model.mutating_enabled),
-                checkable=True,
-                checked=option.enabled,
+                checked=checked_fn(item),
             )
 
     def _add_action(

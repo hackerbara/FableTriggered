@@ -482,6 +482,27 @@ def tray_icon_variant(state: MenuState | None) -> str:
     return "pending" if state is not None and state.rebuild_required else "normal"
 
 
+def patch_set_label_text(state: MenuState) -> str:
+    """Overview page's "Patch set: ..." label text.
+
+    Moved out of `settings_window.py`'s `OverviewPage.render` per this
+    module's everything-in-view-model rule -- the Qt side only calls
+    `.setText(...)` on the already-computed string, it never formats it
+    itself.
+    """
+    return f"Patch set: {state.active_patch_set or 'none'}"
+
+
+def build_summary_label_text(state: MenuState) -> str:
+    """Overview page's "Last build: ..." label text.
+
+    Same discipline as `patch_set_label_text` -- computed here, not
+    Qt-side.
+    """
+    modules_changed = len(state.changed_modules)
+    return f"Last build: {state.last_build_strategy} ({modules_changed} module(s) changed)"
+
+
 def rebuild_button_enabled(state: MenuState | None, *, mutating_enabled: bool) -> bool:
     """Whether the Overview page's "Rebuild / Apply" button should be enabled.
 

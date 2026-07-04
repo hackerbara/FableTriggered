@@ -45,9 +45,11 @@ from claude_monkey.gui.pages.patches_page import PatchesPage
 from claude_monkey.gui.pages.prompts_page import PromptsPage
 from claude_monkey.gui.window_model import (
     NoticeModel,
+    build_summary_label_text,
     build_tray_model,
     mutating_controls_enabled,
     notice_dismiss_key,
+    patch_set_label_text,
     rebuild_button_enabled,
 )
 from claude_monkey.menubar_state import MenuState
@@ -180,7 +182,7 @@ class OverviewPage(QWidget):
         self.prompt_label.setText(model.status_lines[2])
         self.options_label.setText(model.status_lines[3])
         self.patches_label.setText(model.status_lines[4])
-        self.patch_set_label.setText(f"Patch set: {state.active_patch_set or 'none'}")
+        self.patch_set_label.setText(patch_set_label_text(state))
 
         self.high_risk_list.clear()
         self.high_risk_list.addItems(list(state.high_risk_warnings))
@@ -189,10 +191,7 @@ class OverviewPage(QWidget):
             rebuild_button_enabled(state, mutating_enabled=mutating_enabled)
         )
 
-        modules_changed = len(state.changed_modules)
-        self.build_summary_label.setText(
-            f"Last build: {state.last_build_strategy} ({modules_changed} module(s) changed)"
-        )
+        self.build_summary_label.setText(build_summary_label_text(state))
         self.report_path = state.latest_build_report_path
         self.open_report_button.setEnabled(self.report_path is not None)
 
@@ -352,14 +351,22 @@ class SettingsWindow(QMainWindow):
         }
 
         self.overview_page.rebuild_button.clicked.connect(lambda: self.action.emit("rebuild", {}))
-        self.overview_page.open_report_button.clicked.connect(self._open_overview_report)
+        self.overview_page.open_report_button.clicked.connect(
+            lambda: self._emit_open_path(self.overview_page.report_path)
+        )
         self.overview_page.notice_repair_button.clicked.connect(
             lambda: self.action.emit("repair_shim", {})
         )
         self.overview_page.notice_dismiss_button.clicked.connect(self._emit_dismiss_notice)
-        self.logs_page.open_report_button.clicked.connect(self._open_logs_report)
-        self.logs_page.open_logs_folder_button.clicked.connect(self._open_logs_folder)
-        self.logs_page.open_state_folder_button.clicked.connect(self._open_state_folder)
+        self.logs_page.open_report_button.clicked.connect(
+            lambda: self._emit_open_path(self.logs_page.report_path)
+        )
+        self.logs_page.open_logs_folder_button.clicked.connect(
+            lambda: self._emit_open_path(self.logs_page.logs_dir)
+        )
+        self.logs_page.open_state_folder_button.clicked.connect(
+            lambda: self._emit_open_path(self.logs_page.state_dir)
+        )
 
         # Patches/Prompts/Options/Install each own a small `action` signal;
         # bubble every emission straight through this window's `action`
@@ -421,23 +428,14 @@ class SettingsWindow(QMainWindow):
         key = notice_dismiss_key(notice) if notice is not None else None
         self.action.emit("dismiss_notice", {"digest": key})
 
-    def _open_overview_report(self) -> None:
-        path = self.overview_page.report_path
-        if path is not None:
-            self.action.emit("open_path", {"path": str(path)})
+    def _emit_open_path(self, path: Path | None) -> None:
+        """Emit `open_path` for `path`, or do nothing if it's not set yet.
 
-    def _open_logs_report(self) -> None:
-        path = self.logs_page.report_path
-        if path is not None:
-            self.action.emit("open_path", {"path": str(path)})
-
-    def _open_logs_folder(self) -> None:
-        path = self.logs_page.logs_dir
-        if path is not None:
-            self.action.emit("open_path", {"path": str(path)})
-
-    def _open_state_folder(self) -> None:
-        path = self.logs_page.state_dir
+        Shared by the Overview "Open report" button and all three Logs &
+        Reports buttons ("Open report"/"Open logs folder"/"Open state
+        folder") -- they only differ in which page attribute supplies the
+        path, so the emit itself is a single place.
+        """
         if path is not None:
             self.action.emit("open_path", {"path": str(path)})
 

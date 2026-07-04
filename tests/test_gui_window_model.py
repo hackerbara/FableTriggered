@@ -34,6 +34,7 @@ from claude_monkey.gui.window_model import (
     InstallTargetSelection,
     NoticeModel,
     build_notice_model,
+    build_summary_label_text,
     build_tray_model,
     compatibility_display,
     default_install_target,
@@ -44,6 +45,7 @@ from claude_monkey.gui.window_model import (
     patch_item_enabled,
     patch_menu_label,
     patch_notes,
+    patch_set_label_text,
     remove_enabled,
     repair_confirm_text,
     repair_refusal_display,
@@ -873,6 +875,36 @@ def test_repair_confirm_text_names_target_when_known(tmp_path):
     state = _replaced_state(tmp_path, last_managed_target_path=target)
     text = repair_confirm_text(state)
     assert window_model.abbreviate_home(target) in text
+
+
+# ---------------------------------------------------------------------------
+# patch_set_label_text / build_summary_label_text (Overview page strings --
+# moved here from settings_window.py per the everything-in-view-model rule)
+# ---------------------------------------------------------------------------
+
+
+def test_patch_set_label_text_reports_active_patch_set(tmp_path):
+    state = _state(tmp_path, active_patch_set="everyday")
+    assert patch_set_label_text(state) == "Patch set: everyday"
+
+
+def test_patch_set_label_text_reports_none_when_unset(tmp_path):
+    state = _state(tmp_path, active_patch_set=None)
+    assert patch_set_label_text(state) == "Patch set: none"
+
+
+def test_build_summary_label_text_reports_strategy_and_module_count(tmp_path):
+    state = _state(
+        tmp_path,
+        last_build_strategy="repack",
+        changed_modules=({"id": "m1"}, {"id": "m2"}),
+    )
+    assert build_summary_label_text(state) == "Last build: repack (2 module(s) changed)"
+
+
+def test_build_summary_label_text_zero_modules(tmp_path):
+    state = _state(tmp_path, last_build_strategy="full", changed_modules=())
+    assert build_summary_label_text(state) == "Last build: full (0 module(s) changed)"
 
 
 def test_repair_confirm_text_omits_target_sentence_when_unknown(tmp_path):

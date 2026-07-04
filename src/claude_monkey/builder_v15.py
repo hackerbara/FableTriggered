@@ -24,6 +24,7 @@ from claude_monkey.manifest_v2 import (
 from claude_monkey.module_patch import (
     ModulePatchError,
     PlannedModuleOperation,
+    check_planned_conflicts,
     plan_module_operations,
     render_changed_module,
 )
@@ -346,14 +347,10 @@ def _assert_condition_v2(
 
 
 def _check_overlaps(planned: list[PlannedModuleOperation]) -> None:
-    ordered = sorted(
-        planned, key=lambda item: (item.module_start, item.module_end, item.package_id, item.op_id)
-    )
-    for left, right in zip(ordered, ordered[1:], strict=False):
-        if left.module_end > right.module_start:
-            raise ValueError(
-                f"patch_conflict:{left.package_id}:{left.op_id}:{right.package_id}:{right.op_id}"
-            )
+    try:
+        check_planned_conflicts(planned)
+    except ModulePatchError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _short_sha(value: str) -> str:

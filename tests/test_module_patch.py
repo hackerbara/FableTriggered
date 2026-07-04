@@ -256,3 +256,87 @@ def test_replace_substring_within_old_range_applies_to_subspan():
         "pkg", "/$bunfs/root/src/entrypoints/cli.js", MODULE, [(operation, b"NEW")]
     )
     assert planned[0].old_len == len(old)
+
+
+
+from claude_monkey.module_patch import check_planned_conflicts
+
+
+def _plan(ops):
+    return plan_module_operations("pkg", "/$bunfs/root/src/entrypoints/cli.js", MODULE, ops)
+
+
+def test_shared_point_insertions_merge_in_insert_order():
+    a = make_op(op_id="a", insert_order=200, replacement=PayloadRefV2(inline=",SECOND"))
+    b = make_op(op_id="b", insert_order=100, replacement=PayloadRefV2(inline=",FIRST"))
+    planned = _plan([(a, b",SECOND"), (b, b",FIRST")])
+    changed = render_changed_module(MODULE, planned)
+    assert b"OLD_RENDER,FIRST,SECOND" in changed
+
+
+def test_shared_point_duplicate_insert_order_fails():
+    a = make_op(op_id="a", insert_order=100)
+    b = make_op(op_id="b", insert_order=100)
+    with pytest.raises(ModulePatchError, match="patch_conflict:insert_order_duplicate"):
+        _plan([(a, b",X"), (b, b",Y")])
+
+
+def test_shared_point_missing_insert_order_fails():
+    a = make_op(op_id="a", insert_order=100)
+    b = make_op(op_id="b")  # insert_order=None
+    with pytest.raises(ModulePatchError, match="patch_conflict:insert_order_required"):
+        _plan([(a, b",X"), (b, b",Y")])
+
+
+def test_single_insertion_needs_no_insert_order():
+    planned = _plan([(make_op(), b",ONLY")])
+    assert planned[0].insert_order is None
+
+
+def test_insertion_inside_claimed_range_fails():
+    # replacement claims [render-start, "function after(){"); insertion point lands inside it
+    replacement_op = op(b"function render(){NEW}\n")  # existing replace_between helper
+    inside = make_op(op_id="inside", anchor="function render(){")  # insert_after -> point inside claimed range
+    with pytest.raises(ModulePatchError, match="patch_conflict:insert_inside_claimed_range"):
+        _plan([(replacement_op, b"function render(){NEW}\n"), (inside, b",X")])
+
+
+def test_insertion_anchor_inside_claimed_range_fails():
+    # anchor "OLD_RENDER" lies INSIDE the replacement's claimed range, but the
+    # insert_after point would be at offset 28 which is also inside; use an anchor
+    # whose END coincides with the claimed range END so the point is at the boundary:
+    # claimed range end is at index of "function after(){"; anchor ends exactly there.
+    end = MODULE.index(b"function after(){")
+    anchor_text = MODULE[end - 10 : end].decode()  # last 10 bytes of the claimed range
+    replacement_op = op(b"function render(){NEW}\n")
+    boundary = make_op(op_id="boundary", anchor=anchor_text)
+    with pytest.raises(
+        ModulePatchError, match="patch_conflict:insert_anchor_inside_claimed_range"
+    ):
+        _plan([(replacement_op, b"function render(){NEW}\n"), (boundary, b",X")])
+
+
+def test_replacement_overlap_reports_range_overlap_code():
+    first = op(b"function render(){NEW}\n")
+    second = ModuleOperationV2(
+        **{
+            **first.__dict__,
+            "op_id": "overlap",
+            "start_marker": "OLD",
+            "end_marker": "after",
+            "old_range_sha256": None,
+            "old_range_length": None,
+        }
+    )
+    with pytest.raises(ModulePatchError, match="patch_conflict:range_overlap"):
+        _plan([(first, b"function render(){NEW}\n"), (second, b"NEW")])
+
+
+def test_insertion_at_replacement_end_boundary_with_outside_anchor_is_allowed():
+    # anchor entirely OUTSIDE the claimed range, point at/after boundary: allowed
+    replacement_op = op(b"function render(){NEW}\n")
+    after = make_op(op_id="after-fn", anchor="function after(){return 1}")
+    planned = _plan([(replacement_op, b"function render(){NEW}\n"), (after, b"/*T*/")])
+    changed = render_changed_module(MODULE, planned)
+    assert b"function after(){return 1}/*T*/" in changed
+    assert b"function render(){NEW}" in changed

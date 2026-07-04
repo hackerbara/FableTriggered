@@ -220,14 +220,66 @@ def plan_module_operations(
                 seam_hint=operation.seam_hint,
             )
         )
-    planned.sort(key=lambda item: (item.module_start, item.module_end, item.package_id, item.op_id))
-    for left, right in zip(planned, planned[1:], strict=False):
-        if left.module_end > right.module_start:
-            raise ModulePatchError(
-                f"overlap: {left.package_id}:{left.op_id} [{left.module_start},{left.module_end}) "
-                f"and {right.package_id}:{right.op_id} [{right.module_start},{right.module_end})"
-            )
+    planned.sort(key=_render_order)
+    check_planned_conflicts(planned)
     return planned
+
+
+def _render_order(item: PlannedModuleOperation) -> tuple:
+    return (
+        item.module_start,
+        item.module_end,
+        item.insert_order if item.insert_order is not None else 0,
+        item.package_id,
+        item.op_id,
+    )
+
+
+def check_planned_conflicts(planned: list[PlannedModuleOperation]) -> None:
+    ordered = sorted(planned, key=_render_order)
+    for left, right in zip(ordered, ordered[1:], strict=False):
+        if left.module_end > right.module_start:
+            if "insertion" in (left.kind, right.kind):
+                inserter, owner = (left, right) if left.kind == "insertion" else (right, left)
+                raise ModulePatchError(
+                    "patch_conflict:insert_inside_claimed_range:"
+                    f"{inserter.package_id}:{inserter.op_id}:{owner.package_id}:{owner.op_id}"
+                )
+            raise ModulePatchError(
+                "patch_conflict:range_overlap:"
+                f"{left.package_id}:{left.op_id}:{right.package_id}:{right.op_id}"
+            )
+    points: dict[int, list[PlannedModuleOperation]] = {}
+    for item in ordered:
+        if item.kind == "insertion":
+            points.setdefault(item.module_start, []).append(item)
+    for offset, items in sorted(points.items()):
+        if len(items) < 2:
+            continue
+        if any(item.insert_order is None for item in items):
+            raise ModulePatchError(
+                f"patch_conflict:insert_order_required:{items[0].module_path}:{offset}"
+            )
+        seen_orders: set[int] = set()
+        for item in items:
+            assert item.insert_order is not None
+            if item.insert_order in seen_orders:
+                raise ModulePatchError(
+                    f"patch_conflict:insert_order_duplicate:"
+                    f"{item.module_path}:{offset}:{item.insert_order}"
+                )
+            seen_orders.add(item.insert_order)
+    claimed = [item for item in ordered if item.module_end > item.module_start]
+    for item in ordered:
+        if item.kind != "insertion":
+            continue
+        for evidence_start, evidence_end in item.evidence_spans:
+            for owner in claimed:
+                if evidence_start < owner.module_end and owner.module_start < evidence_end:
+                    raise ModulePatchError(
+                        f"patch_conflict:insert_anchor_inside_claimed_range:"
+                        f"{item.package_id}:{item.op_id}:{owner.package_id}:{owner.op_id}"
+                    )
 
 
 def render_changed_module(module_content: bytes, planned: list[PlannedModuleOperation]) -> bytes:

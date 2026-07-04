@@ -209,6 +209,11 @@ def test_insertion_context_markers_must_pair():
         load_manifest_v2_dict(_manifest_with_op(_insert_op(startMarker="ji=")))
 
 
+def test_insertion_context_sha_requires_context_markers():
+    with pytest.raises(ManifestV2Error, match="contextSha256 requires context markers"):
+        load_manifest_v2_dict(_manifest_with_op(_insert_op(contextSha256="0" * 64)))
+
+
 def test_replace_exact_rejects_structured_splice_fields():
     op = {
         "opId": "legacy",

@@ -225,7 +225,7 @@ def plan_module_operations(
     return planned
 
 
-def _render_order(item: PlannedModuleOperation) -> tuple:
+def planned_operation_render_order(item: PlannedModuleOperation) -> tuple:
     return (
         item.module_start,
         item.module_end,
@@ -233,6 +233,10 @@ def _render_order(item: PlannedModuleOperation) -> tuple:
         item.package_id,
         item.op_id,
     )
+
+
+def _render_order(item: PlannedModuleOperation) -> tuple:
+    return planned_operation_render_order(item)
 
 
 def check_planned_conflicts(planned: list[PlannedModuleOperation]) -> None:

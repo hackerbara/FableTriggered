@@ -26,6 +26,7 @@ from claude_monkey.module_patch import (
     PlannedModuleOperation,
     check_planned_conflicts,
     plan_module_operations,
+    planned_operation_render_order,
     render_changed_module,
     verify_insertions,
 )
@@ -611,8 +612,10 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
                 "contextEnd": item.context_end,
                 **insertion_evidence.get((item.package_id, item.op_id), {}),
             }
-            for planned in planned_by_module.values()
-            for item in planned
+            for item in sorted(
+                (item for planned in planned_by_module.values() for item in planned),
+                key=planned_operation_render_order,
+            )
         ]
         report.changedModules = [
             {

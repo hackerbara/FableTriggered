@@ -371,3 +371,30 @@ def test_v3_bridge_carries_relationship_metadata(tmp_path):
     bridged = _v3_manifest_as_v2_dict(package_dir)
     assert bridged["requiresPackages"] == ["footer-drawers"]
     assert bridged["conflictsWithPackages"] == []
+
+
+
+def test_operations_applied_report_uses_render_order_for_shared_insertions(tmp_path):
+    source = tmp_path / "claude-source"
+    source.write_bytes(build_aligned_macho_fixture()[0])
+    pkg_a = tmp_path / "pkg-a"
+    pkg_b = tmp_path / "pkg-b"
+    write_insertion_package(
+        pkg_a, source, package_id="pkg-a", payload=",A_ENTRY",
+        insert_order=100, postcondition_value="A_ENTRY",
+    )
+    write_insertion_package(
+        pkg_b, source, package_id="pkg-b", payload=",B_ENTRY",
+        insert_order=200, postcondition_value="B_ENTRY",
+    )
+
+    report = _build(tmp_path, source, [pkg_b, pkg_a])
+
+    assert report.automatedStatus == "passed"
+    assert [item["opId"] for item in report.operationsApplied] == [
+        "pkg-a-insert",
+        "pkg-b-insert",
+    ]
+    assert [item["finalOffset"] for item in report.operationsApplied] == sorted(
+        item["finalOffset"] for item in report.operationsApplied
+    )

@@ -70,7 +70,7 @@ def test_plan_module_operations_rejects_overlaps():
             "old_range_length": None,
         }
     )
-    with pytest.raises(ModulePatchError, match="overlap"):
+    with pytest.raises(ModulePatchError, match="patch_conflict:range_overlap"):
         plan_module_operations(
             "pkg",
             "/$bunfs/root/src/entrypoints/cli.js",

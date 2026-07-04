@@ -266,6 +266,10 @@ def _validate_operation_shape(operation: ModuleOperationV2) -> None:
             raise ManifestV2Error(
                 f"{operation.op_id}: context markers must be provided together"
             )
+        if operation.context_sha256 is not None and operation.start_marker is None:
+            raise ManifestV2Error(
+                f"{operation.op_id}: contextSha256 requires context markers"
+            )
         if operation.exact is not None or operation.sub_exact is not None:
             raise ManifestV2Error(
                 f"{operation.op_id}: exact/subExact not allowed on insertions"

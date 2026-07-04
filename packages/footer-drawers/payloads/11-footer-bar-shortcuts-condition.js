@@ -1,1 +1,1 @@
-/* footer-drawers payload 11-footer-bar-shortcuts-condition.js is filled by Task 3 */
+if(de.length===0&&!FDbar&&!we&&!le&&!ie&&ue.length===0&&!ve&&n)

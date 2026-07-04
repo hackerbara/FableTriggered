@@ -1,1 +1,1 @@
-/* footer-drawers payload 13-footer-bar-render.js is filled by Task 3 */
+ue.length>0&&di.jsxs(B,{flexShrink:0,children:[di.jsx(qn,{children:ue}),(we||FDbar||de.length>0)&&di.jsx(v,{dimColor:!0,children:" \xB7 "})]}),we&&di.jsxs(B,{flexShrink:0,children:[we,(FDbar||de.length>0)&&di.jsx(v,{dimColor:!0,children:" \xB7 "})]}),FDbar&&di.jsxs(B,{flexShrink:0,children:[FDbar,de.length>0&&di.jsx(v,{dimColor:!0,children:" \xB7 "})]}),de.length>0&&di.jsx(v,{wrap:"truncate",children:di.jsx(qn,{children:de})})

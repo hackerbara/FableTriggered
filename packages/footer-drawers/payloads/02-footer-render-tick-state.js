@@ -1,1 +1,1 @@
-/* footer-drawers payload 02-footer-render-tick-state.js is filled by Task 3 */
+wt=wo.useRef(!1),[FDv,FDsv]=wo.useState(0)

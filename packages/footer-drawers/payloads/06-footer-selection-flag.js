@@ -1,1 +1,1 @@
-/* footer-drawers payload 06-footer-selection-flag.js is filled by Task 3 */
+Mm=Lm==="frame",FDs=Lm==="drawers"

@@ -1,1 +1,1 @@
-/* footer-drawers payload 07-footer-action-wrap-open.js is filled by Task 3 */
+Go(__codexFDWrapActions({"footer:up":By,"footer:down":d0,"footer:next":o6,"footer:previous":IR,"footer:openSelected":()=>{

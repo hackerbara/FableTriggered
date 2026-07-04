@@ -1,1 +1,1 @@
-/* footer-drawers payload 08-footer-action-wrap-close.js is filled by Task 3 */
+return!1}},Lm,Rp),{context:"Footer",isActive:!!Lm&&!se});

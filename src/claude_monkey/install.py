@@ -339,7 +339,18 @@ def _lock_target(target_path: Path) -> bool:
     fail the caller's transaction -- the shim keeps working unlocked, exactly
     as it did before this feature existed. Callers report the returned bool
     honestly (`targetLocked`/`shimLocked`) instead of assuming success.
+
+    Invariant: our shim is always a regular file we just wrote ourselves --
+    never a symlink. `Path.stat`/`os.chflags` both follow symlinks by
+    default, so if `target_path` is ever a symlink here (e.g. a caller
+    handed us the official installer's reasserted symlink, or a `--force`
+    path that bypassed the symlink-excluding
+    `current_target_is_installed_shim` gate), flagging it would silently set
+    UF_IMMUTABLE on whatever the link resolves to -- someone else's file,
+    not ours. Bail out first: a symlink is never lockable as "our shim".
     """
+    if target_path.is_symlink():
+        return False
     if not (sys.platform == "darwin" and hasattr(os, "chflags")):
         return False
     try:
@@ -356,7 +367,16 @@ def shim_target_is_locked(target_path: Path) -> bool:
     field), locked or not, installed or not. False on any platform without
     `st_flags` support (e.g. Linux) or if the stat call fails for any reason
     (missing file, dangling symlink, permission).
+
+    Invariant: our shim is always a regular file, never a symlink (see
+    `_lock_target`'s docstring). `Path.stat()` follows symlinks by default,
+    so without this guard a symlink at `target_path` would report whatever
+    flag its resolved destination happens to carry -- not meaningful as "is
+    this OUR shim locked". Bail out first: a symlink is never ours, so it is
+    never reported as locked.
     """
+    if target_path.is_symlink():
+        return False
     if not (sys.platform == "darwin" and hasattr(os, "chflags")):
         return False
     try:
@@ -382,7 +402,19 @@ def _unlock_target(target_path: Path) -> bool:
     non-mac platform) and when the flag was present but the `chflags` call
     itself failed -- either way there is nothing for a caller to
     conditionally re-lock.
+
+    Invariant: our shim is always a regular file, never a symlink (see
+    `_lock_target`'s docstring) -- a symlink at `target_path` can never be
+    ours to unlock, so there is nothing to do. This is checked explicitly
+    here, up front, rather than relying solely on `shim_target_is_locked`'s
+    own guard below: both a real installed shim's target and an external
+    reassertion (e.g. the official installer's symlink; see
+    `repair.py`'s unlock call site and `restore_install_transaction`'s
+    `--force` path in install.py) can land here, and neither should ever
+    have `chflags` called against it through a link.
     """
+    if target_path.is_symlink():
+        return False
     if not shim_target_is_locked(target_path):
         return False
     try:
@@ -394,18 +426,23 @@ def _unlock_target(target_path: Path) -> bool:
 
 
 def _write_shim_to_target(target_path: Path, state_dir: Path) -> None:
-    # Unlock before any write: a re-install over an existing ClaudeMonkey-
-    # locked shim would otherwise fail with EPERM at the swap below, on both
-    # the plain and privileged paths (`chflags UF_IMMUTABLE` blocks
-    # rename()/unlink() unconditionally, privilege or not, until the flag is
-    # explicitly cleared -- verified directly against a real filesystem).
-    # `was_locked` gates the abort-path re-lock decision if the write itself
-    # then fails below (see `_unlock_target`'s docstring).
-    was_locked = _unlock_target(target_path)
+    # Unlock immediately before the swap, not before building the
+    # replacement at its own tmp path: a re-install over an existing
+    # ClaudeMonkey-locked shim would otherwise fail with EPERM at the swap
+    # below, on both the plain and privileged paths (`chflags UF_IMMUTABLE`
+    # blocks rename()/unlink() unconditionally, privilege or not, until the
+    # flag is explicitly cleared -- verified directly against a real
+    # filesystem). Keeping the unlock window as narrow as possible (matching
+    # `repair.py`'s equivalent unlock-just-before-swap placement) minimizes
+    # how long `target_path` sits unprotected while nothing about writing the
+    # tmp file needs it unlocked at all. `was_locked` gates the abort-path
+    # re-lock decision if the swap itself then fails below (see
+    # `_unlock_target`'s docstring).
     if authorization.target_needs_authorization(target_path):
         tmp = state_dir / (target_path.name + ".claude-monkey.tmp")
         write_shim(tmp, state_dir)
         _privileged_mkdir(target_path.parent)
+        was_locked = _unlock_target(target_path)
         try:
             _privileged_replace(tmp, target_path)
         except Exception:
@@ -415,6 +452,7 @@ def _write_shim_to_target(target_path: Path, state_dir: Path) -> None:
         return
     tmp = target_path.with_suffix(target_path.suffix + ".claude-monkey.tmp")
     write_shim(tmp, state_dir)
+    was_locked = _unlock_target(target_path)
     try:
         tmp.replace(target_path)
     except Exception:

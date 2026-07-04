@@ -582,10 +582,16 @@ def status_payload(paths: StatePaths, config: ClaudeMonkeyConfig) -> dict[str, A
     # file bytes) -- only meaningful while `shim_installed` is True, exactly
     # like `shimTargetPath`/`installRecordPath` above/below. False on
     # non-mac platforms or whenever the target isn't currently the installed
-    # shim at all.
+    # shim at all. Reuses `install_record_data` (already loaded just above)
+    # instead of re-reading `install_record` from disk a third time; also
+    # guards against the record having vanished between that read and
+    # `_shim_is_installed`'s own earlier read (a real, if narrow, race) --
+    # without the `isinstance` check a missing/malformed `targetPath` would
+    # otherwise reach `Path(None)` and raise `TypeError`.
+    _shim_target_path = install_record_data.get("targetPath") if install_record_data else None
     shim_locked = (
-        shim_target_is_locked(Path(_shim_target_from_record(install_record)))
-        if shim_installed
+        shim_target_is_locked(Path(_shim_target_path))
+        if shim_installed and isinstance(_shim_target_path, str)
         else False
     )
     official_replacement = _detect_official_replacement(

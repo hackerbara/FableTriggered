@@ -122,6 +122,36 @@ def test_reinstall_over_locked_shim_unlocks_before_write_and_relocks(tmp_path):
     assert record["targetLocked"] is True
 
 
+@requires_chflags
+def test_reinstall_over_locked_shim_stays_locked_while_tmp_is_written(tmp_path, monkeypatch):
+    """Finding 2 (fix round): `_write_shim_to_target` must unlock
+    `target_path` immediately before the swap, not before `write_shim`
+    builds the replacement at its own (different) tmp path -- narrowing the
+    window during which the real target sits unprotected, matching
+    `repair.py`'s tighter unlock-just-before-swap placement.
+    """
+    target = tmp_path / "local-bin" / "claude"
+    make_executable(target)
+    state = tmp_path / "state"
+
+    install_shim_transaction(target, state, dry_run=False)
+    assert target.stat().st_flags & stat.UF_IMMUTABLE
+
+    real_write_shim = install_module.write_shim
+    observed: dict[str, bool] = {}
+
+    def observing_write_shim(path, state_dir):
+        observed["locked_during_write"] = install_module.shim_target_is_locked(target)
+        return real_write_shim(path, state_dir)
+
+    monkeypatch.setattr(install_module, "write_shim", observing_write_shim)
+
+    install_shim_transaction(target, state, dry_run=False)
+
+    assert observed["locked_during_write"] is True
+    assert target.stat().st_flags & stat.UF_IMMUTABLE
+
+
 def test_lock_target_is_noop_and_returns_false_on_non_mac_platform(tmp_path, monkeypatch):
     target = tmp_path / "claude"
     target.write_text("shim")
@@ -310,3 +340,134 @@ def test_shim_target_is_locked_false_on_non_mac_platform(tmp_path, monkeypatch):
     target.write_text("shim")
     monkeypatch.setattr(install_module.sys, "platform", "linux")
     assert install_module.shim_target_is_locked(target) is False
+
+
+# -- symlink guard (finding 1, fix round): never follow a link to flag or --
+# -- unflag someone else's file -----------------------------------------------
+
+
+@requires_chflags
+def test_lock_target_is_noop_on_symlink_to_unflagged_file(tmp_path):
+    """A symlink is never our shim (we only ever write regular files), so
+    `_lock_target` must bail out before ever chflags-ing through the link --
+    otherwise it would set UF_IMMUTABLE on whatever the link resolves to.
+    """
+    destination = tmp_path / "someone-elses-file"
+    destination.write_text("not ours")
+    link = tmp_path / "claude"
+    link.symlink_to(destination)
+
+    assert install_module._lock_target(link) is False
+    assert not (destination.stat().st_flags & stat.UF_IMMUTABLE)
+
+
+@requires_chflags
+def test_lock_target_is_noop_on_symlink_to_flagged_file(tmp_path):
+    destination = tmp_path / "someone-elses-file"
+    destination.write_text("not ours")
+    os.chflags(str(destination), stat.UF_IMMUTABLE)
+    link = tmp_path / "claude"
+    link.symlink_to(destination)
+
+    try:
+        assert install_module._lock_target(link) is False
+        assert destination.stat().st_flags & stat.UF_IMMUTABLE
+    finally:
+        os.chflags(str(destination), 0)
+
+
+@requires_chflags
+def test_shim_target_is_locked_false_on_symlink_to_unflagged_file(tmp_path):
+    destination = tmp_path / "someone-elses-file"
+    destination.write_text("not ours")
+    link = tmp_path / "claude"
+    link.symlink_to(destination)
+
+    assert install_module.shim_target_is_locked(link) is False
+
+
+@requires_chflags
+def test_shim_target_is_locked_false_on_symlink_to_flagged_file(tmp_path):
+    """Even though the destination genuinely carries UF_IMMUTABLE, a
+    symlink can never be reported as "our shim, locked" -- our shim is
+    always a regular file.
+    """
+    destination = tmp_path / "someone-elses-file"
+    destination.write_text("not ours")
+    os.chflags(str(destination), stat.UF_IMMUTABLE)
+    link = tmp_path / "claude"
+    link.symlink_to(destination)
+
+    try:
+        assert install_module.shim_target_is_locked(link) is False
+    finally:
+        os.chflags(str(destination), 0)
+
+
+@requires_chflags
+def test_unlock_target_is_noop_on_symlink_to_unflagged_file(tmp_path):
+    destination = tmp_path / "someone-elses-file"
+    destination.write_text("not ours")
+    link = tmp_path / "claude"
+    link.symlink_to(destination)
+
+    assert install_module._unlock_target(link) is False
+    assert not (destination.stat().st_flags & stat.UF_IMMUTABLE)
+
+
+@requires_chflags
+def test_unlock_target_is_noop_on_symlink_to_flagged_file(tmp_path):
+    """The destination carries UF_IMMUTABLE, but the link is never ours to
+    unlock -- `_unlock_target` must leave the destination's flag untouched.
+    """
+    destination = tmp_path / "someone-elses-file"
+    destination.write_text("not ours")
+    os.chflags(str(destination), stat.UF_IMMUTABLE)
+    link = tmp_path / "claude"
+    link.symlink_to(destination)
+
+    try:
+        assert install_module._unlock_target(link) is False
+        assert destination.stat().st_flags & stat.UF_IMMUTABLE
+    finally:
+        os.chflags(str(destination), 0)
+
+
+# -- status.py record re-read guard (finding 3, fix round) --------------------
+
+
+@requires_chflags
+def test_status_shim_locked_false_when_record_vanishes_between_reads(tmp_path, monkeypatch):
+    """Guard: if the install record disappears (or is read as empty) between
+    `_shim_is_installed`'s own read and `status_payload`'s subsequent
+    `install_record_data` read -- a real, if narrow, race -- the `shimLocked`
+    computation must not raise `TypeError` from `Path(None)`; it must simply
+    report False.
+    """
+    from claude_monkey import status as status_module
+
+    target = tmp_path / "local-bin" / "claude"
+    make_executable(target)
+    state = tmp_path / "state"
+    install_shim_transaction(target, state, dry_run=False)
+
+    paths = StatePaths(state)
+    install_record_path = state / "install-record.json"
+
+    real_read_json_file = status_module._read_json_file
+    calls = {"n": 0}
+
+    def flaky_read_json_file(path):
+        if path == install_record_path:
+            calls["n"] += 1
+            if calls["n"] > 1:
+                return None
+        return real_read_json_file(path)
+
+    monkeypatch.setattr(status_module, "_read_json_file", flaky_read_json_file)
+
+    payload = status_payload(paths, load_config(paths.config_path))
+
+    assert payload["shimInstalled"] is True
+    assert payload["shimLocked"] is False
+    assert calls["n"] >= 2

@@ -179,3 +179,85 @@ def test_run_streaming_respects_mutating_lock(tmp_path):
         runner.run_streaming("build", ["-c", "pass"], on_event=lambda e: None)
     handle.cancel(grace_seconds=0.5)
     handle.process.wait(timeout=10)
+
+
+def test_run_streaming_respects_busy_for_test_flag(tmp_path):
+    runner = CommandRunner(cli_argv=[sys.executable], logs_dir=tmp_path)
+    runner.mark_busy_for_test()
+    try:
+        with pytest.raises(MutatingCommandBusy):
+            runner.run_streaming("build", ["-c", "pass"], on_event=lambda e: None)
+    finally:
+        runner.clear_busy_for_test()
+
+
+def test_run_streaming_on_event_exception_does_not_abort_stream(tmp_path):
+    runner = CommandRunner(cli_argv=FAKE_STREAMING_CLI[:2], logs_dir=tmp_path)
+    events: list[dict] = []
+    call_count = {"n": 0}
+
+    def flaky_on_event(evt):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise RuntimeError("boom from a bad GUI callback")
+        events.append(evt)
+
+    handle = runner.run_streaming("build", FAKE_STREAMING_CLI[2:], on_event=flaky_on_event)
+    handle.process.wait(timeout=10)
+    deadline = time.time() + 5
+    results = []
+    while not results and time.time() < deadline:
+        results = runner.drain_results()
+        time.sleep(0.05)
+    assert {"event": "log", "stage": None, "line": "garbage line"} in events
+    assert results[0][1]["ok"] is True
+
+
+ORPHAN_GRANDCHILD_CLI = [
+    sys.executable,
+    "-c",
+    (
+        "import json,subprocess,sys;"
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(2)']);"
+        "print(json.dumps({'schemaVersion':1,'ok':True,'status':'ok','summary':'done'}))"
+    ),
+]
+
+
+def test_run_streaming_bounded_join_survives_orphaned_grandchild(monkeypatch, tmp_path):
+    # A grandchild that inherits the stdout/stderr pipe fds keeps them open
+    # (no EOF) even after our immediate child exits. Python's buffered
+    # TextIOWrapper.read(8192) blocks trying to fill the full chunk rather
+    # than returning the short write early, so the reader threads genuinely
+    # cannot finish here -- the fix under test is that finalize() stops
+    # waiting on them (bounded join), still queues a best-effort payload
+    # noting the truncation, and -- most importantly -- releases the
+    # mutating lock instead of holding it forever.
+    monkeypatch.setattr("claude_monkey.menubar_commands.READER_JOIN_TIMEOUT_SECONDS", 0.3)
+    runner = CommandRunner(cli_argv=ORPHAN_GRANDCHILD_CLI[:1], logs_dir=tmp_path)
+    handle = runner.run_streaming("build", ORPHAN_GRANDCHILD_CLI[1:], on_event=lambda e: None)
+    handle.process.wait(timeout=10)
+
+    deadline = time.time() + 5
+    results = []
+    while not results and time.time() < deadline:
+        results = runner.drain_results()
+        time.sleep(0.05)
+    assert results, "a best-effort result should be queued even though a grandchild kept pipes open"
+    assert results[0][0] == "build"
+
+    logged = json.loads(runner.log_path.read_text().splitlines()[-1])
+    assert "reader thread still running" in logged["stderr"]
+
+    # Lock must have been released despite the leaked pipe fds still being open.
+    deadline = time.time() + 5
+    second_handle = None
+    last_error: Exception | None = None
+    while second_handle is None and time.time() < deadline:
+        try:
+            second_handle = runner.run_streaming("build", ["-c", "pass"], on_event=lambda e: None)
+        except MutatingCommandBusy as exc:
+            last_error = exc
+            time.sleep(0.05)
+    assert second_handle is not None, f"lock never released: {last_error}"
+    second_handle.process.wait(timeout=10)

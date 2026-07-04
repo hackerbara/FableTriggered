@@ -14,6 +14,12 @@ from typing import Any
 
 MAX_CAPTURE_CHARS = 120_000
 MAX_LOG_STDERR_CHARS = 2_000
+# Bound on how long finalize() waits for the reader threads to hit EOF after
+# the process itself has exited. A double-forked/backgrounded descendant can
+# inherit the stdout/stderr pipe fds and keep them open indefinitely, which
+# would otherwise wedge the reader threads (and the held _mutating_lock)
+# forever even though the command we launched is long gone.
+READER_JOIN_TIMEOUT_SECONDS = 5.0
 
 
 class MutatingCommandBusy(RuntimeError):
@@ -262,6 +268,9 @@ class CommandRunner:
     def run_streaming(
         self, name: str, args: list[str], *, on_event: Callable[[dict[str, Any]], None]
     ) -> StreamingHandle:
+        if self._busy_for_test:
+            raise MutatingCommandBusy("another mutating command is running")
+
         acquired = self._mutating_lock.acquire(blocking=False)
         if not acquired:
             raise MutatingCommandBusy("another mutating command is running")
@@ -298,6 +307,9 @@ class CommandRunner:
             _drain_stream(process.stdout, stdout_capture)
 
         def read_stderr() -> None:
+            # Intentionally line-buffered (unlike _drain_stream's chunked
+            # reads) because each stderr line must be individually parsed as
+            # a JSONL progress event or, failing that, wrapped as a log event.
             stream = process.stderr
             try:
                 for raw_line in stream:
@@ -309,10 +321,19 @@ class CommandRunner:
                         obj = json.loads(stripped)
                     except json.JSONDecodeError:
                         obj = None
-                    if isinstance(obj, dict):
-                        on_event(obj)
-                    else:
-                        on_event({"event": "log", "stage": None, "line": stripped})
+                    event = (
+                        obj
+                        if isinstance(obj, dict)
+                        else {"event": "log", "stage": None, "line": stripped}
+                    )
+                    try:
+                        on_event(event)
+                    except Exception:
+                        # Progress reporting must never break the underlying
+                        # operation: a bad GUI callback shouldn't truncate
+                        # the rest of the stream (matches StageTracker
+                        # philosophy elsewhere in the codebase).
+                        pass
             finally:
                 stream.close()
 
@@ -323,10 +344,24 @@ class CommandRunner:
                 stdout_thread.start()
                 stderr_thread.start()
                 returncode = process.wait()
-                stdout_thread.join()
-                stderr_thread.join()
+                # Bounded: a double-forked/backgrounded grandchild can inherit
+                # the pipe fds and keep them open past the parent's exit, in
+                # which case these threads would never see EOF. Proceed with
+                # whatever was captured rather than hanging (and holding
+                # _mutating_lock) forever; the leaked daemon threads simply
+                # keep running in the background until the descendant exits.
+                stdout_thread.join(timeout=READER_JOIN_TIMEOUT_SECONDS)
+                stderr_thread.join(timeout=READER_JOIN_TIMEOUT_SECONDS)
+                truncated = stdout_thread.is_alive() or stderr_thread.is_alive()
                 stdout = stdout_capture.value()
                 stderr = stderr_capture.value()
+                if truncated:
+                    stderr = (
+                        stderr
+                        + "\n[claude_monkey: reader thread still running after process "
+                        "exit; capture may be truncated (likely an orphaned descendant "
+                        "holding stdio open)]"
+                    )
                 self._log(argv, int(returncode), stderr)
                 try:
                     payload = self._finalize_json_payload(stdout, stderr, int(returncode))

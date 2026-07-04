@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 2,
+  "id": "footer-drawers",
+  "name": "Footer Drawers Framework",
+  "description": "Shared footer toolbar, lifecycle, status bar, and bottom-overlay mount for drawer packages.",
+  "packageVersion": "0.1.0",
+  "targets": [
+    {
+      "sourceIdentity": {
+        "claudeVersion": "2.1.201",
+        "versionOutput": "2.1.201 (Claude Code)",
+        "sha256": "a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd",
+        "sizeBytes": 231708784,
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "requiredEngine": "bun_graph_repack",
+      "requiredBinaryFormat": "bun_standalone_macho64",
+      "modules": [
+        {
+          "path": "/$bunfs/root/src/entrypoints/cli.js",
+          "contentSha256": "46db617a7b13c062fb31595f6244819b11f7cdc6e6fed8e2c3f74a27fb6da1bd",
+          "contentLength": 18700756,
+          "operations": [
+            {
+              "opId": "fd-bootstrap-and-overlay",
+              "label": "Footer Drawers registry bootstrap and shared bottom overlay renderer",
+              "type": "replace_exact",
+              "exact": "function Ilc(){let e=MXe.c(2),t=clc();if(!t)return null;let n;if(e[0]!==t)n=Xd.jsx(B,{position:\"absolute\",bottom:\"100%\",left:0,right:0,opaque:!0,children:t}),e[0]=t,e[1]=n;else n=e[1];return n}",
+              "requireWithinRange": [],
+              "oldRangeSha256": "9ff773cbc33face8625d9e4883d33b5e36aeae2e87349921b9f3402fc7d12526",
+              "oldRangeLength": 193,
+              "replacement": {
+                "path": "payloads/01-bootstrap-and-overlay.js",
+                "sha256": "7c20a5d4df3dc16432f42927f3e1f1064d5456d526c5c2a45ee59ba8fca2c6e2"
+              },
+              "knownBehaviorChange": "Adds shared drawer registry helpers and renders the active registered drawer in the bottom overlay sibling."
+            }
+          ]
+        }
+      ],
+      "preconditions": [
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "function Ilc(){let e=MXe.c(2),t=clc();if(!t)return null;let n;if(e[0]!==t)n=Xd.jsx(B,{position:\"absolute\",bottom:\"100%\",left:0,right:0,opaque:!0,children:t}),e[0]=t,e[1]=n;else n=e[1];return n}"
+        }
+      ],
+      "postconditions": [
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__CODEX_FOOTER_DRAWERS_V1__"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "function __codexFDWrapActions"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "function Ilc(){let e=MXe.c(3)"
+        }
+      ],
+      "manualSmoke": {
+        "required": true,
+        "reason": "Shared footer drawer toolbar and overlay routing require interactive TUI verification."
+      }
+    }
+  ]
+}

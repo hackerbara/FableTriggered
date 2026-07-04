@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 2,
+  "id": "thinking-text-drawer",
+  "name": "Thinking Text Drawer",
+  "description": "Projects raw and structured thinking text into an always-openable footer Thinking drawer.",
+  "packageVersion": "0.1.0",
+  "targets": [
+    {
+      "sourceIdentity": {
+        "claudeVersion": "2.1.201",
+        "versionOutput": "2.1.201 (Claude Code)",
+        "sha256": "a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd",
+        "sizeBytes": 231708784,
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "requiredEngine": "bun_graph_repack",
+      "requiredBinaryFormat": "bun_standalone_macho64",
+      "modules": [
+        {
+          "path": "/$bunfs/root/src/entrypoints/cli.js",
+          "contentSha256": "46db617a7b13c062fb31595f6244819b11f7cdc6e6fed8e2c3f74a27fb6da1bd",
+          "contentLength": 18700756,
+          "operations": []
+        }
+      ],
+      "preconditions": [
+        {"type": "module_must_contain", "modulePath": "/$bunfs/root/src/entrypoints/cli.js", "value": "thinking_delta"},
+        {"type": "module_must_contain", "modulePath": "/$bunfs/root/src/entrypoints/cli.js", "value": "case\"thinking\""},
+        {"type": "module_must_contain", "modulePath": "/$bunfs/root/src/entrypoints/cli.js", "value": "thinking_tokens"}
+      ],
+      "postconditions": [
+        {"type": "module_must_contain", "modulePath": "/$bunfs/root/src/entrypoints/cli.js", "value": "__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__"},
+        {"type": "module_must_contain", "modulePath": "/$bunfs/root/src/entrypoints/cli.js", "value": "No thinking captured yet"},
+        {"type": "module_must_contain", "modulePath": "/$bunfs/root/src/entrypoints/cli.js", "value": "__codexTTDRecordSalvagedThinking"}
+      ],
+      "manualSmoke": {
+        "required": true,
+        "reason": "Thinking text availability depends on live Claude Code stream behavior and Ctrl-O-visible structured thinking blocks."
+      }
+    }
+  ]
+}

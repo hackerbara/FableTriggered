@@ -1,0 +1,1 @@
+globalThis.__CODEX_THINKING_TEXT_DRAWER_SELECTED_V1__=!!tD;globalThis.__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__=!!tD&&!!tDo;globalThis.__CODEX_THINKING_TEXT_DRAWER_SCROLL_V1__=__codexTTDEnsure().scroll||0;return qd.jsxs(B,{flexDirection:"column",marginTop:Vt||dY?0:1,children:[Lm&&!se&&qd.jsx(B,{tabIndex:0,autoFocus:!0,onKeyDown:X8}),!Ys()&&qd.jsx(DTr,{}),J&&

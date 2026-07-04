@@ -1,0 +1,1 @@
+case"signature_delta":try{__codexTTDRecordThinkingSignature({chars:VVe(e.event.delta.signature.length),streamKey:e?.event?.index??"active",requestId:e?.request_id})}catch(d){}o?.({type:"thinking_signature",chars:VVe(e.event.delta.signature.length)});return;

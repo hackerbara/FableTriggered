@@ -1,0 +1,1 @@
+ue=x.map((Me)=>di.jsx(ELc,{link:Me},Me.key??Me.url)),de=[...[]],tDf=__codexTTDDrawerFrame(),tDbar=di.jsx(v,{dimColor:!globalThis.__CODEX_THINKING_TEXT_DRAWER_SELECTED_V1__,color:globalThis.__CODEX_THINKING_TEXT_DRAWER_SELECTED_V1__?"permission":void 0,children:tDf.entryCount>0?`Thinking ${tDf.entryCount}`:"Thinking"},"thinking-available"),fe=n?tNf(s,L,W,F,R,O):[];de.push(tDbar);

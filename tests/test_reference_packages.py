@@ -52,8 +52,14 @@ def test_reference_packages_are_v15_schema_v2_with_valid_payload_hashes():
                 assert module.content_sha256
                 assert module.content_length > 0
                 for operation in module.operations:
-                    assert operation.old_range_sha256
-                    assert operation.old_range_length is not None
+                    if operation.type in ("insert_before", "insert_after"):
+                        # Structured-splice insertions carry an anchor instead of
+                        # old-range evidence (old-range fields are disallowed for
+                        # these operation types, see manifest_v2._validate_operation_shape).
+                        assert operation.anchor
+                    else:
+                        assert operation.old_range_sha256
+                        assert operation.old_range_length is not None
                     payload = load_payload_bytes(operation.replacement, package_dir)
                     assert payload
 
@@ -171,105 +177,129 @@ if (projected[1].content !== "[model context] Task reminder: task tools have not
 
 def test_hidden_context_drawer_package_uses_footer_overlay_without_global_ijo_cap_patch():
     package_dir = ROOT / "packages" / "hidden-context-drawer"
+    footer_drawers_dir = ROOT / "packages" / "footer-drawers"
     manifest_data = json.loads((package_dir / "patch.json").read_text())
     operations = manifest_data["targets"][0]["modules"][0]["operations"]
     payloads = {
         operation["opId"]: (package_dir / operation["replacement"]["path"]).read_text()
         for operation in operations
     }
+    overlay_payload = (
+        footer_drawers_dir / "payloads" / "01-real-target-helpers-and-overlay.js"
+    ).read_text()
 
     assert "__CODEX_HIDDEN_CONTEXT_DRAWER_FRAME_V13__" in payloads[
-        "projection-helpers-before-jlr"
+        "projection-helpers-before-ypr"
     ]
-    assert 'function qnc(){let e=KJe.c(12),[t,n]=S_.useState(0)' in payloads[
-        "uxl-refresh-bottom-overlay"
-    ]
-    assert "Zc(()=>n(Date.now()),100)" in payloads["uxl-refresh-bottom-overlay"]
-    assert 'bottom:"100%"' in payloads["uxl-refresh-bottom-overlay"]
-    assert 'position:"absolute",marginTop:-(hCh+1)' not in "".join(payloads.values())
-    assert any(
-        assertion["value"]
-        == 'function qnc(){let e=KJe.c(12),[t,n]=S_.useState(0);Zc(()=>n(Date.now()),100)'
-        for assertion in manifest_data["targets"][0]["postconditions"]
+    # Overlay positioning is now owned by the shared footer-drawers overlay
+    # component instead of a hidden-context-drawer-specific patch.
+    assert 'position:"absolute",bottom:"100%"' in overlay_payload
+    # The panel now refreshes itself on an interval rather than relying on a
+    # shared 100ms poll patched directly onto the overlay component.
+    assert (
+        "setInterval(()=>t(Date.now()),250)"
+        in payloads["hidden-context-panel-real-target"]
     )
+    assert 'position:"absolute",marginTop:-(hCh+1)' not in "".join(payloads.values())
+    assert 'position:"absolute",marginTop:-(hCh+1)' not in overlay_payload
+    postcondition_values = {
+        assertion["value"] for assertion in manifest_data["targets"][0]["postconditions"]
+    }
+    assert "__CODEX_HIDDEN_CONTEXT_DRAWER_FRAME_V13__" in postcondition_values
+    assert "function __codexNCHCPanel" in postcondition_values
 
 
 def test_hidden_context_drawer_scroll_step_is_three_for_keyboard_and_mouse():
-    package_dir = ROOT / "packages" / "hidden-context-drawer"
+    package_dir = ROOT / "packages" / "footer-drawers"
     keyboard_payload = (
-        package_dir / "payloads" / "12-footer-hiddencontext-up-down-scroll.js"
+        package_dir / "payloads" / "01-real-target-helpers-and-overlay.js"
     ).read_text()
     overlay_payload = (
-        package_dir / "payloads" / "15-uxl-refresh-bottom-overlay.js"
+        ROOT / "packages" / "hidden-context-drawer" / "payloads" / "17-panel-real-target.js"
     ).read_text()
 
-    assert "Bt-3" in keyboard_payload
-    assert "Bt+3" in keyboard_payload
-    assert "d.deltaY>0?3:-3" in overlay_payload
-    assert "Bt-1" not in keyboard_payload.split("if(qb&&oa>0&&xs>br)")[0]
-    assert "Bt+1" not in keyboard_payload.split("if(qb&&oa>0)")[0]
+    # Keyboard up/down scrolling now goes through the shared footer-drawers
+    # helper, which is invoked with an explicit +/-3 step.
+    assert "__codexFDHiddenContextScroll(-3,r)" in keyboard_payload
+    assert "__codexFDHiddenContextScroll(3,r)" in keyboard_payload
+    assert "__codexFDHiddenContextScroll(-1,r)" not in keyboard_payload
+    assert "__codexFDHiddenContextScroll(1,r)" not in keyboard_payload
+    # Mouse-wheel scrolling remains on the hidden-context-drawer panel itself.
+    assert "l.deltaY>0?3:-3" in overlay_payload
 
 
 def test_hidden_context_drawer_footer_flashes_blue_until_selection_clears():
     package_dir = ROOT / "packages" / "hidden-context-drawer"
+    footer_drawers_dir = ROOT / "packages" / "footer-drawers"
     helper_payload = (
-        package_dir / "payloads" / "01-projection-helpers-before-jlr.js"
+        package_dir / "payloads" / "01-projection-helpers-before-ypr-2.1.201.js"
     ).read_text()
     footer_payload = (
-        package_dir / "payloads" / "16-footer-availability-bar-hidden-context.js"
+        footer_drawers_dir / "payloads" / "09-status-real-drawer-bars.js"
     ).read_text()
-    globals_payload = (
-        package_dir / "payloads" / "14-selected-only-bottom-overlay-hidden-context-globals.js"
-    ).read_text()
-    keyboard_payload = (
-        package_dir / "payloads" / "12-footer-hiddencontext-up-down-scroll.js"
+    # Reset-on-open and reset-on-scroll both now live in the shared
+    # footer-drawers real-target helpers/action-wrapper payload.
+    globals_and_keyboard_payload = (
+        footer_drawers_dir / "payloads" / "01-real-target-helpers-and-overlay.js"
     ).read_text()
 
     assert "flashUntil:o?Number.MAX_SAFE_INTEGER:r?.flashUntil??0" in helper_payload
-    assert "hCflash=!hCsel&&Date.now()<(hCf?.flashUntil??0)" in footer_payload
+    assert "FDhFlash=!FDhSel&&Date.now()<(FDhCf?.flashUntil??0)" in footer_payload
     assert 'color:"white",backgroundColor:"blue"' in footer_payload
-    assert "Date.now()<(hCf?.flashUntil??0)" in footer_payload
-    assert "flashUntil=0" in globals_payload
-    assert "flashUntil=0" in keyboard_payload
+    assert "Date.now()<(FDhCf?.flashUntil??0)" in footer_payload
+    # Reset when scrolling the drawer.
+    assert "if(n)n.flashUntil=0" in globals_and_keyboard_payload
+    # Reset when opening the drawer via footer:openSelected.
+    assert "if(r?.frame)r.frame.flashUntil=0" in globals_and_keyboard_payload
 
 
 def test_hidden_context_drawer_footer_x_closes_and_enter_opens():
     package_dir = ROOT / "packages" / "hidden-context-drawer"
-    globals_payload = (
-        package_dir / "payloads" / "14-selected-only-bottom-overlay-hidden-context-globals.js"
-    ).read_text()
+    footer_drawers_dir = ROOT / "packages" / "footer-drawers"
+    # Open/close wiring for the hiddenContext target moved into the shared
+    # footer-drawers real-target action wrapper.
     open_close_payload = (
-        package_dir / "payloads" / "13-footer-clearselection-consumes-hiddencontext.js"
+        footer_drawers_dir / "payloads" / "01-real-target-helpers-and-overlay.js"
     ).read_text()
+    # The panel itself still owns the "x closes" hint text.
     overlay_payload = (
-        package_dir / "payloads" / "15-uxl-refresh-bottom-overlay.js"
+        package_dir / "payloads" / "17-panel-real-target.js"
     ).read_text()
+    combined_hc_and_framework_text = "\n".join(
+        [
+            *(p.read_text() for p in sorted((package_dir / "payloads").glob("*.js"))),
+            *(p.read_text() for p in sorted((footer_drawers_dir / "payloads").glob("*.js"))),
+        ]
+    )
 
     assert not (
         package_dir / "payloads" / "17-main-keydown-ctrl-period-hiddencontext.js"
     ).exists()
-    assert 'onKeyDown:(Bt)=>{if(hC&&Bt.ctrl&&Bt.key===".")' not in globals_payload
-    assert 'Bt.ctrl&&Bt.name==="escape"' not in globals_payload
-    assert 'case"hiddenContext"' in open_close_payload
+    assert 'onKeyDown:(Bt)=>{if(hC&&Bt.ctrl&&Bt.key===".")' not in combined_hc_and_framework_text
+    assert 'Bt.ctrl&&Bt.name==="escape"' not in combined_hc_and_framework_text
+    assert 't==="hiddenContext"' in open_close_payload
     assert "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!0" in open_close_payload
-    assert "hCp(!0)" in open_close_payload
+    assert "r?.setHiddenOpen?.(!0)" in open_close_payload
     assert "globalThis.__CODEX_HIDDEN_CONTEXT_DRAWER_OPEN_V13__=!1" in open_close_payload
-    assert "hCp(!1)" in open_close_payload
-    assert "Sf(null)" in open_close_payload
-    assert '"footer:clearSelection":()=>{if(hC)return!1;' in open_close_payload
+    assert "r?.setHiddenOpen?.(!1)" in open_close_payload
+    assert "n?.(null)" in open_close_payload
+    assert (
+        'o["footer:clearSelection"]=()=>{if(t==="hiddenContext"&&r?.hiddenOpen)return!1;'
+        in open_close_payload
+    )
     assert "x closes" in overlay_payload
-    assert "ctrl+. closes" not in overlay_payload
-    assert "ctrl+esc closes" not in overlay_payload
-    assert "| esc closes" not in overlay_payload
+    assert "ctrl+. closes" not in combined_hc_and_framework_text
+    assert "ctrl+esc closes" not in combined_hc_and_framework_text
+    assert "| esc closes" not in combined_hc_and_framework_text
 
 
 def test_hidden_context_drawer_payload_avoids_utf8_separator_mojibake_and_uses_warning_header():
     package_dir = ROOT / "packages" / "hidden-context-drawer"
     helper_payload = (
-        package_dir / "payloads" / "01-projection-helpers-before-jlr.js"
+        package_dir / "payloads" / "01-projection-helpers-before-ypr-2.1.201.js"
     ).read_bytes()
     overlay_payload = (
-        package_dir / "payloads" / "15-uxl-refresh-bottom-overlay.js"
+        package_dir / "payloads" / "17-panel-real-target.js"
     ).read_text()
 
     assert b"\xc2\xb7" not in helper_payload
@@ -277,7 +307,7 @@ def test_hidden_context_drawer_payload_avoids_utf8_separator_mojibake_and_uses_w
     assert 'borderColor:"warning"' in overlay_payload
     assert "borderText:{content:` Hidden Context " in overlay_payload
     assert 'lineKinds' in helper_payload.decode()
-    assert 'color:s?.lineKinds?.[c+p]==="header"?"warning":void 0' in overlay_payload
+    assert 'color:n?.lineKinds?.[a+c]==="header"?"warning":void 0' in overlay_payload
     assert 'color:d===""?void 0:"warning"' not in overlay_payload
     assert 'Xd.jsx(v,{bold:!0,children:["Hidden Context  "' not in overlay_payload
 
@@ -285,10 +315,13 @@ def test_hidden_context_drawer_payload_avoids_utf8_separator_mojibake_and_uses_w
 def test_hidden_context_drawer_projection_frame_has_timestamps_sources_and_broader_model_context():
     package_dir = ROOT / "packages" / "hidden-context-drawer"
     helper_payload = (
-        package_dir / "payloads" / "01-projection-helpers-before-jlr.js"
+        package_dir / "payloads" / "01-projection-helpers-before-ypr-2.1.201.js"
     ).read_text()
-    helper_block = helper_payload.removesuffix("function Jur(e){\n").removesuffix(
-        "function Jur(e){"
+    # The migrated payload is inserted before the "Ypr" anchor and no longer
+    # carries a trailing stub of the anchored function, but keep the
+    # removesuffix guard in case that ever changes again.
+    helper_block = helper_payload.removesuffix("function Ypr(e){\n").removesuffix(
+        "function Ypr(e){"
     )
     script = f"""
 {helper_block}

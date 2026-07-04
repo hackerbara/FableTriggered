@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
+import signal
 import subprocess
 import threading
 from collections.abc import Callable
@@ -23,6 +25,32 @@ class CapturedProcess:
     returncode: int
     stdout: str
     stderr: str
+
+
+@dataclass
+class StreamingHandle:
+    process: subprocess.Popen[str]
+
+    def cancel(self, grace_seconds: float = 5.0) -> None:
+        try:
+            pgid = os.getpgid(self.process.pid)
+        except ProcessLookupError:
+            return
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+
+        def escalate() -> None:
+            try:
+                self.process.wait(timeout=grace_seconds)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(pgid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+        threading.Thread(target=escalate, daemon=True).start()
 
 
 class _BoundedTextCapture:
@@ -163,32 +191,35 @@ class CommandRunner:
             stdout = result.stdout or ""
             stderr = result.stderr or ""
             self._log(argv, int(result.returncode), stderr)
-            if stdout.strip():
-                try:
-                    payload = json.loads(stdout)
-                except json.JSONDecodeError:
-                    payload = None
-                if isinstance(payload, dict):
-                    return payload
-            if result.returncode != 0:
-                message = stderr.strip() or f"command exited {result.returncode}"
-                return {
-                    "schemaVersion": 1,
-                    "ok": False,
-                    "status": "error",
-                    "summary": message,
-                    "reportPath": None,
-                    "targetPath": None,
-                    "authorizationRequired": False,
-                    "authorizationMethod": None,
-                    "dryRun": False,
-                    "plannedActions": [],
-                    "error": {"message": message, "code": "command_failed"},
-                }
-            raise ValueError("command succeeded but did not emit JSON")
+            return self._finalize_json_payload(stdout, stderr, int(result.returncode))
         finally:
             if acquired:
                 self._mutating_lock.release()
+
+    def _finalize_json_payload(self, stdout: str, stderr: str, returncode: int) -> dict[str, Any]:
+        if stdout.strip():
+            try:
+                payload = json.loads(stdout)
+            except json.JSONDecodeError:
+                payload = None
+            if isinstance(payload, dict):
+                return payload
+        if returncode != 0:
+            message = stderr.strip() or f"command exited {returncode}"
+            return {
+                "schemaVersion": 1,
+                "ok": False,
+                "status": "error",
+                "summary": message,
+                "reportPath": None,
+                "targetPath": None,
+                "authorizationRequired": False,
+                "authorizationMethod": None,
+                "dryRun": False,
+                "plannedActions": [],
+                "error": {"message": message, "code": "command_failed"},
+            }
+        raise ValueError("command succeeded but did not emit JSON")
 
     def open_path(self, path: Path) -> None:
         expanded = path.expanduser()
@@ -227,3 +258,96 @@ class CommandRunner:
             self._results.put((name, payload))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def run_streaming(
+        self, name: str, args: list[str], *, on_event: Callable[[dict[str, Any]], None]
+    ) -> StreamingHandle:
+        acquired = self._mutating_lock.acquire(blocking=False)
+        if not acquired:
+            raise MutatingCommandBusy("another mutating command is running")
+
+        released = threading.Event()
+
+        def release_lock() -> None:
+            if not released.is_set():
+                released.set()
+                self._mutating_lock.release()
+
+        argv = [*self.cli_argv, *args]
+        try:
+            process = subprocess.Popen(  # noqa: S603 - argv is explicit and shell=False.
+                argv,
+                shell=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                start_new_session=True,
+            )
+        except Exception:
+            release_lock()
+            raise
+
+        if process.stdout is None or process.stderr is None:
+            release_lock()
+            raise RuntimeError("subprocess pipes were not created")
+
+        stdout_capture = _BoundedTextCapture(MAX_CAPTURE_CHARS)
+        stderr_capture = _BoundedTextCapture(MAX_CAPTURE_CHARS)
+
+        def read_stdout() -> None:
+            _drain_stream(process.stdout, stdout_capture)
+
+        def read_stderr() -> None:
+            stream = process.stderr
+            try:
+                for raw_line in stream:
+                    stderr_capture.append(raw_line)
+                    stripped = raw_line.rstrip("\n")
+                    if not stripped:
+                        continue
+                    try:
+                        obj = json.loads(stripped)
+                    except json.JSONDecodeError:
+                        obj = None
+                    if isinstance(obj, dict):
+                        on_event(obj)
+                    else:
+                        on_event({"event": "log", "stage": None, "line": stripped})
+            finally:
+                stream.close()
+
+        def finalize() -> None:
+            try:
+                stdout_thread = threading.Thread(target=read_stdout, daemon=True)
+                stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+                stdout_thread.start()
+                stderr_thread.start()
+                returncode = process.wait()
+                stdout_thread.join()
+                stderr_thread.join()
+                stdout = stdout_capture.value()
+                stderr = stderr_capture.value()
+                self._log(argv, int(returncode), stderr)
+                try:
+                    payload = self._finalize_json_payload(stdout, stderr, int(returncode))
+                except Exception as exc:
+                    payload = {
+                        "schemaVersion": 1,
+                        "ok": False,
+                        "status": "error",
+                        "summary": str(exc),
+                        "reportPath": None,
+                        "targetPath": None,
+                        "authorizationRequired": False,
+                        "authorizationMethod": None,
+                        "dryRun": False,
+                        "plannedActions": [],
+                        "error": {"message": str(exc), "code": "command_failed"},
+                    }
+                self._results.put((name, payload))
+            finally:
+                release_lock()
+
+        threading.Thread(target=finalize, daemon=True).start()
+
+        return StreamingHandle(process=process)

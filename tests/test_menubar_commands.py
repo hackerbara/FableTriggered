@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import sys
+import time
+
+import pytest
 
 from claude_monkey.menubar_commands import CommandRunner, MutatingCommandBusy
 
@@ -130,3 +133,49 @@ def test_default_runner_bounds_subprocess_output_before_error_envelope(
     assert payload["error"]["message"] == "x" * 32
     logged = json.loads(runner.log_path.read_text().splitlines()[-1])
     assert logged["stderr"] == "x" * 32
+
+
+FAKE_STREAMING_CLI = [
+    sys.executable,
+    "-c",
+    (
+        "import json,sys,time;"
+        "print(json.dumps({'event':'stage','id':'a','status':'running'}),file=sys.stderr,flush=True);"
+        "print('garbage line',file=sys.stderr,flush=True);"
+        "print(json.dumps({'schemaVersion':1,'ok':True,'status':'ok','summary':'done'}))"
+    ),
+]
+
+
+def test_run_streaming_events_and_result(tmp_path):
+    runner = CommandRunner(cli_argv=FAKE_STREAMING_CLI[:2], logs_dir=tmp_path)
+    events: list[dict] = []
+    handle = runner.run_streaming("build", FAKE_STREAMING_CLI[2:], on_event=events.append)
+    handle.process.wait(timeout=10)
+    deadline = time.time() + 5
+    results = []
+    while not results and time.time() < deadline:
+        results = runner.drain_results()
+        time.sleep(0.05)
+    assert events[0] == {"event": "stage", "id": "a", "status": "running"}
+    assert {"event": "log", "stage": None, "line": "garbage line"} in events
+    assert results[0][1]["ok"] is True
+
+
+def test_cancel_kills_process_group(tmp_path):
+    sleeper = ["-c", "import time; time.sleep(60)"]
+    runner = CommandRunner(cli_argv=[sys.executable], logs_dir=tmp_path)
+    handle = runner.run_streaming("build", sleeper, on_event=lambda e: None)
+    handle.cancel(grace_seconds=1.0)
+    assert handle.process.wait(timeout=10) != 0
+
+
+def test_run_streaming_respects_mutating_lock(tmp_path):
+    runner = CommandRunner(cli_argv=[sys.executable], logs_dir=tmp_path)
+    handle = runner.run_streaming(
+        "build", ["-c", "import time; time.sleep(5)"], on_event=lambda e: None
+    )
+    with pytest.raises(MutatingCommandBusy):
+        runner.run_streaming("build", ["-c", "pass"], on_event=lambda e: None)
+    handle.cancel(grace_seconds=0.5)
+    handle.process.wait(timeout=10)

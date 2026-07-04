@@ -1,0 +1,48 @@
+# Reminders Manager
+
+A runtime toggle drawer for the recurring reminder/accounting attachment families — a second footer drawer alongside Hidden Context. All families are **blocked by default** (same as the static suppression package); you open the drawer mid-session and turn individual families back on or off while Claude Code runs. State is session-only.
+
+This is a ClaudeMonkey V1.5 schema-v2 package targeting `/$bunfs/root/src/entrypoints/cli.js` on Claude Code `2.1.199`.
+
+## What it manages
+
+Seven families, each a checkbox row (plus a master row):
+
+- todo reminders (`todo_reminder`)
+- task reminders (`task_reminder`)
+- tool search usage (`tool_search_usage_reminder`)
+- token usage (`token_usage`)
+- total tokens (`total_tokens_reminder`)
+- budget (USD) (`budget_usd`)
+- output token usage (`output_token_usage`)
+
+`[x]` = the reminder runs; `[ ]` = blocked (default). The master row shows `[~]` when mixed, and Enter/Space on it flips all-on/all-off. `todo_reminder` and `task_reminder` share one generator label (`todo_reminders`), so the generator is skipped only when both are blocked; otherwise it runs and the per-type filter drops just the blocked type.
+
+## Using it
+
+- Arrow down in the footer past Hidden Context to reach **Reminders**.
+- Enter or Space opens the drawer; then ↑/↓ move the row cursor, Enter/Space toggles the row, `x` closes.
+- Toggles take effect on the next attachment cycle. Restart returns to all-blocked.
+
+## How it composes
+
+Deny half: two seams (`ug` label gate, `Hze` object filter) made runtime-lookups against `globalThis.__CODEX_REMINDERS_MANAGER_V1__.deny`. UI half: six seams anchored on stock text verified disjoint from `hidden-context-drawer` (v0.1.12) — a footer target, an actions-map wrapper (`__codexRMWrapActions`) for key routing, a Footer space binding, an availability-bar segment, and a panel rendered at both overlay caller sites.
+
+- **Composes with `hidden-context-drawer`**: install either alone or both; a single build stacks them (tested).
+- **Composes with `normal-channel-hidden-context`** (disjoint `Jur` seam; tested).
+- **Conflicts with `upstream-attachment-suppression`**: both own the `ug`/`Hze` seams, so a build enables one or the other, never both. UAS remains maintained as the static all-off option; this package is the runtime-toggle alternative.
+
+## Build from this checkout
+
+```bash
+cd /Users/MAC/Documents/Claude-patch
+PYTHONPATH=src python3 -c "
+from claude_monkey.cli import main
+main(['build','--source','/Users/MAC/.local/share/claude/versions/2.1.199',
+ '--package','reminders-manager','--package','hidden-context-drawer',
+ '--output-dir','/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/reminders-drawer-stacked',
+ '--source-version','2.1.199','--source-version-output','2.1.199 (Claude Code)',
+ '--platform','darwin','--arch','arm64','--json'])"
+```
+
+Output: `.development/claude-monkey-builds/reminders-drawer-stacked/claude`. The build reaches `manual_smoke_pending` — interactive TUI smoke is required before activation.

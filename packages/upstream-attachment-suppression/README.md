@@ -37,6 +37,10 @@ It also filters these attachment object types before `li(...)` can wrap them as 
 
 The package intentionally leaves safety, permission, hook, file-state, plan/auto-mode, team, memory, diagnostics, queued command, and user-provided file reference families intact.
 
+## Relationship to reminders-manager
+
+This package is the **static all-off** option: the seven families are blocked unconditionally at build time. `packages/reminders-manager` is the **runtime-toggle** alternative — same seven families, but managed through a footer drawer while Claude Code runs. The two own the same `ug`/`Hze` seams and therefore **conflict**: a build enables one or the other, never both. This package stays maintained as the static option.
+
 ## Why this supersedes reminder-suppression
 
 `packages/reminder-suppression` patched selected renderer/model-conversion cases after attachment records could already exist. That is too late for the invariant this package targets.

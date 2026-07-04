@@ -1,0 +1,1 @@
+Wo(__codexRMWrapActions({"footer:up":By,"footer:down":Jk,"footer:next":Uq,"footer:previous":AR,"footer:openSelected":()=>{

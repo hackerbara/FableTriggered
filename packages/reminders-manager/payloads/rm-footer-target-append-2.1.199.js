@@ -1,0 +1,1 @@
+ji=[...ji,"reminders"];let Ly=Tt((Bt)=>Bt.footerSelection),Du=Ly&&ji.includes(Ly)?Ly:null;globalThis.__CODEX_REMINDERS_SELECTED_V1__=Du==="reminders";

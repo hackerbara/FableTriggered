@@ -122,3 +122,114 @@ def test_manifest_v2_rejects_non_mutating_operation_types(bad):
     data["targets"][0]["modules"][0]["operations"][0]["type"] = bad
     with pytest.raises(ManifestV2Error, match="unsupported operation type"):
         load_manifest_v2_dict(data)
+
+
+
+def _insert_op(**overrides):
+    op = {
+        "opId": "append-entry",
+        "label": "Append entry",
+        "type": "insert_after",
+        "anchor": 'Oe&&"frame"',
+        "insertOrder": 200,
+        "replacement": {"inline": ',"reminders"'},
+    }
+    op.update(overrides)
+    return op
+
+
+def _manifest_with_op(op):
+    return {
+        "schemaVersion": 2,
+        "id": "fixture",
+        "name": "Fixture",
+        "description": "Fixture",
+        "packageVersion": "0.1.0",
+        "targets": [
+            {
+                "sourceIdentity": {
+                    "claudeVersion": "fixture",
+                    "versionOutput": "fixture (Claude Code)",
+                    "sha256": "0" * 64,
+                    "sizeBytes": 1,
+                    "platform": "darwin",
+                    "arch": "arm64",
+                },
+                "requiredEngine": "bun_graph_repack",
+                "requiredBinaryFormat": "bun_standalone_macho64",
+                "modules": [
+                    {
+                        "path": "/$bunfs/root/src/entrypoints/cli.js",
+                        "contentSha256": "0" * 64,
+                        "contentLength": 1,
+                        "operations": [op],
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def test_insert_after_parses_with_anchor_and_order():
+    manifest = load_manifest_v2_dict(_manifest_with_op(_insert_op()))
+    operation = manifest.targets[0].modules[0].operations[0]
+    assert operation.type == "insert_after"
+    assert operation.anchor == 'Oe&&"frame"'
+    assert operation.insert_order == 200
+    assert operation.expected_anchor_count == 1
+
+
+def test_insert_before_parses_without_order():
+    op = _insert_op(type="insert_before")
+    del op["insertOrder"]
+    operation = load_manifest_v2_dict(_manifest_with_op(op)).targets[0].modules[0].operations[0]
+    assert operation.type == "insert_before"
+    assert operation.insert_order is None
+
+
+def test_insertion_requires_anchor():
+    op = _insert_op()
+    del op["anchor"]
+    with pytest.raises(ManifestV2Error, match="requires anchor"):
+        load_manifest_v2_dict(_manifest_with_op(op))
+
+
+def test_insertion_rejects_old_range_evidence():
+    with pytest.raises(ManifestV2Error, match="old-range evidence"):
+        load_manifest_v2_dict(_manifest_with_op(_insert_op(oldRangeLength=0)))
+
+
+def test_insertion_rejects_expected_anchor_count_other_than_one():
+    with pytest.raises(ManifestV2Error, match="expectedAnchorCount"):
+        load_manifest_v2_dict(_manifest_with_op(_insert_op(expectedAnchorCount=2)))
+
+
+def test_insertion_context_markers_must_pair():
+    with pytest.raises(ManifestV2Error, match="context markers"):
+        load_manifest_v2_dict(_manifest_with_op(_insert_op(startMarker="ji=")))
+
+
+def test_replace_exact_rejects_structured_splice_fields():
+    op = {
+        "opId": "legacy",
+        "label": "Legacy",
+        "type": "replace_exact",
+        "exact": "OLD",
+        "anchor": "OLD",
+        "replacement": {"inline": "NEW"},
+    }
+    with pytest.raises(ManifestV2Error, match="not allowed on replace_exact"):
+        load_manifest_v2_dict(_manifest_with_op(op))
+
+
+def test_replace_exact_rejects_seam_hint():
+    op = {
+        "opId": "legacy-hint",
+        "label": "Legacy",
+        "type": "replace_exact",
+        "exact": "OLD",
+        "seamHint": "some.seam",
+        "replacement": {"inline": "NEW"},
+    }
+    with pytest.raises(ManifestV2Error, match="not allowed on replace_exact"):
+        load_manifest_v2_dict(_manifest_with_op(op))

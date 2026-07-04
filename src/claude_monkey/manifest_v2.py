@@ -6,7 +6,7 @@ from typing import Any, Literal
 HEX_DIGITS = set("0123456789abcdefABCDEF")
 SUPPORTED_ENGINES = {"bun_graph_repack"}
 SUPPORTED_BINARY_FORMATS = {"bun_standalone_macho64"}
-SUPPORTED_OPERATION_TYPES = {"replace_between", "replace_exact"}
+SUPPORTED_OPERATION_TYPES = {"replace_between", "replace_exact", "insert_before", "insert_after"}
 SUPPORTED_ASSERTION_TYPES = {
     "module_must_contain",
     "module_must_not_contain",
@@ -53,6 +53,13 @@ class ModuleOperationV2:
     old_range_length: int | None
     replacement: PayloadRefV2
     known_behavior_change: str | None
+    anchor: str | None = None
+    insert_order: int | None = None
+    expected_anchor_count: int = 1
+    sub_exact: str | None = None
+    expected_sub_exact_count: int = 1
+    context_sha256: str | None = None
+    seam_hint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -198,7 +205,7 @@ def parse_operation(value: Any) -> ModuleOperationV2:
     require_within = op.get("requireWithinRange", [])
     if not isinstance(require_within, list) or not all(isinstance(x, str) for x in require_within):
         raise ManifestV2Error("requireWithinRange must be a list of strings")
-    return ModuleOperationV2(
+    operation = ModuleOperationV2(
         op_id=require_string(op, "opId"),
         label=require_string(op, "label"),
         type=op_type,
@@ -216,7 +223,78 @@ def parse_operation(value: Any) -> ModuleOperationV2:
         old_range_length=optional_non_negative_int(op, "oldRangeLength"),
         replacement=parse_payload(op.get("replacement")),
         known_behavior_change=optional_string(op, "knownBehaviorChange"),
+        anchor=optional_string(op, "anchor"),
+        insert_order=optional_non_negative_int(op, "insertOrder"),
+        expected_anchor_count=require_int(op, "expectedAnchorCount")
+        if "expectedAnchorCount" in op
+        else 1,
+        sub_exact=optional_string(op, "subExact"),
+        expected_sub_exact_count=require_int(op, "expectedSubExactCount")
+        if "expectedSubExactCount" in op
+        else 1,
+        context_sha256=optional_sha256(op, "contextSha256"),
+        seam_hint=optional_string(op, "seamHint"),
     )
+    _validate_operation_shape(operation)
+    return operation
+
+
+def _validate_operation_shape(operation: ModuleOperationV2) -> None:
+    if operation.type in {"insert_before", "insert_after"}:
+        if operation.anchor is None:
+            raise ManifestV2Error(f"{operation.op_id}: {operation.type} requires anchor")
+        if operation.expected_anchor_count != 1:
+            raise ManifestV2Error(
+                f"{operation.op_id}: expectedAnchorCount must be 1 (other values unsupported)"
+            )
+        if (operation.start_marker is None) != (operation.end_marker is None):
+            raise ManifestV2Error(
+                f"{operation.op_id}: context markers must be provided together"
+            )
+        if operation.exact is not None or operation.sub_exact is not None:
+            raise ManifestV2Error(
+                f"{operation.op_id}: exact/subExact not allowed on insertions"
+            )
+        if (
+            operation.require_within_range
+            or operation.old_range_sha256 is not None
+            or operation.old_range_length is not None
+        ):
+            raise ManifestV2Error(
+                f"{operation.op_id}: old-range evidence not allowed on insertions"
+            )
+    elif operation.type == "replace_substring_within":
+        if operation.start_marker is None or operation.end_marker is None:
+            raise ManifestV2Error(
+                f"{operation.op_id}: replace_substring_within requires startMarker and endMarker"
+            )
+        if operation.sub_exact is None:
+            raise ManifestV2Error(
+                f"{operation.op_id}: replace_substring_within requires subExact"
+            )
+        if operation.expected_sub_exact_count != 1:
+            raise ManifestV2Error(
+                f"{operation.op_id}: expectedSubExactCount must be 1 (other values unsupported)"
+            )
+        if (
+            operation.anchor is not None
+            or operation.insert_order is not None
+            or operation.exact is not None
+        ):
+            raise ManifestV2Error(
+                f"{operation.op_id}: anchor/insertOrder/exact not allowed on replace_substring_within"
+            )
+    else:
+        if (
+            operation.anchor is not None
+            or operation.insert_order is not None
+            or operation.sub_exact is not None
+            or operation.context_sha256 is not None
+            or operation.seam_hint is not None
+        ):
+            raise ManifestV2Error(
+                f"{operation.op_id}: structured-splice fields not allowed on {operation.type}"
+            )
 
 
 def parse_module(value: Any) -> ModuleTargetV2:

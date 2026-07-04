@@ -20,16 +20,9 @@ EXPECTED_OPERATION_IDS = {
     "thinking-live-delta-collector",
     "thinking-signature-collector",
     "thinking-parent-structured-collector",
-    "thinking-footer-open-state",
-    "thinking-footer-target",
-    "thinking-footer-selection-flag",
-    "thinking-footer-action-wrap-open",
-    "thinking-footer-action-wrap-close",
-    "thinking-selected-overlay-globals",
-    "thinking-bottom-overlay-renderer",
-    "thinking-footer-status-bar",
     "thinking-system-token-estimate",
     "thinking-cancel-salvage-collector",
+    "thinking-panel-real-target",
 }
 
 
@@ -101,6 +94,7 @@ def test_thinking_text_drawer_is_v3_patch_package() -> None:
     bridged = load_manifest_v2(PACKAGE)
     assert bridged.id == "thinking-text-drawer"
     assert len(bridged.targets[0].modules[0].operations) == len(EXPECTED_OPERATION_IDS)
+    assert bridged.requires_packages == ("footer-drawers",)
 
 
 def test_thinking_text_drawer_targets_claude_2_1_201() -> None:
@@ -124,17 +118,15 @@ def test_thinking_text_drawer_targets_claude_2_1_201() -> None:
     postcondition_values = {item["value"] for item in target["postconditions"]}
     for value in [
         "__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__",
-        "__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__",
         "__CODEX_THINKING_TEXT_DRAWER_TURN_V1__",
         "No thinking captured yet",
-        "x closes",
-        "thinking-available",
         "__codexTTDRecordLiveThinking",
         "__codexTTDRecordStructuredThinking",
         "__codexTTDRecordSalvagedThinking",
         "__codexTTDRecordThinkingSignature",
         "__codexTTDRecordThinkingEstimate",
         "__codexTTDRecordRedactedThinking",
+        "function __codexTTDPanel",
     ]:
         assert value in postcondition_values
 
@@ -147,67 +139,67 @@ def test_manifest_operations_match_source_and_payload_hashes() -> None:
     source = source_module_text()
     if source is not None:
         for op in module["operations"]:
-            exact = op["exact"]
-            assert source.count(exact) == 1, op["opId"]
-            assert op["oldRangeLength"] == len(exact.encode("utf-8")), op["opId"]
-            assert op["oldRangeSha256"] == hashlib.sha256(exact.encode("utf-8")).hexdigest(), op["opId"]
+            if op["type"] == "replace_exact":
+                exact = op["exact"]
+                assert source.count(exact) == 1, op["opId"]
+                assert op["oldRangeLength"] == len(exact.encode("utf-8")), op["opId"]
+                assert op["oldRangeSha256"] == hashlib.sha256(exact.encode("utf-8")).hexdigest(), op["opId"]
+            elif op["type"] in {"insert_before", "insert_after"}:
+                assert source.count(op["anchor"]) == op.get("expectedAnchorCount", 1), op["opId"]
+            else:
+                raise AssertionError(op)
     for op in module["operations"]:
         payload = PACKAGE / op["replacement"]["path"]
         assert payload.exists(), op["opId"]
         assert op["replacement"]["sha256"] == hashlib.sha256(payload.read_bytes()).hexdigest(), op["opId"]
 
 
-def test_thinking_text_drawer_overlay_only_and_always_available() -> None:
-    text = read_rel("README.md") + "\n" + payloads_text()
-    footer_target = read_rel("payloads/06-footer-target-thinking.js")
+def test_thinking_text_drawer_is_real_target_panel_extension() -> None:
+    manifest = manifest_json()
+    assert manifest["requiresPackages"] == ["footer-drawers"]
+    op_ids = {op["opId"] for op in patch_targets()[0]["modules"][0]["operations"]}
+    assert op_ids.isdisjoint({
+        "thinking-footer-open-state",
+        "thinking-footer-target",
+        "thinking-footer-selection-flag",
+        "thinking-footer-action-wrap-open",
+        "thinking-footer-action-wrap-close",
+        "thinking-selected-overlay-globals",
+        "thinking-bottom-overlay-renderer",
+        "thinking-footer-status-bar",
+        "thinking-register-footer-drawer",
+    })
+    helper_op = next(op for op in patch_targets()[0]["modules"][0]["operations"] if op["opId"] == "thinking-helpers-before-ypr")
+    assert helper_op["type"] == "insert_before"
+    assert helper_op["anchor"] == "function Ypr(e){"
+    assert helper_op["insertOrder"] == 200
+    helpers = read_rel("payloads/01-thinking-text-helpers.js")
+    assert "function Ypr(e){" not in helpers
+    assert "__codexTTDWrapFooterActions" not in helpers
+    assert "__CODEX_FOOTER_DRAWERS_V1__" not in helpers
+    assert "openId" not in helpers
+    panel = read_rel("payloads/17-panel-real-target.js")
+    assert "function __codexTTDPanel" in panel
+    assert "__CODEX_THINKING_TEXT_DRAWER_SELECTED_V1__===!0&&globalThis.__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__===!0" in panel
+    assert "x closes" in panel
+    assert "escape" not in panel.lower()
 
+def test_thinking_text_drawer_panel_and_docs_remain_display_only() -> None:
+    text = read_rel("README.md") + "\n" + payloads_text()
+    panel = read_rel("payloads/17-panel-real-target.js")
     assert "No thinking captured yet" in text
     assert "request assembly" in read_rel("README.md")
     assert "JSONL" in read_rel("README.md")
     assert "main chat" in read_rel("README.md")
     assert "transcript" in read_rel("README.md")
     assert "model-visible" in read_rel("README.md")
-    assert '"thinking"' in footer_target
-    assert "frame.visible" not in footer_target
+    assert "Thinking is a real footer target extension" in read_rel("README.md")
+    assert 'id:"thinking"' not in text
+    assert "available:()=>!0" not in text
     assert "__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__" in text
     assert "__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__" in text
-
-
-def test_thinking_text_drawer_x_only_close_contract() -> None:
-    text = payloads_text()
-    close_payload = read_rel("payloads/09-footer-action-wrap-close.js")
-    renderer = read_rel("payloads/11-bottom-overlay-renderer.js")
-
-    assert "footer:close" in read_rel("payloads/01-thinking-text-helpers.js")
-    assert "__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__=!1" in read_rel("payloads/01-thinking-text-helpers.js")
-    assert "footer:clearSelection" in read_rel("payloads/01-thinking-text-helpers.js")
-    assert "return false" in read_rel("payloads/01-thinking-text-helpers.js")
-    assert "return!1}},Lm,tDp,Rp)" in close_payload
-    assert "x closes" in renderer
-    assert "older entries dropped" in read_rel("payloads/01-thinking-text-helpers.js")
-    assert "function __codexTTDClampScroll(e,t,r)" in read_rel("payloads/01-thinking-text-helpers.js")
-    assert "__codexTTDClampScroll(p,s?.lines?.length??1,l)" in renderer
-    assert "{rows:o}=Er()" in renderer
-    assert "Math.floor(o*2/3)" in renderer
-    assert "Math.max(8,o-8)" in renderer
-    assert "s?.lines" in renderer
-    assert "s?.lineKinds" in renderer
-    assert "s?.generation" in renderer
-    assert ".flatMap(" not in renderer
-    assert 'flexDirection:"column"' in renderer
-    assert 'width:"100%"' in renderer
-    assert "height:" in renderer
-    assert 'overflow:"hidden"' in renderer
-    assert "borderText:{content:` Thinking" in renderer
-    assert "mouse wheel scroll | x closes" in renderer
-    assert "children:[u,r]" in renderer
-    status_bar = read_rel("payloads/12-footer-status-bar.js")
-    assert "de.push(tDbar)" not in status_bar
-    assert "tDbar&&di.jsxs(B" in status_bar
-    assert "we||tDbar||de.length>0" in status_bar
-    assert "inputOwnsEscape" not in text
-    assert "escape" not in renderer.lower()
-
+    assert "x closes" in panel
+    assert "escape" not in panel.lower()
 
 def test_thinking_text_drawer_collectors_cover_required_sources() -> None:
     helpers = read_rel("payloads/01-thinking-text-helpers.js")
@@ -237,7 +229,7 @@ def test_structured_collection_runs_before_ctrl_o_guard() -> None:
 
 def test_helper_fixture_merge_and_actual_text_only_sources() -> None:
     helper = read_rel("payloads/01-thinking-text-helpers.js")
-    helper_prefix = helper.split("\nfunction Ypr(e){", 1)[0]
+    helper_prefix = helper
     script = textwrap.dedent(
         f"""
         {helper_prefix}
@@ -289,7 +281,7 @@ def test_operations_stay_out_of_request_and_persistence_surfaces() -> None:
 
 def test_helper_fixture_review_regressions() -> None:
     helper = read_rel("payloads/01-thinking-text-helpers.js")
-    helper_prefix = helper.split("\nfunction Ypr(e){", 1)[0]
+    helper_prefix = helper
     script = textwrap.dedent(
         f"""
         {helper_prefix}
@@ -358,14 +350,10 @@ def test_helper_fixture_review_regressions() -> None:
         assert(__codexTTDEnsure().entries.length <= 80, 'stored entries should be capped');
         assert(frame.droppedEntryCount >= 20, 'dropped entry count should be tracked');
 
-        let opened = false, selected = 'thinking';
-        const actions = __codexTTDWrapFooterActions({{}}, 'thinking', (v) => {{ opened = v; }}, (v) => {{ selected = v; }});
-        actions['footer:openSelected']();
-        assert(opened === true, 'openSelected should open');
+        globalThis.__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__ = true;
+        __codexTTDMarkRead();
         assert(__codexTTDDrawerFrame().unread === false, 'opening drawer should clear unread');
-        assert(actions['footer:clearSelection']() === false, 'clearSelection should be ignored for Thinking');
-        assert(opened === true && selected === 'thinking', 'clearSelection must not close Thinking');
-        for (let i = 0; i < 999; i++) actions['footer:down']();
+        __codexTTDClampScroll(999, __codexTTDDrawerFrame().lineCount, globalThis.__CODEX_THINKING_TEXT_DRAWER_VIEWPORT_V1__);
         frame = __codexTTDDrawerFrame();
         assert(frame.scroll <= Math.max(0, frame.lineCount - 18), 'scroll should clamp to available content');
         const maxViewport4 = Math.max(0, frame.lineCount - 4);
@@ -376,7 +364,7 @@ def test_helper_fixture_review_regressions() -> None:
         frame = __codexTTDDrawerFrame();
         assert(frame.scroll === maxViewport4, 'frame refresh with stored viewport should not reclamp to default height');
         __codexTTDClampScroll(0, frame.lineCount, 4);
-        for (let i = 0; i < 999; i++) actions['footer:down']();
+        __codexTTDClampScroll(999, frame.lineCount, globalThis.__CODEX_THINKING_TEXT_DRAWER_VIEWPORT_V1__);
         frame = __codexTTDDrawerFrame();
         assert(frame.scroll === maxViewport4, 'footer down should honor stored viewport height');
 
@@ -393,8 +381,8 @@ def test_helper_fixture_review_regressions() -> None:
         __codexTTDRecordStructuredThinking({{thinking:Array.from({{length:12}}, (_, i) => 'new line ' + i).join('\\n'), messageId:'scroll-new', blockHash:'scroll-new'}});
         frame = __codexTTDDrawerFrame();
         assert(frame.scroll === Math.max(0, frame.lineCount - 4), 'new entry at dynamic bottom should stay at dynamic bottom');
-        actions['footer:close']();
-        assert(opened === false && selected === null, 'footer close should close Thinking');
+        globalThis.__CODEX_THINKING_TEXT_DRAWER_OPEN_V1__ = false;
+        assert(__codexTTDIsOpen() === false, 'framework helper should report closed Thinking');
         """
     )
     subprocess.run(["node", "-e", script], check=True)
@@ -404,8 +392,8 @@ if __name__ == "__main__":
     test_thinking_text_drawer_is_v3_patch_package()
     test_thinking_text_drawer_payload_ui_literals_are_ascii_safe()
     test_thinking_text_drawer_targets_claude_2_1_201()
-    test_thinking_text_drawer_overlay_only_and_always_available()
-    test_thinking_text_drawer_x_only_close_contract()
+    test_thinking_text_drawer_is_thin_footer_registrant()
+    test_thinking_text_drawer_panel_and_docs_remain_display_only()
     test_thinking_text_drawer_collectors_cover_required_sources()
     test_structured_collection_runs_before_ctrl_o_guard()
     test_helper_fixture_merge_and_actual_text_only_sources()

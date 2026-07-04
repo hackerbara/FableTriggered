@@ -1,1 +1,0 @@
-messagesRef:M,lastAssistantMessageId:F,tokenUsage:W,hiddenContextFrame:HC,isSearching:$,historyQuery:V,setHistoryQuery:K,historyFailedMatch:Y,onOpenTasksDialog:J}=e,Q=

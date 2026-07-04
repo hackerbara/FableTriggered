@@ -46,3 +46,16 @@ main(['build','--source','/Users/MAC/.local/share/claude/versions/2.1.199',
 ```
 
 Output: `.development/claude-monkey-builds/reminders-drawer-stacked/claude`. The build reaches `manual_smoke_pending` — interactive TUI smoke is required before activation.
+## How it composes
+
+Deny half: two retained seams (`_g` label wrapper gate, `XYe` object filter) made runtime-lookups against `globalThis.__CODEX_REMINDERS_MANAGER_V1__.deny`.
+
+UI half: registered with `packages/footer-drawers`. The framework owns the footer target, left/right toolbar navigation, x close, status-bar label, and bottom overlay mount.
+
+- Requires `footer-drawers`.
+- Conflicts with `upstream-attachment-suppression`; both own the reminder attachment deny/filter seam family.
+- Can ship with `hidden-context-drawer` and `thinking-text-drawer` through the framework.
+
+## Real-target footer contract
+
+Reminders uses the spike-shaped __codexRMWrapActions(actions, selectedTarget) path and activates only when selectedTarget is reminders.

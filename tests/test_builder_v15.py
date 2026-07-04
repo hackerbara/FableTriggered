@@ -21,11 +21,31 @@ def test_build_patchset_v15_writes_copied_output_and_report(successful_build_req
     assert source.read_bytes() == build_aligned_macho_fixture()[0]
 
 
-def test_build_patchset_v15_blocks_activation_for_manual_smoke(successful_build_request):
+def test_build_patchset_v15_activates_despite_manual_smoke_flag(successful_build_request):
+    # The manual-smoke activation gate is disabled: there is no GUI affordance to
+    # perform manual smoke/activation, so a package declaring manualSmoke.required
+    # no longer blocks activation. A successful build (automated validation
+    # passing) activates directly; see builder_v15.py for the bypass comment.
     report = build_patchset_v15(successful_build_request(manual_smoke=True))
-    assert report.status == "manual_smoke_pending"
-    assert report.activationEligible is False
-    assert "manual_smoke_pending" in report.activationBlockers
+    assert report.status == "verified"
+    assert report.activationEligible is True
+    assert "manual_smoke_pending" not in report.activationBlockers
+    assert report.manualSmoke["required"] is True
+    assert report.manualSmoke["status"] == "bypassed"
+
+
+def test_build_patchset_v15_activate_true_activates_with_manual_smoke_flag(
+    successful_build_request, tmp_path
+):
+    # End-to-end version of the bypass: with --activate requested and a real
+    # current_path target, a build from a manualSmoke-required package activates
+    # the symlink directly instead of stalling with activationStatus="blocked".
+    current_path = tmp_path / "current" / "claude"
+    request = successful_build_request(manual_smoke=True, activate=True, current_path=current_path)
+    report = build_patchset_v15(request)
+    assert report.status == "verified"
+    assert report.activationStatus == "activated"
+    assert current_path.is_symlink()
 
 
 def test_schema_v1_package_is_migration_required(bad_manifest_build_request):

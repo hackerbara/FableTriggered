@@ -19,7 +19,7 @@ from claude_monkey.install import (
 )
 from claude_monkey.paths import StatePaths
 from claude_monkey.shim import write_shim
-from claude_monkey.source_discovery import is_managed_launcher_path
+from claude_monkey.source_discovery import is_managed_launcher_path, meets_plausible_official_size
 from claude_monkey.status import classify_plausible_official_source
 
 # R6 default retention: keep the active install record's rollback digest
@@ -74,10 +74,36 @@ def _matches_installed_shim_digest(digest: str, state_dir: Path) -> bool:
     return digest == shim_digest(state_dir)
 
 
+def _current_target_digest(target_path: Path) -> str | None:
+    """Resolve+hash `target_path` directly, deliberately bypassing
+    `classify_plausible_official_source` (and its size floor).
+
+    The rendered ClaudeMonkey shim script is always far smaller than
+    `MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES`, so the CMux-incident size floor
+    would otherwise make an intact, still-correctly-installed managed shim
+    fail classification for the wrong reason ("too small") before the C1
+    already-installed digest check ever runs -- masking that specific,
+    already-established refusal behind a generic small-target refusal. This
+    helper lets the C1 check in `cache_source_action`/`repair_shim_action`
+    run first, exactly as it always has, regardless of the floor.
+    """
+    try:
+        resolved = target_path.resolve(strict=True)
+    except OSError:
+        return None
+    if not (resolved.is_file() and os.access(resolved, os.X_OK)):
+        return None
+    return _file_sha256(resolved)
+
+
 def _refusal_code_for_unclassified_target(target_path: Path, paths: StatePaths) -> str:
     """Only used for CacheSourceRefused/RepairRefused messaging: re-derives
     *why* `classify_plausible_official_source` returned None, without
     changing the classification decision itself.
+
+    "target_too_small" is the CMux-incident case: a real, non-managed,
+    executable file that simply isn't big enough to plausibly be the real
+    Claude binary (see `source_discovery.MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES`).
     """
     try:
         resolved = target_path.resolve(strict=True)
@@ -87,6 +113,8 @@ def _refusal_code_for_unclassified_target(target_path: Path, paths: StatePaths) 
         return "target_unavailable"
     if is_managed_launcher_path(resolved, paths):
         return "managed_path_refused"
+    if not meets_plausible_official_size(resolved):
+        return "target_too_small"
     return "target_unavailable"
 
 
@@ -126,6 +154,17 @@ def cache_source_action(
     structured `code` for every refusal path; on success, GCs old cache
     entries per R6 (only ever after this successful new write).
     """
+    # C1: refuse before anything else -- before classification, before any
+    # size-floor gate -- if the target already IS the correctly installed
+    # managed shim (see `_current_target_digest`'s docstring for why this
+    # must run ahead of `classify_plausible_official_source`).
+    current_digest = _current_target_digest(target_path)
+    if current_digest is not None and _matches_installed_shim_digest(current_digest, state_dir):
+        raise CacheSourceRefused(
+            f"target is already the correctly installed managed shim: {target_path}",
+            code="already_installed",
+        )
+
     resolved = classify_plausible_official_source(target_path, paths)
     if resolved is None:
         code = _refusal_code_for_unclassified_target(target_path, paths)
@@ -133,13 +172,6 @@ def cache_source_action(
     detected_digest = _file_sha256(resolved)
     if detected_digest is None:
         raise CacheSourceRefused(f"could not read target: {resolved}", code="copy_failed")
-    # C1: refuse before anything else if the target already IS the correctly
-    # installed managed shim -- see `_matches_installed_shim_digest`.
-    if _matches_installed_shim_digest(detected_digest, state_dir):
-        raise CacheSourceRefused(
-            f"target is already the correctly installed managed shim: {target_path}",
-            code="already_installed",
-        )
     version = _version_from_path(resolved)
 
     # R3: re-verify immediately before the copy. A concurrent updater can
@@ -213,6 +245,20 @@ def repair_shim_action(
     # overwrite the record's true pre-ClaudeMonkey rollback data with a
     # description of the shim itself -- permanently destroying the real
     # rollback content and leaving `uninstall-shim` with no way back.
+    #
+    # This check deliberately runs via `_current_target_digest` -- bypassing
+    # `classify_plausible_official_source`'s size floor -- since the
+    # rendered shim script is always far smaller than
+    # `MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES` and must not be misreported as
+    # "target_too_small" ahead of this more specific, already-established
+    # "already_installed" refusal (see `_current_target_digest`'s docstring).
+    current_digest = _current_target_digest(target_path)
+    if current_digest is not None and _matches_installed_shim_digest(current_digest, state_dir):
+        raise RepairRefused(
+            f"target is already the correctly installed managed shim: {target_path}",
+            code="already_installed",
+        )
+
     resolved = classify_plausible_official_source(target_path, paths)
     if resolved is None:
         code = _refusal_code_for_unclassified_target(target_path, paths)
@@ -223,11 +269,6 @@ def repair_shim_action(
     classified_digest = _file_sha256(resolved)
     if classified_digest is None:
         raise RepairRefused(f"could not read target: {resolved}", code="target_unavailable")
-    if _matches_installed_shim_digest(classified_digest, state_dir):
-        raise RepairRefused(
-            f"target is already the correctly installed managed shim: {target_path}",
-            code="already_installed",
-        )
     version = _version_from_path(resolved)
 
     # R8: no elevation, ever, for repair. A protected target re-runs the

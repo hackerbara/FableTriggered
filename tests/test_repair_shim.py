@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from claude_monkey import repair as repair_module
+from claude_monkey import source_discovery
 from claude_monkey.install import (
     current_target_is_installed_shim,
     install_shim_transaction,
@@ -24,6 +25,18 @@ from claude_monkey.repair import (
 # docs/superpowers/specs/2026-07-04-claude-monkey-shim-update-resilience.md
 # Sec2 (cache official source) / Sec3 (repair existing shim) / Refinements
 # R1-R4, R6, R8, R9. Stage 2: cache-source + repair-shim.
+
+
+@pytest.fixture(autouse=True)
+def _tiny_plausible_official_size_floor(monkeypatch):
+    """This file's fake "official"/replacement binaries are tiny shell-script
+    fixtures, not real ~230MB Claude binaries. Patch the CMux-incident size
+    floor (`source_discovery.MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES`) down to 0
+    (no floor) so those fixtures keep classifying as "plausible official"
+    here, exactly as they did before Fix 1 -- the real, unpatched 50MB floor
+    is exercised end-to-end by tests/test_plausible_official_size_floor.py.
+    """
+    monkeypatch.setattr(source_discovery, "MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES", 0)
 
 
 def make_executable(path: Path, text: str = "#!/bin/sh\necho '2.1.199 (Claude Code)'\n") -> Path:
@@ -294,6 +307,12 @@ def test_repair_shim_crash_between_record_write_and_swap_is_self_consistent(
     # an error" framing applies equally to a crash).
     assert resolve_cached_source(record, state) is not None
     monkeypatch.undo()
+    # `monkeypatch.undo()` above reverts every patch made via this test's
+    # `monkeypatch` fixture instance, including this file's autouse
+    # `_tiny_plausible_official_size_floor` -- reapply it so the tiny fixture
+    # binaries above keep classifying as "plausible official" for the
+    # self-healing repair call below.
+    monkeypatch.setattr(source_discovery, "MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES", 0)
     result = repair_shim_action(target, state, paths)
     assert result["repaired"] is True
     assert "ClaudeMonkey" in target.read_text()

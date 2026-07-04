@@ -17,6 +17,36 @@ class SourceIdentity:
     kind: str
 
 
+# CMux incident (field evidence, 2026-07): `install-shim` pointed at an
+# unrelated tool's bundled wrapper script (an 8KB bash script at
+# `/Applications/cmux.app/.../bin/claude`, nothing to do with ClaudeMonkey)
+# was silently classified as "a plausible official Claude source" purely
+# because it was *some* executable file that wasn't one of ClaudeMonkey's own
+# managed paths -- it was cached and swapped in as if it were the real thing.
+# The real Anthropic `claude` binary is ~230MB (a live install record showed
+# `previousSourceSizeBytes: 231708784`). 50MB is a generous margin below that
+# real size, while staying safely above any wrapper/shim script (the CMux
+# incident's file was 8KB) -- cheap to check via a single `stat()` call, no
+# execution of the candidate ever required or allowed.
+MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES = 50 * 1024 * 1024
+
+
+def meets_plausible_official_size(path: Path) -> bool:
+    """Cheap, offline size-floor check: does `path` stat at or above the
+    minimum size a real Claude binary could plausibly be?
+
+    Filesystem stat only -- never reads or executes `path`. Callers combine
+    this with their own existence/executable-bit/managed-path checks (see
+    `status.classify_plausible_official_source` and
+    `install.py`'s install-shim precondition, both of which apply this same
+    floor to different candidate paths).
+    """
+    try:
+        return path.stat().st_size >= MIN_PLAUSIBLE_OFFICIAL_SIZE_BYTES
+    except OSError:
+        return False
+
+
 def _resolve_existing_executable(candidate: str | Path | None) -> Path | None:
     if candidate is None:
         return None

@@ -21,18 +21,239 @@
           "path": "/$bunfs/root/src/entrypoints/cli.js",
           "contentSha256": "46db617a7b13c062fb31595f6244819b11f7cdc6e6fed8e2c3f74a27fb6da1bd",
           "contentLength": 18700756,
-          "operations": []
+          "operations": [
+            {
+              "opId": "thinking-helpers-before-ypr",
+              "label": "Thinking Text Drawer helpers before hidden attachment filter",
+              "type": "replace_exact",
+              "exact": "function Ypr(e){",
+              "requireWithinRange": [],
+              "oldRangeSha256": "d28eb1ac566bb2132f7617a972e08a5e283bc9b551891a13015796fed2b18f5b",
+              "oldRangeLength": 16,
+              "replacement": {
+                "path": "payloads/01-thinking-text-helpers.js",
+                "sha256": "fba1f2409925dd525bc0b079f21cf6439220a09cec70176573134e8dcb9ce1df"
+              },
+              "knownBehaviorChange": "Adds display-only Thinking drawer helpers and action wrapper."
+            },
+            {
+              "opId": "thinking-live-delta-collector",
+              "label": "Record live raw thinking_delta text before progress-only conversion",
+              "type": "replace_exact",
+              "exact": "case\"thinking_delta\":{let{delta:d}=e.event;if(\"estimated_tokens\"in d&&typeof d.estimated_tokens===\"number\")o?.({type:\"thinking_progress\",estimatedTokensDelta:d.estimated_tokens});else if(\"thinking\"in d&&typeof d.thinking===\"string\"&&d.thinking.length>0)o?.({type:\"thinking_progress\",estimatedTokensDelta:Kon(d.thinking)});return}",
+              "requireWithinRange": [],
+              "oldRangeSha256": "1f5f4f666044a2028c09ab4bf61c761aa8732621c625862cbf6856e1dfc56c3f",
+              "oldRangeLength": 329,
+              "replacement": {
+                "path": "payloads/02-live-thinking-delta-collector.js",
+                "sha256": "5204c3fd37ce6b2958a2cc7cb74d2331e21ed94e10c8c077f5c00dd0f73719c6"
+              },
+              "knownBehaviorChange": "Records live raw thinking delta text into display-only drawer state."
+            },
+            {
+              "opId": "thinking-signature-collector",
+              "label": "Record thinking signature marker",
+              "type": "replace_exact",
+              "exact": "case\"signature_delta\":o?.({type:\"thinking_signature\",chars:VVe(e.event.delta.signature.length)});return;",
+              "requireWithinRange": [],
+              "oldRangeSha256": "3788545b7730a78ff2bab560f2bffa447cb5cce61912b86df240b469f587b059",
+              "oldRangeLength": 104,
+              "replacement": {
+                "path": "payloads/03-thinking-signature-collector.js",
+                "sha256": "62d99cdb9dabd48e13582ee5ec4a46c3cb3eb46a3c92d3bb4d812d72cc9685e7"
+              },
+              "knownBehaviorChange": "Records thinking signature events as secondary evidence."
+            },
+            {
+              "opId": "thinking-parent-structured-collector",
+              "label": "Record structured thinking and redacted blocks at parent assistant content-list seam",
+              "type": "replace_exact",
+              "exact": "k=n.message.content.map(I),t[23]=s,t[24]=a,t[25]=T,t[26]=R,t[27]=c,t[28]=f,t[29]=r,t[30]=n.advisorModel,t[31]=n.message.content,t[32]=n.message.id,t[33]=n.uuid,t[34]=h,t[35]=u,t[36]=d,t[37]=p,t[38]=i,t[39]=l,t[40]=k",
+              "requireWithinRange": [],
+              "oldRangeSha256": "c764856f7ebd8e3c47776996ec96dcbc8ddb1400330ca9a08a8bf72f28fc0c77",
+              "oldRangeLength": 215,
+              "replacement": {
+                "path": "payloads/04-structured-thinking-block-collector.js",
+                "sha256": "519957f62422046b064152230f7fc39fe113dce71fc2d1f6567d7bb5a69be473"
+              },
+              "knownBehaviorChange": "Records structured thinking and redacted markers before normal-mode rendering suppresses them."
+            },
+            {
+              "opId": "thinking-footer-open-state",
+              "label": "Add Thinking drawer React open state",
+              "type": "replace_exact",
+              "exact": "let[Ss,Ms]=wo.useState(!1),[go,Zo]=wo.useState(!1),[oa,Lu]=wo.useState(!1),[Ec,cn]=wo.useState(!1),[Gn,$n]=wo.useState(!1),[K,ye]=wo.useState(!1),[$e,Xe]=wo.useState(!1),wt=wo.useRef(!1)",
+              "requireWithinRange": [],
+              "oldRangeSha256": "06de1dc7f88285201024417255e7063909d15721b81de5aae9af697efa288146",
+              "oldRangeLength": 186,
+              "replacement": {
+                "path": "payloads/05-footer-open-state.js",
+                "sha256": "ea252c90793b2297711cac96ee2540a6c43bde04a9d53466e6d33090c7ecf535"
+              },
+              "knownBehaviorChange": "Adds a local open-state setter used by the footer action wrapper."
+            },
+            {
+              "opId": "thinking-footer-target",
+              "label": "Always add Thinking footer target",
+              "type": "replace_exact",
+              "exact": "ss=wo.useMemo(()=>[Ui&&\"tasks\",po&&\"workflows\",Fn&&\"tmux\",_e&&\"bagel\",Tr&&\"bridge\",Ne&&\"frame\"].filter(Boolean),[Ui,po,Fn,_e,Tr,Ne])",
+              "requireWithinRange": [],
+              "oldRangeSha256": "df92b88c06283f98acbc7d9b2079adc337a4b1a932b3f662831dd827098b2c04",
+              "oldRangeLength": 132,
+              "replacement": {
+                "path": "payloads/06-footer-target-thinking.js",
+                "sha256": "5f1e34337d2da9e312968aa44f7948d4b36eeb1e9b244318e8536d5bbb53084d"
+              },
+              "knownBehaviorChange": "Makes Thinking selectable even when no entries exist."
+            },
+            {
+              "opId": "thinking-footer-selection-flag",
+              "label": "Add Thinking selected flag",
+              "type": "replace_exact",
+              "exact": "let lm=Lm===\"tasks\",ZE=Lm===\"workflows\",Hd=Lm===\"tmux\",Zp=Lm===\"bagel\",AT=Lm===\"bridge\",Mm=Lm===\"frame\";function Rp",
+              "requireWithinRange": [],
+              "oldRangeSha256": "f70053be21c3e3e02fe206cdac86991c552ae6afcb67e4e1e09d3cfce9dfb275",
+              "oldRangeLength": 115,
+              "replacement": {
+                "path": "payloads/07-footer-selection-flag.js",
+                "sha256": "f8701aad04b138e26746dd3073488ca26dff080ba81a2591cd024bb24ece0d3d"
+              },
+              "knownBehaviorChange": "Publishes a local Thinking selection boolean."
+            },
+            {
+              "opId": "thinking-footer-action-wrap-open",
+              "label": "Wrap footer action object open",
+              "type": "replace_exact",
+              "exact": "Go({\"footer:up\":By,\"footer:down\":d0,\"footer:next\":o6,\"footer:previous\":IR,\"footer:openSelected\":()=>{",
+              "requireWithinRange": [],
+              "oldRangeSha256": "e927b8169b546f7bcb6ae445bb32044d06c0a02a5b4731e5d4a1cf68e9fdf872",
+              "oldRangeLength": 101,
+              "replacement": {
+                "path": "payloads/08-footer-action-wrap-open.js",
+                "sha256": "8b6e45360f90ac14a35d7957c3edbcbdb9cae9dc031a32044bc3e09cdf2bb882"
+              },
+              "knownBehaviorChange": "Starts wrapper around footer actions so Thinking can open/scroll/close without changing stock actions for other targets."
+            },
+            {
+              "opId": "thinking-footer-action-wrap-close",
+              "label": "Wrap footer action object close",
+              "type": "replace_exact",
+              "exact": "return!1}},{context:\"Footer\",isActive:!!Lm&&!se});",
+              "requireWithinRange": [],
+              "oldRangeSha256": "431e9a586c12d7fdb5481ec7852d0d8fc981f25059399a33ae887da796a37c51",
+              "oldRangeLength": 50,
+              "replacement": {
+                "path": "payloads/09-footer-action-wrap-close.js",
+                "sha256": "9ced0a8a233ef13bfda60b084a53fc7128d818d3afd81e72d4cf9d4ee6c7dce3"
+              },
+              "knownBehaviorChange": "Closes wrapper around footer actions and passes selection/open-state setter."
+            },
+            {
+              "opId": "thinking-selected-overlay-globals",
+              "label": "Publish selected/open globals for bottom overlay",
+              "type": "replace_exact",
+              "exact": "return qd.jsxs(B,{flexDirection:\"column\",marginTop:Vt||dY?0:1,children:[Lm&&!se&&qd.jsx(B,{tabIndex:0,autoFocus:!0,onKeyDown:X8}),!Ys()&&qd.jsx(DTr,{}),J&&",
+              "requireWithinRange": [],
+              "oldRangeSha256": "ab470d59febafcec8748e444ae3cc7a0541d0666c10449466c55fabffb7bb3de",
+              "oldRangeLength": 155,
+              "replacement": {
+                "path": "payloads/10-selected-overlay-globals.js",
+                "sha256": "f3ef8cd0d210e20b9ea51789646bb58aded12455aa81b1201473988ad88c5ca5"
+              },
+              "knownBehaviorChange": "Publishes display-only globals for the bottom overlay renderer."
+            },
+            {
+              "opId": "thinking-bottom-overlay-renderer",
+              "label": "Render Thinking drawer in bottom overlay sibling",
+              "type": "replace_exact",
+              "exact": "function Ilc(){let e=MXe.c(2),t=clc();if(!t)return null;let n;if(e[0]!==t)n=Xd.jsx(B,{position:\"absolute\",bottom:\"100%\",left:0,right:0,opaque:!0,children:t}),e[0]=t,e[1]=n;else n=e[1];return n}",
+              "requireWithinRange": [],
+              "oldRangeSha256": "9ff773cbc33face8625d9e4883d33b5e36aeae2e87349921b9f3402fc7d12526",
+              "oldRangeLength": 193,
+              "replacement": {
+                "path": "payloads/11-bottom-overlay-renderer.js",
+                "sha256": "3948ccf8ad1954511796522ebffd3d311dc9b76d0be849eefa6d9ccb924820ad"
+              },
+              "knownBehaviorChange": "Renders the Thinking drawer when selected/open; otherwise preserves stock overlay."
+            },
+            {
+              "opId": "thinking-footer-status-bar",
+              "label": "Add Thinking footer status segment",
+              "type": "replace_exact",
+              "exact": "ue=x.map((Me)=>di.jsx(ELc,{link:Me},Me.key??Me.url)),de=[...[]],fe=n?tNf(s,L,W,F,R,O):[];",
+              "requireWithinRange": [],
+              "oldRangeSha256": "c692697353f5951ba4625fb2738d8c0eb803feaaa6a0dc6049281955832b2a62",
+              "oldRangeLength": 89,
+              "replacement": {
+                "path": "payloads/12-footer-status-bar.js",
+                "sha256": "0d6f7b2dc1ef5d4656ea6889cff67ead7d7fa8a03b8a95d94a746760db37e13f"
+              },
+              "knownBehaviorChange": "Adds a Thinking footer segment without gating availability on entries."
+            },
+            {
+              "opId": "thinking-system-token-estimate",
+              "label": "Record system thinking_tokens as estimate marker",
+              "type": "replace_exact",
+              "exact": "if(es.type===\"system\"&&es.subtype===\"thinking_tokens\"&&\"estimated_tokens_delta\"in es)continue;",
+              "requireWithinRange": [],
+              "oldRangeSha256": "a448d3c42fea5fafc847a8d7276720f16be7ec0256ccdb7790257bccfb37c218",
+              "oldRangeLength": 94,
+              "replacement": {
+                "path": "payloads/13-system-thinking-token-estimate.js",
+                "sha256": "4954d6929fbf978fd392e7c52d277ee11cfafd24252cb2ae7db9774cf447f621"
+              },
+              "knownBehaviorChange": "Records system thinking_tokens as secondary estimate evidence before dropping the event."
+            },
+            {
+              "opId": "thinking-cancel-salvage-collector",
+              "label": "Record cancel-salvaged thinking",
+              "type": "replace_exact",
+              "exact": "let en=_t?.thinking?.trim();if(en&&WAe().thinkingStartedAt!==null)kc((_s)=>[..._s,zT({content:[{type:\"thinking\",thinking:en,signature:\"\"}],isVirtual:!0})]);",
+              "requireWithinRange": [],
+              "oldRangeSha256": "369cfddb735a98bf9c922e4589284638306cf5a8931fc5d9a7d12bf3af1c13a3",
+              "oldRangeLength": 156,
+              "replacement": {
+                "path": "payloads/14-cancel-salvage-collector.js",
+                "sha256": "a09a5c29ba3558b146bd79b41ccc424fa70f9066cc382e601816e8934372b7e1"
+              },
+              "knownBehaviorChange": "Records interrupted in-flight thinking as salvaged display-only drawer text while preserving stock virtual block behavior."
+            }
+          ]
         }
       ],
       "preconditions": [
-        {"type": "module_must_contain", "modulePath": "/$bunfs/root/src/entrypoints/cli.js", "value": "thinking_delta"},
-        {"type": "module_must_contain", "modulePath": "/$bunfs/root/src/entrypoints/cli.js", "value": "case\"thinking\""},
-        {"type": "module_must_contain", "modulePath": "/$bunfs/root/src/entrypoints/cli.js", "value": "thinking_tokens"}
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "thinking_delta"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "case\"thinking\""
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "thinking_tokens"
+        }
       ],
       "postconditions": [
-        {"type": "module_must_contain", "modulePath": "/$bunfs/root/src/entrypoints/cli.js", "value": "__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__"},
-        {"type": "module_must_contain", "modulePath": "/$bunfs/root/src/entrypoints/cli.js", "value": "No thinking captured yet"},
-        {"type": "module_must_contain", "modulePath": "/$bunfs/root/src/entrypoints/cli.js", "value": "__codexTTDRecordSalvagedThinking"}
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__CODEX_THINKING_TEXT_DRAWER_FRAME_V1__"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "No thinking captured yet"
+        },
+        {
+          "type": "module_must_contain",
+          "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+          "value": "__codexTTDRecordSalvagedThinking"
+        }
       ],
       "manualSmoke": {
         "required": true,

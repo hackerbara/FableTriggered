@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
 
 from claude_monkey.cli import main
 
@@ -922,6 +923,60 @@ def test_add_prompt_json_contract_installs_and_is_not_active(monkeypatch, tmp_pa
     records = [record for record in list_payload["prompts"] if record["id"] == "bare-prompt"]
     assert len(records) == 1
     assert records[0]["enabled"] is False
+
+
+def test_add_prompt_json_contract_empty_slug_stem_returns_invalid_package(
+    monkeypatch, tmp_path, capsys
+):
+    """Regression for Critical-2: a stem that slugifies to '' (e.g. '###.md') must
+    not crash with a raw FileExistsError traceback — it must return the standard
+    6-key invalid_package envelope."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    source = tmp_path / "###.md"
+    source.write_text("be helpful")
+
+    assert main(["add-prompt", str(source), "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert set(payload.keys()) == {"schemaVersion", "ok", "status", "summary", "error", "warnings"}
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_package"
+    assert not (tmp_path / ".claude-monkey" / "prompts").exists()
+
+
+def test_add_prompt_json_contract_traversal_id_returns_invalid_package(
+    monkeypatch, tmp_path, capsys
+):
+    """Regression for Critical-1 (add-prompt instance): an explicit --id containing
+    '..' must be rejected before any path construction, with no stray writes."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    # Pin the staging tempdir under tmp_path so a traversal leak (one directory
+    # above the tempdir) lands at a precise, assertable location.
+    staging_root = tmp_path / "staging-root"
+    staging_root.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(staging_root))
+    source = tmp_path / "notes.md"
+    source.write_text("be helpful")
+
+    assert main(["add-prompt", str(source), "--id", "../evil-y", "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_package"
+    assert not (tmp_path / ".claude-monkey" / "prompts").exists()
+    assert not (staging_root / "evil-y").exists()
+
+
+def test_add_prompt_json_contract_missing_source_file_envelope(monkeypatch, tmp_path, capsys):
+    """Regression for Important-3: missing source file must use the 6-key
+    packages_admin envelope with code invalid_package and exit 1, not the 14-key
+    CommandEnvelope with code missing_source_file and exit 2."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    missing = tmp_path / "does-not-exist.md"
+
+    assert main(["add-prompt", str(missing), "--json"]) == 1
+    payload = parse_json_output(capsys)
+    assert set(payload.keys()) == {"schemaVersion", "ok", "status", "summary", "error", "warnings"}
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_package"
 
 
 def test_use_official_json_missing_inputs_return_envelopes(monkeypatch, tmp_path, capsys):

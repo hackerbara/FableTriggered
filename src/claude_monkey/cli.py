@@ -46,7 +46,7 @@ from claude_monkey.package_model import (
     manifest_digest,
     validate_package_id,
 )
-from claude_monkey.packages_admin import add_package, scaffold_prompt_package
+from claude_monkey.packages_admin import add_package, invalid_package_error, scaffold_prompt_package
 from claude_monkey.paths import StatePaths, default_paths
 from claude_monkey.shim_entry import compute_launch_with_paths
 from claude_monkey.smoke import run_command
@@ -1275,17 +1275,47 @@ def _slugify_prompt_stem(stem: str) -> str:
 def handle_add_prompt(args: argparse.Namespace, paths: StatePaths) -> int:
     source_path = Path(args.path).expanduser()
     if not source_path.is_file():
+        # Important-3 fix: use the same 6-key packages_admin envelope / invalid_package
+        # code / exit 1 as every other add-* failure, not the 14-key CommandEnvelope
+        # with a bespoke missing_source_file code and exit 2.
         message = f"prompt source file does not exist: {source_path}"
+        result = invalid_package_error(message)
         if args.json:
-            print_json(envelope_error(message, code="missing_source_file"))
+            print_json(result)
         else:
             print(message, file=sys.stderr)
-        return 2
+        return 1
 
     package_id = args.id or _slugify_prompt_stem(source_path.stem)
+    try:
+        validate_package_id(package_id)
+    except PackageValidationError as exc:
+        # Critical-1/Critical-2 fix: validate the id (whether from --id or derived
+        # via slugify) BEFORE it is ever used to build a filesystem path. This
+        # rejects both path-traversal ids (e.g. "../evil") and ids that slugify to
+        # "" (e.g. a "###.md" source file, which previously made staging_dir equal
+        # the tempdir itself and crashed with a raw FileExistsError).
+        message = f"invalid package id {package_id!r} derived from {source_path.name!r}: {exc}"
+        result = invalid_package_error(message)
+        if args.json:
+            print_json(result)
+        else:
+            print(message, file=sys.stderr)
+        return 1
+
     manifest = scaffold_prompt_package(source_path, package_id, args.name)
     with tempfile.TemporaryDirectory() as tmp:
-        staging_dir = Path(tmp) / package_id
+        tmp_root = Path(tmp).resolve()
+        staging_dir = tmp_root / package_id
+        # Defense-in-depth: validate_package_id above already guarantees package_id
+        # cannot escape tmp_root when joined, but refuse to proceed if it somehow did.
+        if not staging_dir.resolve(strict=False).is_relative_to(tmp_root):
+            result = invalid_package_error(f"invalid package id: {package_id!r}")
+            if args.json:
+                print_json(result)
+            else:
+                print(result["summary"], file=sys.stderr)
+            return 1
         staging_dir.mkdir(parents=True)
         (staging_dir / "manifest.json").write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n"

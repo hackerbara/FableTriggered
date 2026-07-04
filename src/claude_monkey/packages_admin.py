@@ -13,7 +13,13 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from claude_monkey.package_model import PackageKind, PackageManifest, load_package_manifest
+from claude_monkey.package_model import (
+    PackageKind,
+    PackageManifest,
+    PackageValidationError,
+    load_package_manifest,
+    validate_package_id,
+)
 
 _BUCKETS = {"patch": "patches", "prompt": "prompts", "option": "options"}
 
@@ -25,6 +31,33 @@ def _envelope(ok: bool, summary: str, *, code: str | None = None, warnings=None)
         "error": None if ok else {"message": summary, "code": code},
         "warnings": list(warnings or []),
     }
+
+
+def invalid_package_error(message: str) -> dict:
+    """Public helper so CLI handlers can emit the same 6-key envelope shape used
+    by `add_package` for `invalid_package` failures detected before `add_package`
+    is even called (e.g. a missing source file, or an invalid `--id`)."""
+    return _envelope(False, message, code="invalid_package")
+
+
+def _reject_symlinks(root: Path) -> None:
+    """Reject a package source tree containing any symlink.
+
+    `shutil.copytree` (used both for the id-rename staging copy and the final
+    install copy) dereferences symlinks by default: a symlink pointing outside the
+    package (e.g. at `~/.ssh/id_rsa`) would have its *content* silently copied into
+    both places. Phase-1's own validation (`_package_local_path`,
+    package_model.py:211-223) only checks that manifest-*referenced* local paths
+    resolve inside the package directory after following symlinks — it does not
+    walk the whole tree, and nothing in package_model.py explicitly permits
+    symlinks anywhere in a package. In the absence of an explicit phase-1
+    allowance, we treat any symlink inside a package source tree as invalid.
+    """
+    if root.is_symlink():
+        raise PackageValidationError("package_contains_symlink")
+    for path in root.rglob("*"):
+        if path.is_symlink():
+            raise PackageValidationError("package_contains_symlink")
 
 
 class _KindMismatch(Exception):
@@ -40,31 +73,40 @@ class _KindMismatch(Exception):
 
 
 def _peek_kind_and_id(package_dir: Path) -> tuple[str | None, str | None]:
-    """Best-effort, non-validating peek at the sole `*.json` manifest's raw fields.
+    """Best-effort, non-validating peek at a `*.json` manifest candidate's raw fields.
 
     This does NOT reimplement any of the schema/slug/local-path enforcement that
     `package_model.load_package_manifest` performs (see `_load_manifest` below) — it
     only reads `kind` and `id` so `_load_manifest` can (a) pick the correct
     `expected_kind` to hand to the real validator and (b) decide whether the source
     folder needs to be staged under an id-named directory before validating (see
-    below). Any failure (missing file, bad JSON, multiple manifests, non-dict
-    payload) yields `(None, None)` and lets the real validator surface the error.
+    below).
+
+    Mirrors `load_package_manifest`'s own multi-candidate scan (it globs every
+    `*.json` file and accepts the folder as long as exactly one candidate
+    parses+validates): here we look at every `*.json` file, keep the ones that
+    parse as a JSON object with both `kind` and `id` present as strings, and only
+    return a peeked pair when exactly one candidate qualifies. Any other outcome
+    (no manifest, no unambiguous candidate, bad JSON, non-dict payload) yields
+    `(None, None)` and lets the real validator surface the error.
     """
     json_paths = sorted(path for path in package_dir.glob("*.json") if path.is_file())
-    if len(json_paths) != 1:
+    candidates: list[tuple[str, str]] = []
+    for json_path in json_paths:
+        try:
+            with json_path.open("r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        raw_kind = data.get("kind")
+        raw_id = data.get("id")
+        if isinstance(raw_kind, str) and isinstance(raw_id, str):
+            candidates.append((raw_kind, raw_id))
+    if len(candidates) != 1:
         return None, None
-    try:
-        with json_paths[0].open("r", encoding="utf-8") as handle:
-            data = json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        return None, None
-    if not isinstance(data, dict):
-        return None, None
-    raw_kind = data.get("kind")
-    raw_id = data.get("id")
-    kind = raw_kind if isinstance(raw_kind, str) else None
-    package_id = raw_id if isinstance(raw_id, str) else None
-    return kind, package_id
+    return candidates[0]
 
 
 def _load_manifest(package_dir: Path, kind: str) -> PackageManifest:
@@ -103,6 +145,20 @@ def _load_manifest(package_dir: Path, kind: str) -> PackageManifest:
        so the real validator's folder-slug check passes; the original `source`
        passed to `add_package` is untouched and is what actually gets copied to the
        final destination.
+
+    Security note (Critical-1 fix): the peeked `id` is attacker-controlled raw JSON
+    content and MUST be validated with phase-1's own slug rule
+    (`package_model.validate_package_id`) *before* it is ever used to build a
+    filesystem path. `validate_package_id` requires the value to match
+    `^[a-z0-9][a-z0-9._-]*$` — a value satisfying that pattern can never contain
+    `/` and can never be exactly `..` (its first character must be alphanumeric),
+    so it can never traverse out of, or replace, the staging tempdir when joined
+    onto it with `Path.__truediv__`. If the peeked id fails that check, staging is
+    skipped entirely (no path is built from it, no tempdir is even created for it)
+    and the *unmodified* `package_dir` is handed to the real validator instead,
+    which will independently re-derive the same raw id from the manifest and reject
+    it with its own `id_invalid_slug` failure — surfacing as `invalid_package` with
+    zero filesystem writes.
     """
     target_kind = PackageKind(kind)
     peeked_kind_raw, peeked_id = _peek_kind_and_id(package_dir)
@@ -112,9 +168,26 @@ def _load_manifest(package_dir: Path, kind: str) -> PackageManifest:
     except ValueError:
         expected_kind = target_kind
 
+    needs_staging = False
     if peeked_id and peeked_id != package_dir.name:
+        try:
+            validate_package_id(peeked_id)
+            needs_staging = True
+        except PackageValidationError:
+            # Invalid id (path traversal, absolute path, empty, etc.) — never build
+            # a path from it. Fall through to validating the original package_dir
+            # directly; the real validator will raise its own id-slug failure.
+            needs_staging = False
+
+    if needs_staging:
         with tempfile.TemporaryDirectory() as tmp:
-            staged = Path(tmp) / peeked_id
+            tmp_root = Path(tmp).resolve()
+            staged = tmp_root / peeked_id
+            # Defense-in-depth: even though `validate_package_id` above already
+            # guarantees `peeked_id` cannot escape `tmp_root` when joined, refuse
+            # to proceed if it somehow did.
+            if not staged.resolve(strict=False).is_relative_to(tmp_root):
+                raise PackageValidationError("package_path_escape")
             shutil.copytree(package_dir, staged)
             manifest = load_package_manifest(staged, expected_kind)
     else:
@@ -128,6 +201,11 @@ def _load_manifest(package_dir: Path, kind: str) -> PackageManifest:
 def add_package(source: Path, kind: str, home: Path) -> dict:
     source = Path(source)
     home = Path(home)
+    try:
+        _reject_symlinks(source)
+    except PackageValidationError as exc:
+        return _envelope(False, f"invalid package: {exc}", code="invalid_package")
+
     try:
         manifest = _load_manifest(source, kind)
     except _KindMismatch as exc:

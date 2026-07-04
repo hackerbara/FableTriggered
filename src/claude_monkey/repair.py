@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from time import time
 from typing import Any
@@ -13,13 +14,11 @@ from claude_monkey.install import (
     cache_source,
     describe_existing,
     gc_source_cache,
-    resolve_cached_source,
     sha256_bytes,
     shim_digest,
 )
 from claude_monkey.paths import StatePaths
 from claude_monkey.shim import write_shim
-from claude_monkey.smoke import run_command
 from claude_monkey.source_discovery import is_managed_launcher_path
 from claude_monkey.status import classify_plausible_official_source
 
@@ -45,8 +44,10 @@ class RepairRefused(RuntimeError):
 
     `code` is the machine-readable reason the CLI layer surfaces in its
     error envelope (see `cli.handle_repair_shim`). Every raise site in this
-    module happens *before* any write to the target path -- refusal always
-    means "nothing changed."
+    module happens *before* any write to `target_path` -- refusal always
+    means "the target is untouched" (see `repair_shim_action`'s own
+    docstring for the I1 nuance: a late refusal can still follow a record
+    write, but never a target write).
     """
 
     def __init__(self, message: str, *, code: str) -> None:
@@ -61,21 +62,43 @@ def _file_sha256(path: Path) -> str | None:
         return None
 
 
-def _cheap_version(path: Path) -> str | None:
-    """Best-effort `<path> --version` probe; failure never blocks the caller
-    (mirrors `status._cheap_official_version`'s R7 stance -- version is
-    metadata, not a gate).
+_VERSION_SEGMENT_RE = re.compile(r"^\d+(?:\.\d+)+$")
+
+
+def _version_from_path(path: Path) -> str | None:
+    """Best-effort version extraction from a resolved source path's own
+    versioned-directory layout (e.g. `.../claude/versions/2.1.201/claude`,
+    matching the official installer's own directory shape described in the
+    spec's "Observed failure mode").
+
+    C1: this NEVER executes `path`. The previous implementation ran
+    `<path> --version` as a subprocess; when `path` was later shown to still
+    be the intact managed shim (the exact C1 bug), `--version` is a
+    management token, so running the shim invoked
+    `select_launch_target(..., prefer_official=True)` -> `shutil.which
+    ("claude")` -> execution of whatever `claude` resolved on PATH --
+    arbitrary-binary execution from what was meant to be a metadata probe.
+    Per R7, extraction failure just means "version unknown" -- it never
+    gates anything, so falling back to `None` here is always safe.
     """
-    try:
-        result = run_command([str(path), "--version"])
-    except OSError:
-        return None
-    if result.returncode != 0:
-        return None
-    output = result.stdout.strip() or result.stderr.strip()
-    if not output:
-        return None
-    return output.split(maxsplit=1)[0] or None
+    parts = path.parts
+    for index, part in enumerate(parts[:-1]):
+        candidate = parts[index + 1]
+        if part == "versions" and _VERSION_SEGMENT_RE.match(candidate):
+            return candidate
+    return None
+
+
+def _matches_installed_shim_digest(digest: str, state_dir: Path) -> bool:
+    """C1: does `digest` match the digest of the shim ClaudeMonkey would
+    render right now for `state_dir`? Mirrors the comparison status.py's own
+    detection performs (status.py:441-444, `expected_shim_digest ==
+    detected_digest`) -- reused here so `cache_source_action`/
+    `repair_shim_action` never mistake an intact, still-correctly-installed
+    managed shim for "a plausible official source" just because it lives
+    outside ClaudeMonkey's own managed bin/versions roots.
+    """
+    return digest == shim_digest(state_dir)
 
 
 def _refusal_code_for_unclassified_target(target_path: Path, paths: StatePaths) -> str:
@@ -137,7 +160,14 @@ def cache_source_action(
     detected_digest = _file_sha256(resolved)
     if detected_digest is None:
         raise CacheSourceRefused(f"could not read target: {resolved}", code="copy_failed")
-    version = _cheap_version(resolved)
+    # C1: refuse before anything else if the target already IS the correctly
+    # installed managed shim -- see `_matches_installed_shim_digest`.
+    if _matches_installed_shim_digest(detected_digest, state_dir):
+        raise CacheSourceRefused(
+            f"target is already the correctly installed managed shim: {target_path}",
+            code="already_installed",
+        )
+    version = _version_from_path(resolved)
 
     # R3: re-verify immediately before the copy. A concurrent updater can
     # land between the classification/hash above and this check.
@@ -177,12 +207,15 @@ def repair_shim_action(
     the explicit user trigger (see `cli.handle_repair_shim`); nothing in
     `status.py`/detection paths may call it.
 
-    Every precondition raises `RepairRefused` *before* any write happens
-    (record read is read-only; the swap itself is the only mutation, and it
-    only happens after every gate below passes). On success: the target now
-    runs the ClaudeMonkey shim again, the just-replaced official binary is
-    cached, and the install record is rewritten (R4) so previous-source
-    fields point at that *new* cached source -- not the stale one.
+    Every precondition through the C1 already-installed gate and the
+    authorization gate raises `RepairRefused` before any write of any kind
+    (record read is read-only). From the cache-source write onward, a
+    refusal can still leave the install record already rewritten (I1: the
+    record is written *before* the swap, deliberately -- see the comment
+    ahead of the write) -- but the target path itself is never written
+    except by the swap, and the swap only happens after every gate below
+    passes, so "refusal means the target is untouched" always holds even
+    though "refusal means nothing changed at all" no longer does.
     """
     record_path = state_dir / "install-record.json"
     record = _read_install_record(record_path)
@@ -197,22 +230,16 @@ def repair_shim_action(
         raise RepairRefused(
             "install record has no managed shim digest to repair from", code="not_managed"
         )
-    if resolve_cached_source(record, state_dir) is None:
-        raise RepairRefused(
-            "no valid cached previous-source rollback is available for this record; "
-            "repair refuses without a safe restore path",
-            code="cache_invalid",
-        )
 
-    # R8: no elevation, ever, for repair. A protected target re-runs the
-    # normal authorizationRequired flow (install-shim) instead -- repair
-    # never sudos and never bypasses that prompt based on record contents.
-    if target_needs_authorization(target_path):
-        raise RepairRefused(
-            f"target requires authorization; run install-shim to authorize: {target_path}",
-            code="authorization_required",
-        )
-
+    # C1: before anything else -- before the authorization check, before any
+    # caching, before version-probing -- refuse if the current target
+    # already IS the correctly installed managed shim. Without this, an
+    # intact external shim classifies as "plausible official" (it lives
+    # outside ClaudeMonkey's own managed bin/versions roots) and repair
+    # would cache the shim's own bytes as "the official source" and
+    # overwrite the record's true pre-ClaudeMonkey rollback data with a
+    # description of the shim itself -- permanently destroying the real
+    # rollback content and leaving `uninstall-shim` with no way back.
     resolved = classify_plausible_official_source(target_path, paths)
     if resolved is None:
         code = _refusal_code_for_unclassified_target(target_path, paths)
@@ -223,7 +250,21 @@ def repair_shim_action(
     classified_digest = _file_sha256(resolved)
     if classified_digest is None:
         raise RepairRefused(f"could not read target: {resolved}", code="target_unavailable")
-    version = _cheap_version(resolved)
+    if _matches_installed_shim_digest(classified_digest, state_dir):
+        raise RepairRefused(
+            f"target is already the correctly installed managed shim: {target_path}",
+            code="already_installed",
+        )
+    version = _version_from_path(resolved)
+
+    # R8: no elevation, ever, for repair. A protected target re-runs the
+    # normal authorizationRequired flow (install-shim) instead -- repair
+    # never sudos and never bypasses that prompt based on record contents.
+    if target_needs_authorization(target_path):
+        raise RepairRefused(
+            f"target requires authorization; run install-shim to authorize: {target_path}",
+            code="authorization_required",
+        )
 
     # Cache-then-swap (spec Sec2): the currently-replaced target's bytes are
     # cached FIRST -- never rebuild/restore from a live path that may change
@@ -234,17 +275,6 @@ def repair_shim_action(
             f"failed to cache current target before repair: {resolved}", code="cache_failed"
         )
 
-    # R3: re-verify immediately before the swap. If a concurrent official
-    # updater landed between the cache write above and here, abort cleanly
-    # -- no partial write, target bytes untouched, next status re-detects.
-    reresolved = classify_plausible_official_source(target_path, paths)
-    reresolved_digest = _file_sha256(reresolved) if reresolved is not None else None
-    if reresolved != resolved or reresolved_digest != classified_digest:
-        raise RepairRefused(
-            "target changed since it was classified/cached; aborting repair",
-            code="target_changed",
-        )
-
     # Capture how to restore *this* (newly replaced) official target on a
     # future uninstall -- reuses the exact same primitive a fresh
     # `install_shim_transaction` uses for its own previousType/previousTarget
@@ -253,21 +283,19 @@ def repair_shim_action(
     # reads those fields, never the source-cache fields directly.
     previous_state = describe_existing(target_path)
 
+    # I1: write the new record BEFORE the swap, not after. The prior
+    # ordering (swap, then write) left a crash window between the two where
+    # the target was already repaired but the record still held pre-repair
+    # rollback data -- a later `uninstall-shim` would restore that stale
+    # binary. With the record written first: if the process dies before the
+    # swap ever runs, the target is untouched and
+    # `current_target_is_installed_shim` (the sole gate `uninstall-shim` and
+    # status detection use before ever trusting this record's rollback
+    # fields) correctly reports "not the shim" from the actual target
+    # bytes -- so the new-but-unapplied record is simply inert. If the
+    # process dies after the swap, the record was already correct. Either
+    # way the on-disk state is self-consistent (R4 + I1).
     new_shim_digest = shim_digest(state_dir)
-    tmp = target_path.with_suffix(target_path.suffix + ".claude-monkey.repair.tmp")
-    tmp.unlink(missing_ok=True)
-    write_shim(tmp, state_dir)
-    try:
-        tmp.replace(target_path)  # rename within target_path's own directory: atomic swap
-    except OSError as exc:
-        tmp.unlink(missing_ok=True)
-        raise RepairRefused(f"failed to swap shim into place: {exc}", code="swap_failed") from exc
-
-    # R4: rewrite the install record so BOTH restore-state and
-    # previous-source fields point at the NEWLY cached official source --
-    # an uninstall after this repair must restore *this* build, not the
-    # stale one that was replaced before it (spec Non-goal: don't leave a
-    # record that resurrects an outdated binary).
     new_record = dict(record)
     new_record.pop("previousContentBase64", None)
     new_record.pop("previousMode", None)
@@ -277,6 +305,33 @@ def repair_shim_action(
     new_record["installedShimSha256"] = new_shim_digest
     new_record["timestamp"] = time()
     atomic_write_json(record_path, new_record)
+
+    # R3/I2: re-verify immediately before the swap, with no other I/O on the
+    # target path in between (the record write above only touches
+    # `record_path`, never `target_path`). If a concurrent official updater
+    # landed since the cache write, abort cleanly here -- no partial write,
+    # target bytes untouched, next status re-detects. (The record above may
+    # already describe content that never got applied to the target on this
+    # abort path too -- see the I1 comment: still self-consistent, because
+    # nothing acts on the record's rollback fields unless the target's
+    # actual bytes match the installed-shim digest, which they never do
+    # here.)
+    reresolved = classify_plausible_official_source(target_path, paths)
+    reresolved_digest = _file_sha256(reresolved) if reresolved is not None else None
+    if reresolved != resolved or reresolved_digest != classified_digest:
+        raise RepairRefused(
+            "target changed since it was classified/cached; aborting repair",
+            code="target_changed",
+        )
+
+    tmp = target_path.with_suffix(target_path.suffix + ".claude-monkey.repair.tmp")
+    tmp.unlink(missing_ok=True)
+    write_shim(tmp, state_dir)
+    try:
+        tmp.replace(target_path)  # rename within target_path's own directory: atomic swap
+    except OSError as exc:
+        tmp.unlink(missing_ok=True)
+        raise RepairRefused(f"failed to swap shim into place: {exc}", code="swap_failed") from exc
 
     removed = gc_source_cache(
         state_dir,

@@ -477,7 +477,16 @@ def test_status_intact_shim_reports_no_replacement(tmp_path):
     assert payload["rolloutRequired"] is False
 
 
-def test_status_corrupt_cache_disables_repair_but_keeps_detecting_replacement(tmp_path):
+def test_status_corrupt_cache_keeps_repair_available_and_detecting_replacement(tmp_path):
+    """Adjudication (controller decision, findings.md): `shimRepairAvailable`
+    no longer depends on the OLD previous-source cache's validity.
+    `restore_install_transaction` never reads `previousSourceCachePath`/
+    `previousSourceSha256`, and `repair_shim_action` overwrites both on
+    success (R4) -- the old cache is not load-bearing for repair, so a
+    corrupt old cache must not disable repair availability (this replaces
+    the old test_status_corrupt_cache_disables_repair_but_keeps_detecting_
+    replacement, which asserted the pre-adjudication gated semantics).
+    """
     state, target = seed_shim_target(tmp_path)
     replace_target_with_official(target, tmp_path)
 
@@ -490,4 +499,4 @@ def test_status_corrupt_cache_disables_repair_but_keeps_detecting_replacement(tm
 
     assert payload["shimPreviouslyManaged"] is True
     assert payload["targetReplacedByOfficial"] is True
-    assert payload["shimRepairAvailable"] is False
+    assert payload["shimRepairAvailable"] is True

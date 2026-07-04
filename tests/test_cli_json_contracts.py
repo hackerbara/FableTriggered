@@ -1176,7 +1176,10 @@ def test_use_official_json_missing_inputs_return_envelopes(monkeypatch, tmp_path
 
 
 def _replace_with_official(target, tmp_path, version="2.1.201"):
-    official = tmp_path / "official-source" / "claude"
+    # `versions/<version>` mirrors the real official installer's own
+    # versioned-directory layout -- repair.py's `_version_from_path` (C1)
+    # parses this segment instead of executing the binary for `--version`.
+    official = tmp_path / "official-source" / "versions" / version / "claude"
     official.parent.mkdir(parents=True)
     official.write_text(f"#!/bin/sh\necho '{version} (Claude Code)'\n")
     official.chmod(official.stat().st_mode | 0o111)

@@ -12,7 +12,6 @@ from claude_monkey.config import ClaudeMonkeyConfig, LaunchProfile
 from claude_monkey.install import (
     OWNER_MARKER,
     current_target_is_installed_shim,
-    resolve_cached_source,
     shim_digest,
 )
 from claude_monkey.launch_profile import load_active_launch_packages, select_launch_target
@@ -427,12 +426,20 @@ def _detect_official_replacement(
     assert record is not None
     target_path = Path(record["targetPath"])
     # Repair availability never depends on whether a replacement was
-    # detected -- an intact shim has nothing to repair, and a corrupt cache
-    # can't back a repair even if the target was replaced (R9 "corrupt
-    # cache" case).
-    repair_available = not shim_installed and (
-        resolve_cached_source(record, paths.state_dir) is not None
-    )
+    # detected -- an intact shim has nothing to repair. It also no longer
+    # depends on the OLD previous-source cache being valid (adjudication,
+    # controller decision): `restore_install_transaction` (install.py:368-
+    # 439) never reads `previousSourceCachePath`/`previousSourceSha256` --
+    # it restores from `previousType`/`previousTarget`/
+    # `previousContentBase64`/`previousMode`, and `repair_shim_action`
+    # overwrites all of those fields on success anyway (R4). Gating
+    # `shimRepairAvailable` on the old cache's validity only produced a bug:
+    # a corrupt old cache plus an otherwise-healthy replaced target made
+    # repair permanently unavailable even though repair never reads that
+    # cache. Kept intentionally pinned: `_install_record_source`
+    # (launch_profile.py) still returns None on a corrupt cache -- that is
+    # the separate launch-fallback safety gate (R9), untouched here.
+    repair_available = not shim_installed
     if shim_installed:
         return {**_NO_OFFICIAL_REPLACEMENT, "shimRepairAvailable": repair_available}
     resolved = classify_plausible_official_source(target_path, paths)

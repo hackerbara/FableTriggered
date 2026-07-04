@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 
 from claude_monkey import repair as repair_module
-from claude_monkey.install import install_shim_transaction, restore_install_transaction
+from claude_monkey.install import (
+    current_target_is_installed_shim,
+    install_shim_transaction,
+    resolve_cached_source,
+    restore_install_transaction,
+)
 from claude_monkey.paths import StatePaths
 from claude_monkey.repair import (
     CacheSourceRefused,
@@ -45,9 +50,15 @@ def replace_target_with_official(
 ) -> Path:
     """Simulate an official Claude updater clobbering the shim in place with
     a symlink to a newly installed official binary.
+
+    The official binary lives under a `versions/<version>` path segment,
+    mirroring the real official installer's own versioned-directory layout
+    (spec "Observed failure mode": `.../claude/versions/2.1.201`) -- this is
+    also what `repair._version_from_path` (C1) now parses instead of
+    executing the binary for `--version`.
     """
     official = make_executable(
-        tmp_path / name / "claude",
+        tmp_path / name / "versions" / version / "claude",
         f"#!/bin/sh\necho '{version} (Claude Code)'\n",
     )
     target.unlink()
@@ -122,12 +133,23 @@ def test_repair_shim_aborts_on_concurrent_clobber_after_cache(tmp_path, monkeypa
     assert "ClaudeMonkey" not in target.read_text()
 
 
-# -- R9: corrupt cache -----------------------------------------------------
+# -- Adjudication: old-cache gate loosened ----------------------------------
+#
+# Controller decision (findings.md "Adjudication"): the pre-repair
+# old-cache-must-verify gate is removed. `restore_install_transaction`
+# (install.py:368-439) never reads previousSourceCachePath/
+# previousSourceSha256 -- it restores from previousType/previousTarget/
+# previousContentBase64/previousMode, and repair (R4) overwrites all of
+# those fields on success anyway. The old cache is not load-bearing in any
+# path of this transaction, so a corrupt OLD cache must not block an
+# otherwise-healthy repair (this replaces the old
+# test_repair_shim_refuses_when_previous_source_cache_is_corrupt, which
+# asserted the pre-adjudication "cache_invalid" refusal).
 
 
-def test_repair_shim_refuses_when_previous_source_cache_is_corrupt(tmp_path):
+def test_repair_shim_succeeds_despite_corrupt_old_source_cache(tmp_path):
     state, target = seed_shim_target(tmp_path)
-    replace_target_with_official(target, tmp_path)
+    official = replace_target_with_official(target, tmp_path)
     paths = StatePaths(state)
 
     record_path = state / "install-record.json"
@@ -135,12 +157,146 @@ def test_repair_shim_refuses_when_previous_source_cache_is_corrupt(tmp_path):
     cache_path = Path(record["previousSourceCachePath"])
     cache_path.write_bytes(b"corrupted-cache-bytes")
 
+    result = repair_shim_action(target, state, paths)
+
+    assert result["repaired"] is True
+    assert "ClaudeMonkey" in target.read_text()
+    assert not target.is_symlink()
+    new_record = json.loads(record_path.read_text())
+    official_sha = hashlib.sha256(official.read_bytes()).hexdigest()
+    assert new_record["previousSourceSha256"] == official_sha
+
+
+def test_cache_source_action_succeeds_despite_corrupt_old_source_cache(tmp_path):
+    state, target = seed_shim_target(tmp_path)
+    official = replace_target_with_official(target, tmp_path)
+    paths = StatePaths(state)
+
+    record_path = state / "install-record.json"
+    record = json.loads(record_path.read_text())
+    cache_path = Path(record["previousSourceCachePath"])
+    cache_path.write_bytes(b"corrupted-cache-bytes")
+
+    result = cache_source_action(target, state, paths)
+
+    official_sha = hashlib.sha256(official.read_bytes()).hexdigest()
+    assert result["sha256"] == official_sha
+
+
+# -- C1: already-installed refusal ------------------------------------------
+#
+# findings.md C1: repairing/caching from an untouched, still-correctly-
+# installed managed shim classified it as "plausible official" (it lives
+# outside ClaudeMonkey's own bin/versions roots), which would cache the
+# shim's own bytes as "the official source" and rewrite the record's true
+# pre-ClaudeMonkey rollback data to describe the shim itself -- permanently
+# destroying the real rollback content. Both actions must refuse outright,
+# before touching the record or the source cache, and must never execute
+# the target for version metadata.
+
+
+def test_repair_shim_refuses_already_installed_intact_shim(tmp_path, monkeypatch):
+    state, target = seed_shim_target(tmp_path)
+    paths = StatePaths(state)
+    record_path = state / "install-record.json"
+    record_before = record_path.read_text()
+    sources_dir = state / "sources"
+    sources_before = set(sources_dir.iterdir()) if sources_dir.exists() else set()
+
+    def must_not_execute(argv, **kwargs):
+        raise AssertionError(f"must never execute the target for metadata: {argv}")
+
+    monkeypatch.setattr("claude_monkey.smoke.run_command", must_not_execute)
+
     with pytest.raises(RepairRefused) as exc_info:
         repair_shim_action(target, state, paths)
 
-    assert exc_info.value.code == "cache_invalid"
-    # No write attempted at all: target is still the (replaced) symlink.
+    assert exc_info.value.code == "already_installed"
+    assert record_path.read_text() == record_before
+    sources_after = set(sources_dir.iterdir()) if sources_dir.exists() else set()
+    assert sources_after == sources_before
+    assert "ClaudeMonkey" in target.read_text()
+
+
+def test_cache_source_refuses_already_installed_intact_shim(tmp_path, monkeypatch):
+    state, target = seed_shim_target(tmp_path)
+    paths = StatePaths(state)
+    sources_dir = state / "sources"
+    sources_before = set(sources_dir.iterdir()) if sources_dir.exists() else set()
+
+    def must_not_execute(argv, **kwargs):
+        raise AssertionError(f"must never execute the target for metadata: {argv}")
+
+    monkeypatch.setattr("claude_monkey.smoke.run_command", must_not_execute)
+
+    with pytest.raises(CacheSourceRefused) as exc_info:
+        cache_source_action(target, state, paths)
+
+    assert exc_info.value.code == "already_installed"
+    sources_after = set(sources_dir.iterdir()) if sources_dir.exists() else set()
+    assert sources_after == sources_before
+    assert "ClaudeMonkey" in target.read_text()
+
+
+# -- I1: crash-window consistency between record write and swap -------------
+#
+# findings.md I1: repair now writes the new install record BEFORE the swap,
+# not after (see repair.py's docstring for the full trace). If the process
+# crashes between the record write and the swap, the target must be left
+# untouched, and the record -- even though it already describes the *new*
+# official source -- must never be treated as applicable, because the only
+# gate anything uses before trusting a record's rollback fields
+# (`current_target_is_installed_shim`) re-reads the target's actual bytes,
+# not the record's claims.
+
+
+def test_repair_shim_crash_between_record_write_and_swap_is_self_consistent(
+    tmp_path, monkeypatch
+):
+    state, target = seed_shim_target(tmp_path)
+    official = replace_target_with_official(target, tmp_path)
+    paths = StatePaths(state)
+    record_path = state / "install-record.json"
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("simulated crash before swap")
+
+    monkeypatch.setattr(repair_module, "write_shim", boom)
+
+    with pytest.raises(RuntimeError, match="simulated crash before swap"):
+        repair_shim_action(target, state, paths)
+
+    # The swap never got a chance to run: target is completely untouched.
     assert target.is_symlink()
+    assert target.resolve() == official.resolve()
+
+    # But the record has ALREADY been rewritten to describe the new official
+    # source (I1's reorder) -- this is expected and, per the trace above,
+    # harmless.
+    record = json.loads(record_path.read_text())
+    official_sha = hashlib.sha256(official.read_bytes()).hexdigest()
+    assert record["previousSourceSha256"] == official_sha
+    assert record["previousType"] == "symlink"
+    assert record["previousTarget"] == str(official)
+
+    # Nothing acts on that record's rollback fields: the target is still not
+    # the installed shim (actual bytes checked, not the record's claims), so
+    # uninstall correctly refuses instead of "restoring" onto an
+    # unrepaired target.
+    assert current_target_is_installed_shim(target, record) is False
+    restored = restore_install_transaction(target, record_path, force=False)
+    assert restored is False
+    assert target.is_symlink()
+    assert target.resolve() == official.resolve()
+
+    # Self-healing: the record this crash left behind still backs a valid
+    # repair on the next round (R3's "abort is a fresh detection round, not
+    # an error" framing applies equally to a crash).
+    assert resolve_cached_source(record, state) is not None
+    monkeypatch.undo()
+    result = repair_shim_action(target, state, paths)
+    assert result["repaired"] is True
+    assert "ClaudeMonkey" in target.read_text()
 
 
 # -- R9: repair-then-uninstall ----------------------------------------------

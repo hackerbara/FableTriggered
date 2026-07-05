@@ -399,6 +399,39 @@ def repair_success_display(payload: dict[str, Any]) -> str | None:
     )
 
 
+# `handle_enable_patch` (cli.py) encodes a cascade into this exact substring
+# when it auto-enables a patch's `requiresPackages` closure; nothing else in
+# the CLI's patch-toggle envelopes ever emits it. Kept as a named constant
+# (rather than an inline literal in both this module and its docstring) so
+# the two stay in sync if the phrasing ever changes.
+PATCH_CASCADE_MARKER = " (+ "
+
+
+def patch_toggle_cascade_message(payload: dict[str, Any]) -> str | None:
+    """Transient banner text for a `toggle_patch` success that auto-enabled
+    extra packages via `requiresPackages` (the user's "when you click any of
+    the things that require the thinking or the bar, that also gets
+    selected" ask).
+
+    Mirrors `repair_success_display`'s precedent: a pure function of the
+    already-known JSON payload, no I/O, returning `None` whenever no extra
+    banner is warranted. `cli.py`'s `handle_enable_patch` bakes the cascade
+    directly into the envelope's plain-language `summary` (e.g. "enabled
+    thinking-text-drawer (+ footer-drawers, required); rebuild required")
+    -- detected here via `PATCH_CASCADE_MARKER`, a substring only that
+    cascade path ever emits. An ordinary (non-cascading) enable, any
+    `disable-patch` call, and any failure payload (handled instead by the
+    ordinary `_quick_op_failure_message` banner path in `gui/app.py`) all
+    return `None` here.
+    """
+    if not payload.get("ok", False):
+        return None
+    summary = payload.get("summary")
+    if not summary or PATCH_CASCADE_MARKER not in summary:
+        return None
+    return summary
+
+
 HEALTHY_COMPATIBILITY_STATUSES = frozenset(
     {"compatible", "unknown", "unconstrained", "constrained"}
 )

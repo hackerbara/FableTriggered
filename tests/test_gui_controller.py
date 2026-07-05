@@ -217,6 +217,76 @@ def test_toggle_patch_runs_background_and_banner_on_failure(controller_parts):
     assert controller._busy_command is None
 
 
+def test_toggle_patch_cascade_success_shows_banner(controller_parts):
+    # Dogfood fix: enabling a patch that requires another one (e.g.
+    # thinking-text-drawer requires footer-drawers) auto-enables the
+    # dependency CLI-side (cli.py's handle_enable_patch); the GUI must
+    # surface that cascade as a transient banner, not just a silently
+    # re-checked row after refresh().
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("toggle_patch", {"patch_id": "thinking-text-drawer", "enabled": False})
+    assert runner.background_calls == [
+        ("toggle_patch", ["enable-patch", "thinking-text-drawer", "--json"], True)
+    ]
+
+    bridge.command_finished.emit(
+        "toggle_patch",
+        _envelope(
+            ok=True,
+            summary=(
+                "enabled thinking-text-drawer (+ footer-drawers, required); "
+                "rebuild required"
+            ),
+        ),
+    )
+
+    assert window.banners == [
+        (
+            "patches",
+            "enabled thinking-text-drawer (+ footer-drawers, required); rebuild required",
+        )
+    ]
+
+
+def test_toggle_patch_disable_blocked_by_dependents_shows_clear_banner(controller_parts):
+    # Dogfood fix, disable side: cli.py's handle_disable_patch refuses (exit
+    # 1, ok: False) to disable a package still required by an enabled
+    # dependent -- the existing generic failure-banner path (see
+    # test_toggle_patch_runs_background_and_banner_on_failure) already
+    # surfaces whatever `summary` the CLI sends, so this pins the exact,
+    # dependent-naming message for the disable-blocked case specifically.
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("toggle_patch", {"patch_id": "footer-drawers", "enabled": True})
+    assert runner.background_calls == [
+        ("toggle_patch", ["disable-patch", "footer-drawers", "--json"], True)
+    ]
+
+    bridge.command_finished.emit(
+        "toggle_patch",
+        _envelope(
+            ok=False,
+            summary="cannot disable footer-drawers: required by thinking-text-drawer",
+        ),
+    )
+
+    assert window.banners == [
+        ("patches", "cannot disable footer-drawers: required by thinking-text-drawer")
+    ]
+
+
+def test_toggle_patch_ordinary_success_shows_no_banner(controller_parts):
+    controller, runner, bridge, tray, window, _ = controller_parts
+
+    controller.on_action("toggle_patch", {"patch_id": "footer-drawers", "enabled": False})
+    bridge.command_finished.emit(
+        "toggle_patch", _envelope(ok=True, summary="enabled footer-drawers; rebuild required")
+    )
+
+    assert window.banners == []
+
+
 def test_install_shim_authorization_required_disables_cancel(qtbot, controller_parts):
     controller, runner, bridge, tray, window, _ = controller_parts
     target = Path("/usr/local/bin/claude")

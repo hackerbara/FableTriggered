@@ -48,6 +48,7 @@ from claude_monkey.gui.window_model import (
     build_notice_model,
     build_tray_model,
     high_risk_confirm_text,
+    patch_toggle_cascade_message,
     repair_confirm_text,
     repair_refusal_display,
     repair_success_display,
@@ -721,6 +722,15 @@ class Controller:
             # the next routine refresh silently re-show the ordinary
             # "Repair shim" notice with no explanation of what just happened.
             message = repair_success_display(payload)
+            if message is not None:
+                self.window.show_banner(page, message)
+        elif name == "toggle_patch" and page is not None:
+            # Dogfood fix: enabling a patch that `requiresPackages` another
+            # one (footer-drawers) must give visible feedback that the
+            # dependency was auto-enabled too -- the checked row alone
+            # (after `refresh()` below) isn't enough; see
+            # `patch_toggle_cascade_message`'s docstring.
+            message = patch_toggle_cascade_message(payload)
             if message is not None:
                 self.window.show_banner(page, message)
         self.refresh()

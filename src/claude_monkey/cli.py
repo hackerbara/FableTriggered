@@ -748,22 +748,117 @@ def _option_conflict_id(
     return None
 
 
+def _load_patch_manifest_or_none(paths: StatePaths, package_id: str) -> PackageManifest | None:
+    try:
+        safe_id = validate_package_id(package_id)
+    except PackageValidationError:
+        return None
+    try:
+        return load_package_manifest(paths.patches_dir / safe_id, PackageKind.PATCH)
+    except PackageValidationError:
+        return None
+
+
+def _requires_closure(
+    paths: StatePaths, manifest: PackageManifest
+) -> tuple[list[str], list[str]]:
+    """The transitive `requiresPackages` closure of `manifest`, resolved.
+
+    Returns `(resolved, missing)`: `resolved` is every required patch id
+    (direct and transitive, dependency-first, `manifest.id` itself never
+    included) that has a valid on-disk manifest; `missing` is every required
+    id that could not be loaded at all (unknown id or invalid manifest) --
+    the caller must refuse to enable anything when `missing` is non-empty
+    rather than half-enabling the closure. Cycle-safe: a required id already
+    visited (including `manifest.id` itself) is never re-visited.
+    """
+    resolved: list[str] = []
+    missing: list[str] = []
+    visited: set[str] = {manifest.id}
+
+    def visit(current: PackageManifest) -> None:
+        for required_id in current.requires_packages:
+            if required_id in visited:
+                continue
+            visited.add(required_id)
+            required_manifest = _load_patch_manifest_or_none(paths, required_id)
+            if required_manifest is None:
+                if required_id not in missing:
+                    missing.append(required_id)
+                continue
+            # Post-order: recurse into `required_id`'s own requirements
+            # first, so a deeper dependency (e.g. footer-drawers under
+            # mid-layer under top-layer) lands earlier in `resolved` than
+            # anything that depends on it -- `handle_enable_patch` appends
+            # `resolved` to `profile.patches` in this order, so the eventual
+            # build always sees dependencies before their dependents.
+            visit(required_manifest)
+            if required_id not in resolved:
+                resolved.append(required_id)
+
+    visit(manifest)
+    return resolved, missing
+
+
+def _patch_dependents(paths: StatePaths, profile: LaunchProfile, package_id: str) -> list[str]:
+    """Currently-enabled patch ids whose `requiresPackages` closure needs
+    `package_id` (directly or transitively).
+
+    Used to refuse `disable-patch` on a required package while a dependent
+    is still enabled (Task requirement: never leave/create a broken
+    selection) -- mirrors `_option_conflict_id`'s "scan the enabled set,
+    load each sibling manifest" shape.
+    """
+    dependents: list[str] = []
+    for enabled_id in profile.patches:
+        if enabled_id == package_id:
+            continue
+        enabled_manifest = _load_patch_manifest_or_none(paths, enabled_id)
+        if enabled_manifest is None:
+            continue
+        required_ids, _missing = _requires_closure(paths, enabled_manifest)
+        if package_id in required_ids:
+            dependents.append(enabled_id)
+    return dependents
+
+
 def handle_enable_patch(args: argparse.Namespace, paths: StatePaths, config) -> int:
-    if _load_kind_package_or_emit(args, paths, args.patch_id, PackageKind.PATCH) is None:
+    manifest = _load_kind_package_or_emit(args, paths, args.patch_id, PackageKind.PATCH)
+    if manifest is None:
         return 1
+    required_ids, missing_ids = _requires_closure(paths, manifest)
+    if missing_ids:
+        return _emit_mutation_error(
+            args,
+            f"patch {args.patch_id} requires missing package(s): {', '.join(missing_ids)}",
+            "missing_required_package",
+        )
     profile = active_profile(config)
+    newly_added = [req_id for req_id in required_ids if req_id not in profile.patches]
+    for req_id in newly_added:
+        profile.patches.append(req_id)
     if args.patch_id not in profile.patches:
         profile.patches.append(args.patch_id)
     save_config(paths.config_path, config)
-    return emit(
-        args,
-        f"enabled {args.patch_id}; rebuild required",
-        envelope_ok(f"enabled {args.patch_id}; rebuild required", status="rebuild_required"),
-    )
+    if newly_added:
+        summary = (
+            f"enabled {args.patch_id} (+ {', '.join(newly_added)}, required); "
+            "rebuild required"
+        )
+    else:
+        summary = f"enabled {args.patch_id}; rebuild required"
+    return emit(args, summary, envelope_ok(summary, status="rebuild_required"))
 
 
 def handle_disable_patch(args: argparse.Namespace, paths: StatePaths, config) -> int:
     profile = active_profile(config)
+    dependents = _patch_dependents(paths, profile, args.patch_id)
+    if dependents:
+        return _emit_mutation_error(
+            args,
+            f"cannot disable {args.patch_id}: required by {', '.join(dependents)}",
+            "required_by_enabled_patches",
+        )
     profile.patches = [item for item in profile.patches if item != args.patch_id]
     save_config(paths.config_path, config)
     return emit(

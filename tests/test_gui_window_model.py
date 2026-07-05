@@ -47,6 +47,7 @@ from claude_monkey.gui.window_model import (
     patch_menu_label,
     patch_notes,
     patch_set_label_text,
+    patch_toggle_cascade_message,
     remove_enabled,
     repair_confirm_text,
     repair_refusal_display,
@@ -1069,3 +1070,43 @@ def test_repair_success_display_missing_field_returns_none():
 def test_repair_success_display_failure_payload_returns_none():
     # Failures are handled entirely by `repair_refusal_display` instead.
     assert repair_success_display({"ok": False, "revertedImmediately": True}) is None
+
+
+# -- patch_toggle_cascade_message ---------------------------------------------
+#
+# Dogfood fix: enabling a patch that `requiresPackages` another one (e.g.
+# thinking-text-drawer requires footer-drawers) must give visible feedback
+# that the dependency was auto-enabled too, not just silently work. Mirrors
+# `repair_success_display`'s pure-function-of-a-payload precedent.
+
+
+def test_patch_toggle_cascade_message_surfaces_cascade_summary():
+    payload = {
+        "ok": True,
+        "summary": "enabled thinking-text-drawer (+ footer-drawers, required); rebuild required",
+    }
+    assert patch_toggle_cascade_message(payload) == (
+        "enabled thinking-text-drawer (+ footer-drawers, required); rebuild required"
+    )
+
+
+def test_patch_toggle_cascade_message_ordinary_enable_returns_none():
+    payload = {"ok": True, "summary": "enabled footer-drawers; rebuild required"}
+    assert patch_toggle_cascade_message(payload) is None
+
+
+def test_patch_toggle_cascade_message_disable_returns_none():
+    payload = {"ok": True, "summary": "disabled footer-drawers; rebuild required"}
+    assert patch_toggle_cascade_message(payload) is None
+
+
+def test_patch_toggle_cascade_message_failure_payload_returns_none():
+    payload = {
+        "ok": False,
+        "summary": "cannot disable footer-drawers: required by thinking-text-drawer",
+    }
+    assert patch_toggle_cascade_message(payload) is None
+
+
+def test_patch_toggle_cascade_message_missing_summary_returns_none():
+    assert patch_toggle_cascade_message({"ok": True}) is None

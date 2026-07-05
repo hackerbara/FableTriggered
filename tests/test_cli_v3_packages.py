@@ -150,8 +150,8 @@ def test_launch_preview_redacts_secret_env(monkeypatch, tmp_path, capsys):
     assert payload["envPreview"] == {"ANTHROPIC_API_KEY": "<redacted>"}
 
 
-def patch_manifest(package_id: str, *, label: str | None = None):
-    return {
+def patch_manifest(package_id: str, *, label: str | None = None, **overrides):
+    payload = {
         "schemaVersion": 1,
         "kind": "patch",
         "id": package_id,
@@ -160,10 +160,15 @@ def patch_manifest(package_id: str, *, label: str | None = None):
         "risk": {"level": "low"},
         "patch": {"engine": "bun_graph_repack", "targets": []},
     }
+    payload.update(overrides)
+    return payload
 
 
-def write_patch_package(state: Path, package_id: str = "fable-fallback") -> None:
-    write_json(state / "patches" / package_id / f"{package_id}.json", patch_manifest(package_id))
+def write_patch_package(state: Path, package_id: str = "fable-fallback", **overrides) -> None:
+    write_json(
+        state / "patches" / package_id / f"{package_id}.json",
+        patch_manifest(package_id, **overrides),
+    )
 
 
 def write_invalid_package(
@@ -410,6 +415,138 @@ def test_patch_and_prompt_mutation_commands_update_default_profile(monkeypatch, 
     assert main(["clear-prompt", "--json"]) == 0
     assert read_cli_json(capsys)["ok"] is True
     assert json.loads((state / "config.json").read_text())["profiles"]["default"]["prompt"] is None
+
+
+def test_enable_patch_auto_enables_single_required_package(monkeypatch, tmp_path, capsys):
+    state, _official = configure_home(monkeypatch, tmp_path)
+    write_patch_package(state, "footer-drawers")
+    write_patch_package(
+        state, "thinking-text-drawer", requiresPackages=["footer-drawers"]
+    )
+
+    assert main(["enable-patch", "thinking-text-drawer", "--json"]) == 0
+    payload = read_cli_json(capsys)
+    assert payload["ok"] is True
+    assert "footer-drawers" in payload["summary"]
+    assert "required" in payload["summary"]
+    config = json.loads((state / "config.json").read_text())
+    assert config["profiles"]["default"]["patches"] == ["footer-drawers", "thinking-text-drawer"]
+
+
+def test_enable_patch_auto_enables_transitive_requires_closure(monkeypatch, tmp_path, capsys):
+    state, _official = configure_home(monkeypatch, tmp_path)
+    write_patch_package(state, "footer-drawers")
+    write_patch_package(state, "mid-layer", requiresPackages=["footer-drawers"])
+    write_patch_package(state, "top-layer", requiresPackages=["mid-layer"])
+
+    assert main(["enable-patch", "top-layer", "--json"]) == 0
+    payload = read_cli_json(capsys)
+    assert payload["ok"] is True
+    config = json.loads((state / "config.json").read_text())
+    patches = config["profiles"]["default"]["patches"]
+    # both transitive dependencies land in the profile, before the patch that
+    # pulled them in.
+    assert set(patches) == {"footer-drawers", "mid-layer", "top-layer"}
+    assert patches.index("footer-drawers") < patches.index("mid-layer") < patches.index(
+        "top-layer"
+    )
+
+
+def test_enable_patch_does_not_duplicate_already_enabled_required_package(
+    monkeypatch, tmp_path, capsys
+):
+    state, _official = configure_home(monkeypatch, tmp_path)
+    write_patch_package(state, "footer-drawers")
+    write_patch_package(
+        state, "thinking-text-drawer", requiresPackages=["footer-drawers"]
+    )
+
+    assert main(["enable-patch", "footer-drawers", "--json"]) == 0
+    read_cli_json(capsys)
+    assert main(["enable-patch", "thinking-text-drawer", "--json"]) == 0
+    payload = read_cli_json(capsys)
+    assert payload["ok"] is True
+    # footer-drawers was already enabled, so nothing new was cascaded in --
+    # the summary should not claim anything was auto-enabled alongside it.
+    assert " (+ " not in payload["summary"]
+    config = json.loads((state / "config.json").read_text())
+    assert config["profiles"]["default"]["patches"] == ["footer-drawers", "thinking-text-drawer"]
+
+
+def test_enable_patch_missing_required_package_refuses_with_clear_error(
+    monkeypatch, tmp_path, capsys
+):
+    state, _official = configure_home(monkeypatch, tmp_path)
+    write_patch_package(
+        state, "thinking-text-drawer", requiresPackages=["footer-drawers"]
+    )
+
+    assert main(["enable-patch", "thinking-text-drawer", "--json"]) == 1
+    payload = read_cli_json(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "missing_required_package"
+    assert "footer-drawers" in payload["error"]["message"]
+    config = json.loads((state / "config.json").read_text())
+    # half-enabling must never happen: neither package lands in the profile.
+    assert config["profiles"]["default"]["patches"] == []
+
+
+def test_disable_patch_blocked_by_enabled_dependents(monkeypatch, tmp_path, capsys):
+    state, _official = configure_home(monkeypatch, tmp_path)
+    write_patch_package(state, "footer-drawers")
+    write_patch_package(
+        state, "thinking-text-drawer", requiresPackages=["footer-drawers"]
+    )
+    assert main(["enable-patch", "thinking-text-drawer", "--json"]) == 0
+    read_cli_json(capsys)
+
+    assert main(["disable-patch", "footer-drawers", "--json"]) == 1
+    payload = read_cli_json(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "required_by_enabled_patches"
+    assert "thinking-text-drawer" in payload["error"]["message"]
+    config = json.loads((state / "config.json").read_text())
+    assert config["profiles"]["default"]["patches"] == ["footer-drawers", "thinking-text-drawer"]
+
+
+def test_disable_patch_blocked_by_multiple_enabled_dependents(monkeypatch, tmp_path, capsys):
+    state, _official = configure_home(monkeypatch, tmp_path)
+    write_patch_package(state, "footer-drawers")
+    write_patch_package(
+        state, "thinking-text-drawer", requiresPackages=["footer-drawers"]
+    )
+    write_patch_package(
+        state, "hidden-context-drawer", requiresPackages=["footer-drawers"]
+    )
+    assert main(["enable-patch", "thinking-text-drawer", "--json"]) == 0
+    read_cli_json(capsys)
+    assert main(["enable-patch", "hidden-context-drawer", "--json"]) == 0
+    read_cli_json(capsys)
+
+    assert main(["disable-patch", "footer-drawers", "--json"]) == 1
+    payload = read_cli_json(capsys)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "required_by_enabled_patches"
+    assert "thinking-text-drawer" in payload["error"]["message"]
+    assert "hidden-context-drawer" in payload["error"]["message"]
+
+
+def test_disable_patch_allowed_once_dependent_is_disabled_first(monkeypatch, tmp_path, capsys):
+    state, _official = configure_home(monkeypatch, tmp_path)
+    write_patch_package(state, "footer-drawers")
+    write_patch_package(
+        state, "thinking-text-drawer", requiresPackages=["footer-drawers"]
+    )
+    assert main(["enable-patch", "thinking-text-drawer", "--json"]) == 0
+    read_cli_json(capsys)
+
+    assert main(["disable-patch", "thinking-text-drawer", "--json"]) == 0
+    read_cli_json(capsys)
+    assert main(["disable-patch", "footer-drawers", "--json"]) == 0
+    payload = read_cli_json(capsys)
+    assert payload["ok"] is True
+    config = json.loads((state / "config.json").read_text())
+    assert config["profiles"]["default"]["patches"] == []
 
 
 def test_set_prompt_from_file_creates_package_manifest(monkeypatch, tmp_path, capsys):

@@ -13,7 +13,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from claude_monkey import __version__
+from claude_monkey import __version__, launch_agent
 from claude_monkey.authorization import (
     AuthorizationDenied,
     AuthorizationRequired,
@@ -120,6 +120,12 @@ def build_parser() -> argparse.ArgumentParser:
     add_prompt.add_argument("--id")
     add_prompt.add_argument("--name")
     add_prompt.add_argument("--json", action="store_true")
+
+    install_cmd = sub.add_parser("install")
+    install_cmd.add_argument("--cli", action="store_true")
+    install_cmd.add_argument("--json", action="store_true")
+    uninstall_cmd = sub.add_parser("uninstall")
+    uninstall_cmd.add_argument("--json", action="store_true")
 
     remove_patch = sub.add_parser("remove-patch")
     remove_patch.add_argument("patch_id")
@@ -1442,6 +1448,149 @@ def handle_add_package(args: argparse.Namespace, paths: StatePaths, kind: str) -
     return 0 if result["ok"] else 1
 
 
+def _repo_packages_root() -> Path:
+    return Path(__file__).resolve().parents[2] / "packages"
+
+
+def _ensure_state_dirs(paths: StatePaths, config) -> None:
+    paths.state_dir.mkdir(parents=True, exist_ok=True)
+    paths.bin_dir.mkdir(parents=True, exist_ok=True)
+    paths.patches_dir.mkdir(parents=True, exist_ok=True)
+    paths.prompts_dir.mkdir(parents=True, exist_ok=True)
+    paths.options_dir.mkdir(parents=True, exist_ok=True)
+    paths.logs_dir.mkdir(parents=True, exist_ok=True)
+    paths.versions_dir.mkdir(parents=True, exist_ok=True)
+    if not paths.config_path.exists():
+        save_config(paths.config_path, config)
+
+
+def _install_package_result(source: Path, paths: StatePaths) -> dict:
+    result = add_package(source, "patch", paths.state_dir)
+    if result.get("ok") is False and (result.get("error") or {}).get("code") == "package_exists":
+        return {
+            **result,
+            "ok": True,
+            "status": "ok",
+            "summary": f"already installed patch package {source.name}",
+            "error": None,
+        }
+    return result
+
+
+def _repo_patch_package_dirs(packages_root: Path) -> list[Path]:
+    if not packages_root.exists():
+        return []
+    return sorted(
+        path
+        for path in packages_root.iterdir()
+        if path.is_dir() and (path / "patch.json").exists()
+    )
+
+
+def handle_install(args: argparse.Namespace, paths: StatePaths, config) -> int:
+    _ensure_state_dirs(paths, config)
+    packages: dict[str, dict] = {}
+    ok = True
+    for package_dir in _repo_patch_package_dirs(_repo_packages_root()):
+        result = _install_package_result(package_dir, paths)
+        packages[package_dir.name] = result
+        ok = ok and bool(result.get("ok"))
+
+    launch_payload: dict[str, Any]
+    if args.cli:
+        launch_payload = {"skipped": True, "ok": True}
+    else:
+        try:
+            gui_path = launch_agent.gui_executable()
+            result = launch_agent.install_agent(gui_path, home=Path.home())
+            agent_ok = result.returncode == 0
+            launch_payload = {
+                "skipped": False,
+                "ok": agent_ok,
+                "guiExecutable": str(gui_path),
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            }
+            ok = ok and agent_ok
+        except Exception as exc:
+            launch_payload = {
+                "skipped": False,
+                "ok": False,
+                "error": {"message": str(exc), "code": "launch_agent_failed"},
+            }
+            ok = False
+
+    payload = {
+        "schemaVersion": 1,
+        "ok": ok,
+        "status": "ok" if ok else "error",
+        "summary": "installed ClaudeMonkey manager" if ok else "ClaudeMonkey install incomplete",
+        "stateDir": str(paths.state_dir),
+        "packages": packages,
+        "launchAgent": launch_payload,
+        "nextStep": "Menubar: click the monkey → Install to set up your shim",
+    }
+    if args.json:
+        print_json(payload)
+    else:
+        for package_id, result in packages.items():
+            stream = sys.stdout if result.get("ok") else sys.stderr
+            print(f"{package_id}: {result.get('summary')}", file=stream)
+        if launch_payload.get("skipped"):
+            print("LaunchAgent skipped (--cli)")
+        elif launch_payload.get("ok"):
+            print("LaunchAgent installed")
+        else:
+            print(f"LaunchAgent failed: {launch_payload.get('error')}", file=sys.stderr)
+        print(payload["nextStep"])
+    return 0 if ok else 1
+
+
+def handle_uninstall(args: argparse.Namespace, paths: StatePaths) -> int:
+    try:
+        result = launch_agent.uninstall_agent(home=Path.home())
+        ok = result.returncode == 0
+        launch_payload = {
+            "ok": ok,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+    except Exception as exc:
+        ok = False
+        launch_payload = {
+            "ok": False,
+            "error": {"message": str(exc), "code": "launch_agent_uninstall_failed"},
+        }
+    payload = {
+        "schemaVersion": 1,
+        "ok": ok,
+        "status": "ok" if ok else "error",
+        "summary": (
+            "removed ClaudeMonkey LaunchAgent" if ok else "ClaudeMonkey uninstall incomplete"
+        ),
+        "stateDir": str(paths.state_dir),
+        "launchAgent": launch_payload,
+        "stateDirUntouched": True,
+        "shimUntouched": True,
+        "nextSteps": [
+            "State dir is untouched; delete ~/.claude-monkey manually for full data removal.",
+            "Shim is untouched; run uninstall-shim to restore the claude target.",
+        ],
+    }
+    if args.json:
+        print_json(payload)
+    else:
+        if ok:
+            print("LaunchAgent removed")
+        else:
+            print(f"LaunchAgent removal failed: {launch_payload.get('error')}", file=sys.stderr)
+        print("State dir untouched; delete ~/.claude-monkey manually for full data removal.")
+        print("Shim untouched; run uninstall-shim to restore the claude target.")
+    return 0 if ok else 1
+
+
 def _profile_dict(config) -> dict:
     profile = active_profile(config)
     return {
@@ -1546,6 +1695,10 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config(paths.config_path)
     if args.command == "launch-preview":
         return handle_launch_preview(args, paths, config)
+    if args.command == "install":
+        return handle_install(args, paths, config)
+    if args.command == "uninstall":
+        return handle_uninstall(args, paths)
     if args.command == "list-options":
         payload = _list_payload(paths, config, PackageKind.OPTION)
         if args.json:

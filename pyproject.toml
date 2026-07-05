@@ -7,7 +7,10 @@ name = "claude-monkey"
 version = "0.1.0"
 description = "Source-first local userscript-style customization manager for Claude Code"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+  "PySide6>=6.7",
+  "pyobjc-framework-Cocoa>=10.0 ; sys_platform == 'darwin'",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -15,10 +18,6 @@ dev = [
   "pytest-qt>=4.4",
   "ruff>=0.5",
   "Pillow>=10.0"
-]
-gui = [
-  "PySide6>=6.7",
-  "pyobjc-framework-Cocoa>=10.0 ; sys_platform == 'darwin'"
 ]
 
 [project.scripts]

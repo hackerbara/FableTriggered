@@ -6,7 +6,14 @@ from pathlib import Path
 
 import pytest
 from tests.builder_fixtures import write_fixture_package  # noqa: F401 - re-exported for other tests
-from tests.fixtures_bun import MODULE_0, MODULE_1, MODULE_PATH_1, build_aligned_macho_fixture
+from tests.fixtures_bun import (
+    MODULE_0,
+    MODULE_1,
+    MODULE_PATH_1,
+    build_aligned_macho_fixture,
+    build_payload,
+)
+from tests.fixtures_pe import build_pe_fixture
 
 from claude_monkey.builder_v15 import BuildRequestV15, build_patchset_v15, load_manifest_v2
 from claude_monkey.manifest_v2 import ManifestV2Error
@@ -427,3 +434,91 @@ def test_duplicate_package_id_fails_before_planning(tmp_path):
 
     assert report.status == "failed"
     assert report.failureReason == "duplicate_package_id:pkg-a:pkg-a"
+
+
+def write_pe_insertion_package(package: Path, binary: Path) -> None:
+    manifest = {
+        "schemaVersion": 1,
+        "kind": "patch",
+        "id": "pe-fixture",
+        "label": "PE fixture",
+        "description": "PE insertion fixture",
+        "packageVersion": "0.1.0",
+        "patch": {"engine": "bun_graph_repack", "targets": [
+            {
+                "sourceIdentity": {
+                    "claudeVersion": "fixture",
+                    "versionOutput": "fixture (Claude Code)",
+                    "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+                    "sizeBytes": binary.stat().st_size,
+                    "platform": "win32",
+                    "arch": "x64",
+                },
+                "requiredEngine": "bun_graph_repack",
+                "requiredBinaryFormat": "bun_standalone_pe64",
+                "modules": [
+                    {
+                        "path": "/$bunfs/root/src/entrypoints/cli.js",
+                        "contentSha256": hashlib.sha256(MODULE_0).hexdigest(),
+                        "contentLength": len(MODULE_0),
+                        "operations": [
+                            {
+                                "opId": "pe-fixture-insert",
+                                "label": "Insert entry",
+                                "type": "insert_after",
+                                "anchor": "OLD_RENDER",
+                                "insertOrder": 100,
+                                "seamHint": "fixture.afterOldRender",
+                                "replacement": {"inline": ",PE_ENTRY"},
+                            }
+                        ],
+                    }
+                ],
+                "postconditions": [
+                    {
+                        "type": "module_must_contain",
+                        "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+                        "value": "PE_ENTRY",
+                    }
+                ],
+            }
+        ]},
+    }
+    package.mkdir(parents=True)
+    (package / "patch.json").write_text(json.dumps(manifest))
+
+
+def test_pe_build_skips_codesign_and_names_output_claude_exe(tmp_path):
+    # A PE source binary must never be handed to macOS codesign, and the build
+    # output must be named claude.exe, not claude — see builder_v15._apply_signing_v15
+    # and the output_name selection in build_patchset_v15.
+    source = tmp_path / "claude-source.exe"
+    source.write_bytes(build_pe_fixture(build_payload()[0]))
+    pkg = tmp_path / "pe-fixture"
+    write_pe_insertion_package(pkg, source)
+
+    calls: list[list[str]] = []
+
+    def recording_runner(argv):
+        calls.append(argv)
+        return successful_runner(argv)
+
+    report = build_patchset_v15(
+        BuildRequestV15(
+            source_path=source,
+            output_dir=tmp_path / "out",
+            package_dirs=[pkg],
+            source_version="fixture",
+            source_version_output="fixture (Claude Code)",
+            platform="win32",
+            arch="x64",
+            command_runner=recording_runner,
+        )
+    )
+
+    assert report.automatedStatus == "passed"
+    assert report.outputPath is not None
+    assert report.outputPath.endswith("claude.exe")
+    assert Path(report.outputPath).exists()
+    assert report.signingResult == {"status": "skipped", "reason": "pe_no_signing"}
+    assert not any(argv and argv[0] == "codesign" for argv in calls)

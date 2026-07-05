@@ -9,7 +9,11 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from claude_monkey.binary_format import locate_bun_section, repack_for_format
+from claude_monkey.binary_format import (
+    detect_binary_format,
+    locate_bun_section,
+    repack_for_format,
+)
 from claude_monkey.binary_inspect import inspect_binary_bytes
 from claude_monkey.bun_graph import BunGraphError, parse_bun_section
 from claude_monkey.install import use_official
@@ -428,7 +432,17 @@ def _target_identity_mismatch_status(
     return "unknown"
 
 
-def _apply_signing_v15(report: BuildReportV2, output: Path, runner: CommandRunner) -> bool:
+def _apply_signing_v15(
+    report: BuildReportV2,
+    output: Path,
+    runner: CommandRunner,
+    *,
+    source_bytes: bytes | None = None,
+) -> bool:
+    fmt = detect_binary_format(source_bytes) if source_bytes is not None else "macho"
+    if fmt == "pe":
+        report.signingResult = {"status": "skipped", "reason": "pe_no_signing"}
+        return True
     safe_runner = _safe_runner(runner)
     sign = codesign_sign(output, safe_runner)
     verify = codesign_verify(output, safe_runner)
@@ -606,7 +620,8 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
                 verification_results.append({"packageId": manifest.id, **result})
                 if not result["passed"]:
                     raise ValueError(f"postcondition_failed:{manifest.id}")
-        output = request.output_dir / "claude"
+        output_name = "claude.exe" if detect_binary_format(source) == "pe" else "claude"
+        output = request.output_dir / output_name
         output.write_bytes(repack.output_bytes)
         shutil.copymode(request.source_path, output)
         report.outputPath = str(output)
@@ -655,7 +670,9 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
         blockers: list[str] = []
         if request.run_signing:
             tracker.start("sign")
-            if not _apply_signing_v15(report, output, request.command_runner):
+            if not _apply_signing_v15(
+                report, output, request.command_runner, source_bytes=source
+            ):
                 tracker.fail("signing failed")
                 _write_report(report, report_path)
                 return report

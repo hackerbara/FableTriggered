@@ -17,6 +17,7 @@ behind whatever app currently has focus.
 
 from __future__ import annotations
 
+import getpass
 import os
 import sys
 from collections.abc import Callable
@@ -235,6 +236,19 @@ class SingleInstance(QObject):
 def refuse_root() -> bool:
     """Port of `menubar.refuse_root_menu_process`: True if running as root."""
     return getattr(os, "geteuid", lambda: 1)() == 0
+
+
+def _user_token() -> str:
+    """Per-user identifier for the single-instance key.
+
+    Uses the numeric uid where available (POSIX); falls back to the login
+    name on platforms without `os.getuid` (Windows), so the key stays
+    unique per user instead of crashing on an absent attribute.
+    """
+    getuid = getattr(os, "getuid", None)
+    if getuid is not None:
+        return str(getuid())
+    return getpass.getuser()
 
 
 class Controller:
@@ -826,7 +840,7 @@ def main() -> int:
 
     apply_macos_accessory_policy()
 
-    instance = SingleInstance(f"claude-monkey-gui-{os.getuid()}")
+    instance = SingleInstance(f"claude-monkey-gui-{_user_token()}")
     if not instance.is_primary:
         print("claude-monkey GUI is already running")
         return 0

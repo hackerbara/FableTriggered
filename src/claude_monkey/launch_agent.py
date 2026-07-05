@@ -48,7 +48,10 @@ def agent_plist_path(home: Path) -> Path:
 
 
 def _gui_domain() -> str:
-    return f"gui/{os.getuid()}"
+    # launchctl domains are macOS-only; the getattr guard mirrors the rest of
+    # the codebase so a stray call on a platform without os.getuid degrades
+    # instead of raising AttributeError before the real (macOS-only) failure.
+    return f"gui/{getattr(os, 'getuid', lambda: 0)()}"
 
 
 def _ok_result(argv: list[str] | None = None) -> CommandResult:

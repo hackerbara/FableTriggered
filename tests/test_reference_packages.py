@@ -14,11 +14,14 @@ from tests.claude_binary import claude_bin_candidates, claude_version_path
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_DIRS = [
     ROOT / "packages" / "capybara-onsen",
+    ROOT / "packages" / "hotrod-dragons",
     ROOT / "packages" / "fable-fallback",
     ROOT / "packages" / "hidden-context-drawer",
-    ROOT / "packages" / "hotrod-dragons",
     ROOT / "packages" / "normal-channel-hidden-context",
-    ROOT / "packages" / "reminder-suppression",
+    ROOT / "packages" / "reminders-manager",
+    ROOT / "packages" / "upstream-attachment-suppression",
+    ROOT / "packages" / "thinking-text-drawer",
+    ROOT / "packages" / "footer-drawers",
 ]
 
 
@@ -39,14 +42,10 @@ def source_for_identity(identity) -> Path | None:
 def test_reference_packages_are_v3_schema_with_v15_compatible_targets():
     for package_dir in PACKAGE_DIRS:
         manifest_data = json.loads((package_dir / "patch.json").read_text())
-        if manifest_data["schemaVersion"] == 1:
-            assert manifest_data["kind"] == "patch"
-            assert manifest_data["patch"]["engine"] == "bun_graph_repack"
-        else:
-            # Transitional state before schema-unification Task 3 migrates the
-            # remaining flat-v2 packages. Task 4 tightens this back to schema v1.
-            assert manifest_data["schemaVersion"] == 2
-            assert manifest_data["targets"]
+        assert manifest_data["schemaVersion"] == 1
+        assert manifest_data["kind"] == "patch"
+        assert "label" in manifest_data
+        assert manifest_data["patch"]["engine"] == "bun_graph_repack"
         manifest = load_manifest_v2(package_dir)
         assert manifest.id == package_dir.name
         assert manifest.schema_version == 2

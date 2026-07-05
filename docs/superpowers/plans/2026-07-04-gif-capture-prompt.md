@@ -62,7 +62,14 @@ coordinate with them on which build is active per recording session
 
 Quality bar: truecolor terminal (Ghostty), keep each GIF short (a few
 seconds of loop-worthy motion), watch total size — palette/fps tune
-before publishing; these clone with the repo. Do NOT commit anything to
+before publishing; these clone with the repo.
+
+RECORD IN SDR: turn the display's HDR mode OFF before recording. HDR
+sources (HEVC/PQ/BT.2020) wash out the GIF palette badly; the recorder
+pipeline assumes SDR BT.709. Verify with ffprobe: color_transfer must be
+bt709, not smpte2084. (If HDR is ever unavoidable: a scale_vt hardware
+tone-map path works — see session notes 2026-07-04 — but SDR capture is
+the simple correct answer.) Do NOT commit anything to
 assets/demos/ without the maintainer eyeballing every GIF first — they
 must also check no GIF captures unrelated personal screen content
 (hard gate; this machine has had one near-miss already tonight).

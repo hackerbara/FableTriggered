@@ -32,3 +32,5 @@ def test_fixture_with_authenticode_sets_security_dir():
     assert rva != 0 and size != 0
     dll_chars = struct.unpack_from("<H", data, opt + 70)[0]
     assert dll_chars & 0x0080  # FORCE_INTEGRITY set
+    stored_checksum = struct.unpack_from("<I", data, opt + 64)[0]
+    assert stored_checksum != 0

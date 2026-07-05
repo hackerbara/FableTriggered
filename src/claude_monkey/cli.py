@@ -124,6 +124,8 @@ def build_parser() -> argparse.ArgumentParser:
     install_cmd = sub.add_parser("install")
     install_cmd.add_argument("--cli", action="store_true")
     install_cmd.add_argument("--json", action="store_true")
+    uninstall_cmd = sub.add_parser("uninstall")
+    uninstall_cmd.add_argument("--json", action="store_true")
 
     remove_patch = sub.add_parser("remove-patch")
     remove_patch.add_argument("patch_id")
@@ -1545,6 +1547,50 @@ def handle_install(args: argparse.Namespace, paths: StatePaths, config) -> int:
     return 0 if ok else 1
 
 
+def handle_uninstall(args: argparse.Namespace, paths: StatePaths) -> int:
+    try:
+        result = launch_agent.uninstall_agent(home=Path.home())
+        ok = result.returncode == 0
+        launch_payload = {
+            "ok": ok,
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+    except Exception as exc:
+        ok = False
+        launch_payload = {
+            "ok": False,
+            "error": {"message": str(exc), "code": "launch_agent_uninstall_failed"},
+        }
+    payload = {
+        "schemaVersion": 1,
+        "ok": ok,
+        "status": "ok" if ok else "error",
+        "summary": (
+            "removed ClaudeMonkey LaunchAgent" if ok else "ClaudeMonkey uninstall incomplete"
+        ),
+        "stateDir": str(paths.state_dir),
+        "launchAgent": launch_payload,
+        "stateDirUntouched": True,
+        "shimUntouched": True,
+        "nextSteps": [
+            "State dir is untouched; delete ~/.claude-monkey manually for full data removal.",
+            "Shim is untouched; run uninstall-shim to restore the claude target.",
+        ],
+    }
+    if args.json:
+        print_json(payload)
+    else:
+        if ok:
+            print("LaunchAgent removed")
+        else:
+            print(f"LaunchAgent removal failed: {launch_payload.get('error')}", file=sys.stderr)
+        print("State dir untouched; delete ~/.claude-monkey manually for full data removal.")
+        print("Shim untouched; run uninstall-shim to restore the claude target.")
+    return 0 if ok else 1
+
+
 def _profile_dict(config) -> dict:
     profile = active_profile(config)
     return {
@@ -1651,6 +1697,8 @@ def main(argv: list[str] | None = None) -> int:
         return handle_launch_preview(args, paths, config)
     if args.command == "install":
         return handle_install(args, paths, config)
+    if args.command == "uninstall":
+        return handle_uninstall(args, paths)
     if args.command == "list-options":
         payload = _list_payload(paths, config, PackageKind.OPTION)
         if args.json:

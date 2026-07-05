@@ -124,3 +124,57 @@ def test_install_reports_per_package_failure_and_exits_nonzero(tmp_path, monkeyp
     assert payload["packages"]["good-patch"]["ok"] is True
     assert payload["packages"]["bad-patch"]["ok"] is False
     assert (home / ".claude-monkey" / "patches" / "good-patch" / "patch.json").exists()
+
+
+def test_uninstall_removes_launch_agent_only_and_leaves_state(tmp_path, monkeypatch, capsys):
+    home, _packages_root = configure_install(monkeypatch, tmp_path, package_ids=("kept-patch",))
+    state = home / ".claude-monkey"
+    write_json(state / "patches" / "kept-patch" / "patch.json", patch_manifest("kept-patch"))
+    shim = state / "bin" / "claude"
+    shim.parent.mkdir(parents=True)
+    shim.write_text("shim stays")
+    calls = []
+
+    def fake_uninstall_agent(*, home):
+        calls.append(home)
+        return CommandResult(argv=["launchctl", "bootout"], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(cli.launch_agent, "uninstall_agent", fake_uninstall_agent)
+
+    assert main(["uninstall", "--json"]) == 0
+
+    assert calls == [home]
+    assert (state / "patches" / "kept-patch" / "patch.json").exists()
+    assert shim.read_text() == "shim stays"
+    payload = read_cli_json(capsys)
+    assert payload["ok"] is True
+    assert payload["stateDirUntouched"] is True
+    assert payload["shimUntouched"] is True
+
+
+def test_install_accepts_repo_schema_v2_patch_packages(tmp_path, monkeypatch, capsys):
+    home, packages_root = configure_install(monkeypatch, tmp_path, package_ids=())
+    package_dir = packages_root / "schema-two"
+    write_json(
+        package_dir / "patch.json",
+        {
+            "schemaVersion": 2,
+            "id": "schema-two",
+            "name": "Schema Two",
+            "description": "V2 patch package",
+            "packageVersion": "0.1.0",
+            "targets": [
+                {
+                    "requiredEngine": "bun_graph_repack",
+                    "requiredBinaryFormat": "bun_standalone_macho64",
+                    "modules": [],
+                }
+            ],
+        },
+    )
+
+    assert main(["install", "--cli", "--json"]) == 0
+
+    payload = read_cli_json(capsys)
+    assert payload["packages"]["schema-two"]["ok"] is True
+    assert (home / ".claude-monkey" / "patches" / "schema-two" / "patch.json").exists()

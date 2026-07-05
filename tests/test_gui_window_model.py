@@ -1110,3 +1110,17 @@ def test_patch_toggle_cascade_message_failure_payload_returns_none():
 
 def test_patch_toggle_cascade_message_missing_summary_returns_none():
     assert patch_toggle_cascade_message({"ok": True}) is None
+
+
+def test_tray_icon_assets_ship_inside_the_package():
+    """Icons must live in the package so non-editable installs (the
+    ~/.claude-monkey/app venv) can find them — repo-relative resolution
+    left the tray invisible under launchd (QSystemTrayIcon: No Icon set)."""
+    from claude_monkey.gui import icons
+
+    assets = Path(icons.__file__).resolve().parent / "assets"
+    assert icons.ASSETS_DIR == assets
+    for name in ("monkey-tray-18.png", "monkey-tray-36.png",
+                 "monkey-tray-18-pending.png", "monkey-tray-36-pending.png",
+                 "monkey-color-128.png"):
+        assert (assets / name).is_file(), name

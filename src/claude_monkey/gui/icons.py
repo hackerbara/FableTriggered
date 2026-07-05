@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6.QtGui import QIcon
 
-ASSETS_DIR = Path(__file__).resolve().parents[3] / "assets"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 TRAY_ICON_VARIANTS = ("normal", "pending")
 

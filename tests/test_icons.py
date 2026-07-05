@@ -7,7 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PIL import Image  # noqa: E402
 
-ASSETS = Path(__file__).resolve().parents[1] / "assets"
+ASSETS = Path(__file__).resolve().parents[1] / "src" / "claude_monkey" / "gui" / "assets"
 
 
 def test_generator_writes_expected_files(tmp_path):

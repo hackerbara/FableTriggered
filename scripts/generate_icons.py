@@ -1,6 +1,6 @@
 """Deterministic monkey icon generator for ClaudeMonkey.
 
-Generates two icon families under ``assets/``:
+Generates two icon families under ``src/claude_monkey/gui/assets/``:
 
 - "tray" icons: opaque-black-on-transparent template masks (for the macOS
   menu bar), sizes 18 and 36 px, plus a "-pending" badge variant of each
@@ -19,7 +19,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-ASSETS_DIR = Path(__file__).resolve().parents[1] / "assets"
+ASSETS_DIR = Path(__file__).resolve().parents[1] / "src" / "claude_monkey" / "gui" / "assets"
 
 TRAY_SIZES = (18, 36)
 COLOR_SIZES = (128, 256, 512)

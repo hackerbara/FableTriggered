@@ -1547,6 +1547,10 @@ def _repo_packages_root() -> Path:
     return Path(__file__).resolve().parents[2] / "packages"
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
 def _ensure_state_dirs(paths: StatePaths, config) -> None:
     paths.state_dir.mkdir(parents=True, exist_ok=True)
     paths.bin_dir.mkdir(parents=True, exist_ok=True)
@@ -1592,26 +1596,64 @@ def handle_install(args: argparse.Namespace, paths: StatePaths, config) -> int:
     if args.cli:
         launch_payload = {"skipped": True, "ok": True}
     else:
+        # BUG 3: a LaunchAgent pointed at the repo venv script dies at Python
+        # startup (PermissionError on pyvenv.cfg) when the clone lives under a
+        # TCC-protected path like ~/Documents -- launchd-spawned processes get
+        # no Documents access, unlike Terminal.app. Provision a dedicated venv
+        # at <state_dir>/app (outside any TCC-protected location) and point
+        # the LaunchAgent there instead.
+        provisioning_warning: str | None = None
+        gui_path: Path | None = None
         try:
-            gui_path = launch_agent.gui_executable()
-            result = launch_agent.install_agent(gui_path, home=Path.home())
-            agent_ok = result.returncode == 0
-            launch_payload = {
-                "skipped": False,
-                "ok": agent_ok,
-                "guiExecutable": str(gui_path),
-                "returncode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            }
-            ok = ok and agent_ok
+            launch_agent.provision_app_venv(_repo_root(), paths.state_dir)
+            gui_path = launch_agent.app_gui_executable(paths.state_dir)
         except Exception as exc:
+            provisioning_warning = (
+                f"Could not provision the app runtime ({exc}); falling back to "
+                "the repo virtualenv. Login-launch may not work if this repo "
+                "lives in a TCC-protected location (e.g. ~/Documents). Run "
+                "manually instead: uv run claude-monkey-menubar"
+            )
+            try:
+                gui_path = launch_agent.gui_executable()
+            except Exception:
+                gui_path = None
+
+        if gui_path is None:
             launch_payload = {
                 "skipped": False,
                 "ok": False,
-                "error": {"message": str(exc), "code": "launch_agent_failed"},
+                "provisioningWarning": provisioning_warning,
+                "error": {
+                    "message": provisioning_warning or "no gui executable available",
+                    "code": "launch_agent_failed",
+                },
             }
             ok = False
+        else:
+            try:
+                result = launch_agent.install_agent(gui_path, home=Path.home())
+                agent_ok = result.returncode == 0
+                launch_payload = {
+                    "skipped": False,
+                    "ok": agent_ok,
+                    "guiExecutable": str(gui_path),
+                    "returncode": result.returncode,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                }
+                if provisioning_warning:
+                    launch_payload["provisioningWarning"] = provisioning_warning
+                ok = ok and agent_ok
+            except Exception as exc:
+                launch_payload = {
+                    "skipped": False,
+                    "ok": False,
+                    "error": {"message": str(exc), "code": "launch_agent_failed"},
+                }
+                if provisioning_warning:
+                    launch_payload["provisioningWarning"] = provisioning_warning
+                ok = False
 
     payload = {
         "schemaVersion": 1,
@@ -1632,16 +1674,28 @@ def handle_install(args: argparse.Namespace, paths: StatePaths, config) -> int:
         if launch_payload.get("skipped"):
             print("LaunchAgent skipped (--cli)")
         else:
+            if launch_payload.get("provisioningWarning"):
+                print(f"Warning: {launch_payload['provisioningWarning']}", file=sys.stderr)
+            if launch_payload.get("guiExecutable"):
+                app_runtime = Path(launch_payload["guiExecutable"]).parent.parent
+                print(f"App runtime: {app_runtime}")
             if launch_payload.get("ok"):
                 print("LaunchAgent installed")
+                # BUG 2: launchd launches in a bare environment; if the app
+                # dies before it can open its own log, this is the only
+                # diagnostic trail. Always point the user at it, even on the
+                # happy path, since a missing menubar icon may not surface as
+                # a returncode. Registration succeeding is also not the same
+                # as macOS actually showing the icon (BUG 3 handoff): a Login
+                # Items & Extensions approval gate can still block it.
+                log_path = launch_agent.menubar_log_path(Path.home())
+                print(
+                    "If the menubar icon doesn't appear, check System "
+                    "Settings → General → Login Items & Extensions "
+                    f"(macOS approval), and see {log_path}"
+                )
             else:
                 print(f"LaunchAgent failed: {launch_payload.get('error')}", file=sys.stderr)
-            # BUG 2: launchd launches in a bare environment; if the app dies
-            # before it can open its own log, this is the only diagnostic
-            # trail. Always point the user at it, even on the happy path,
-            # since a missing menubar icon may not surface as a returncode.
-            log_path = launch_agent.menubar_log_path(Path.home())
-            print(f"If the menubar icon doesn't appear, check the log: {log_path}")
         print(payload["nextStep"])
     return 0 if ok else 1
 

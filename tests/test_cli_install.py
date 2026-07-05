@@ -81,17 +81,22 @@ def test_install_cli_flag_skips_launch_agent(tmp_path, monkeypatch, capsys):
 
 
 def test_install_default_installs_launch_agent(tmp_path, monkeypatch, capsys):
+    """BUG 3 fix: the default (non --cli) install path provisions the
+    dedicated app venv and points the LaunchAgent at its script, not the repo
+    venv script next to the running interpreter."""
     configure_install(monkeypatch, tmp_path)
-    gui = tmp_path / "venv" / "bin" / "claude-monkey-menubar"
-    gui.parent.mkdir(parents=True)
-    gui.write_text("#!/bin/sh\n")
+    gui = tmp_path / "home" / ".claude-monkey" / "app" / "bin" / "claude-monkey-menubar"
     calls = []
+
+    def fake_provision_app_venv(repo_root, state_dir, runner=None):
+        return state_dir / "app"
 
     def fake_install_agent(gui_executable, *, home, runner=None):
         calls.append((gui_executable, home, runner))
         return CommandResult(argv=["launchctl", "bootstrap"], returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(cli.launch_agent, "gui_executable", lambda: gui)
+    monkeypatch.setattr(cli.launch_agent, "provision_app_venv", fake_provision_app_venv)
+    monkeypatch.setattr(cli.launch_agent, "app_gui_executable", lambda state_dir: gui)
     monkeypatch.setattr(cli.launch_agent, "install_agent", fake_install_agent)
 
     assert main(["install", "--json"]) == 0
@@ -100,6 +105,68 @@ def test_install_default_installs_launch_agent(tmp_path, monkeypatch, capsys):
     payload = read_cli_json(capsys)
     assert payload["launchAgent"]["ok"] is True
     assert payload["launchAgent"]["skipped"] is False
+    assert payload["launchAgent"]["guiExecutable"] == str(gui)
+
+
+def test_install_provisions_app_venv_with_real_repo_root_and_state_dir(tmp_path, monkeypatch, capsys):
+    """provision_app_venv must be called with the actual repo root (not the
+    fake packages dir used for patch-package fixtures) and the real state
+    dir, so the venv it builds installs the real project and lives under
+    ~/.claude-monkey."""
+    home, _packages_root = configure_install(monkeypatch, tmp_path)
+    gui = home / ".claude-monkey" / "app" / "bin" / "claude-monkey-menubar"
+    calls = []
+
+    def fake_provision_app_venv(repo_root, state_dir, runner=None):
+        calls.append((repo_root, state_dir))
+        return state_dir / "app"
+
+    monkeypatch.setattr(cli.launch_agent, "provision_app_venv", fake_provision_app_venv)
+    monkeypatch.setattr(cli.launch_agent, "app_gui_executable", lambda state_dir: gui)
+    monkeypatch.setattr(
+        cli.launch_agent,
+        "install_agent",
+        lambda gui_executable, *, home, runner=None: CommandResult(
+            argv=["launchctl", "bootstrap"], returncode=0, stdout="", stderr=""
+        ),
+    )
+
+    assert main(["install", "--json"]) == 0
+
+    assert len(calls) == 1
+    repo_root, state_dir = calls[0]
+    assert state_dir == home / ".claude-monkey"
+    assert (repo_root / "pyproject.toml").exists()
+
+
+def test_install_falls_back_to_repo_venv_when_provisioning_fails(tmp_path, monkeypatch, capsys):
+    """Provisioning failure (uv missing, network, etc.) must not fail the
+    whole install: fall back to the repo venv script (pre-fix behavior),
+    warn that login-launch may not work from a TCC-protected clone location,
+    and exit 0."""
+    configure_install(monkeypatch, tmp_path)
+    fallback_gui = tmp_path / "venv" / "bin" / "claude-monkey-menubar"
+    fallback_gui.parent.mkdir(parents=True)
+    fallback_gui.write_text("#!/bin/sh\n")
+    calls = []
+
+    def fake_provision_app_venv(repo_root, state_dir, runner=None):
+        raise RuntimeError("uv not found")
+
+    def fake_install_agent(gui_executable, *, home, runner=None):
+        calls.append(gui_executable)
+        return CommandResult(argv=["launchctl", "bootstrap"], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(cli.launch_agent, "provision_app_venv", fake_provision_app_venv)
+    monkeypatch.setattr(cli.launch_agent, "gui_executable", lambda: fallback_gui)
+    monkeypatch.setattr(cli.launch_agent, "install_agent", fake_install_agent)
+
+    assert main(["install"]) == 0
+
+    assert calls == [fallback_gui]
+    combined = "".join(capsys.readouterr())
+    assert "uv run claude-monkey-menubar" in combined
+    assert "TCC" in combined or "Documents" in combined
 
 
 def test_install_prints_log_path_when_launch_agent_installed(tmp_path, monkeypatch, capsys):
@@ -107,14 +174,17 @@ def test_install_prints_log_path_when_launch_agent_installed(tmp_path, monkeypat
     to know where launchd redirected the GUI's stdout/stderr. Print it in the
     human-readable next-steps output (not just buried in --json)."""
     configure_install(monkeypatch, tmp_path)
-    gui = tmp_path / "venv" / "bin" / "claude-monkey-menubar"
-    gui.parent.mkdir(parents=True)
-    gui.write_text("#!/bin/sh\n")
+    gui = tmp_path / "home" / ".claude-monkey" / "app" / "bin" / "claude-monkey-menubar"
 
     def fake_install_agent(gui_executable, *, home, runner=None):
         return CommandResult(argv=["launchctl", "bootstrap"], returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(cli.launch_agent, "gui_executable", lambda: gui)
+    monkeypatch.setattr(
+        cli.launch_agent,
+        "provision_app_venv",
+        lambda repo_root, state_dir, runner=None: state_dir / "app",
+    )
+    monkeypatch.setattr(cli.launch_agent, "app_gui_executable", lambda state_dir: gui)
     monkeypatch.setattr(cli.launch_agent, "install_agent", fake_install_agent)
 
     assert main(["install"]) == 0
@@ -122,6 +192,34 @@ def test_install_prints_log_path_when_launch_agent_installed(tmp_path, monkeypat
     out = capsys.readouterr().out
     expected_log = str(tmp_path / "home" / ".claude-monkey" / "logs" / "menubar.launchd.log")
     assert expected_log in out
+
+
+def test_install_prints_login_items_caveat_on_successful_registration(tmp_path, monkeypatch, capsys):
+    """Honest caveat (BUG 3 handoff): registering the plist doesn't guarantee
+    macOS shows the menubar icon -- a Login Items & Extensions approval gate
+    can still block it. Tell the user where to look."""
+    configure_install(monkeypatch, tmp_path)
+    gui = tmp_path / "home" / ".claude-monkey" / "app" / "bin" / "claude-monkey-menubar"
+
+    monkeypatch.setattr(
+        cli.launch_agent,
+        "provision_app_venv",
+        lambda repo_root, state_dir, runner=None: state_dir / "app",
+    )
+    monkeypatch.setattr(cli.launch_agent, "app_gui_executable", lambda state_dir: gui)
+    monkeypatch.setattr(
+        cli.launch_agent,
+        "install_agent",
+        lambda gui_executable, *, home, runner=None: CommandResult(
+            argv=["launchctl", "bootstrap"], returncode=0, stdout="", stderr=""
+        ),
+    )
+
+    assert main(["install"]) == 0
+
+    out = capsys.readouterr().out
+    assert "Login Items & Extensions" in out
+    assert str(gui.parent.parent) in out  # the provisioned app runtime dir
 
 
 def test_install_reports_per_package_failure_and_exits_nonzero(tmp_path, monkeypatch, capsys):

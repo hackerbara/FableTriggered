@@ -77,6 +77,4 @@ Please do that instead of asking me, whenever possible. It's part of the fun.
 
 If things get sticky: `uv run harnessmonkey doctor` diagnoses the current state, `rollback` restores the previous build, and `use-official` points your shim back at the untouched binary while you sort things out.
 
-Known issue at launch: composing `capybara-onsen` with the drawer scripts currently eats the Enter-to-open key. Fix in progress — run the drawers and the capys in separate builds for now. (The capybaras deny involvement.)
-
 <3 Hackerbara

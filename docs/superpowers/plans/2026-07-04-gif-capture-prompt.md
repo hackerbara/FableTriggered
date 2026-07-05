@@ -50,14 +50,11 @@ builds, not one):
 - capybara-onsen and hotrod-dragons CONFLICT with each other (same
   anchors) — one art scene per build
 
-KNOWN ISSUE — plan recordings around it: composing capybara-onsen with
-the drawer patches breaks Enter-to-open on the drawers. Therefore:
-- ALL drawer recordings (drawer-dock ensemble + the three individual
-  drawers): build WITHOUT capybara-onsen (and without hotrod-dragons to
-  keep frames clean).
-- capybara-onsen.gif and the capyclaude.gif header: capy build, do NOT
-  attempt to open drawers in these recordings. The header shot is the
-  scene framing a normal working session — no drawer interaction needed.
+NOTE: an earlier capy+drawer Enter-to-open bug is FIXED (commit ba59b0f) —
+composing the capy scene with drawers is fully supported. The header shot
+(capyclaude.gif) may include opening a drawer inside the capy frame if it
+reads well — that combination is the product's best single image. Keep the
+individual drawer GIFs art-free for clean frames.
 
 The maintainer has all packages loaded in ~/.claude-monkey/patches —
 coordinate with them on which build is active per recording session

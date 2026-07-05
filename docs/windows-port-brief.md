@@ -178,51 +178,44 @@ Scope is narrowed to the **published cosmetic packages**, which need only: 24-bi
 
 ---
 
-## 12. Fastest spike path — get *a* patched binary built, installed, and shimmed
+## 12. Spike path — full pipeline, one real package fully applied, capybaras on screen
 
-This is deliberately **not** the productionized path in §10. The goal here is the shortest route to a running, visibly-patched `claude.exe` on a Windows box — no smoke tests, no fail-closed SHA pinning, no GUI, no start-at-login, no rollback machinery. Prove the chain works end to end; harden later. Budget: an afternoon.
+**What "spike" means here, precisely.** Not a byte-swap toy. The goal is to drive a **real patch package all the way through the real apply/repack vocab** on Windows and *see it render* — pick [`capybara-onsen`](../packages/capybara-onsen) and get the cappies steaming in a Windows terminal. That means the patch genuinely changes module byte lengths, so you **must** build the resize-capable PE repack (§4) — same-length in-place editing is explicitly off the table because it caps you at trivial edits and this package is not trivial. What you're *allowed* to make toy-grade is the **tooling around** the apply path, not the apply path itself: skip the GUI, the menubar, start-at-login, the immutable shim-lock, `repair.py`, rollback, and elevation. Keep the real thing: `manifest_v2` → `module_patch` → resize-capable repack → a launchable binary. Budget: a few focused days, most of it in `pe.py`.
 
-**The one trick that collapses the work: patch same-length, in place.** A same-length byte edit inside the `.bun` payload means you touch *nothing else* — no `StringPointer` offsets, no `Offsets.byte_count`, no section resize, no `size_of_image`. For a spike you can even skip the PE checksum recompute (Windows does not enforce the PE checksum for ordinary user-mode EXE launch — it's only checked for drivers/boot images) and skip signature stripping (an invalid Authenticode signature does not block a user-mode exe from *running* — it only affects SmartScreen/AV reputation, which you can dismiss manually during a spike). So the minimal spike is: find a visible string in a JS module, overwrite it with a different string of the exact same byte length, save, run.
+The through-line: **the toy is the harness, never the patch.** A thin driver that calls the same real functions is fine; a real patch applied for real is the whole point.
 
-**Step 0 — grab the binary (don't touch the installed one yet).**
+### Step 1 — get the CLI far enough to reach `build`
+You don't need the whole CLI green — just the path from "point at a binary" to "emit a patched binary." The SHALLOW fixes from §3 that stand between you and `build`:
+- executable name → `claude.exe` at the ~6 hardcoded `"claude"` call sites (§3);
+- `paths.py` state root works via `Path.home()` as-is for a spike (don't bother moving to `%LOCALAPPDATA%` yet);
+- `source_discovery.py` → point it straight at the versioned binary (env var `CLAUDE_MONKEY_SOURCE` already exists as an override — use it, skip path-search work);
+- in `builder_v15.py`, make `_apply_signing_v15` a **no-op on Windows** (skip `codesign` entirely — §4 says unsigned runs fine).
+
+If wiring the full `cli.py` fights you, write a ~40-line toy driver that calls the same real entry points (`enable-patch` → `build --activate` equivalents) directly. Either way you go through the genuine apply/repack code, which is the invariant.
+
+### Step 2 — build `pe.py` (this is the actual spike, ~80% of the effort)
+Implement the resize-capable PE patcher from §4. Reuse `bun_graph.py` and `module_patch.py` **unchanged** — they operate on the flat `.bun` payload, which is byte-identical to macOS. New code is: PE header/section-table parse, locate `.bun` (last section), read `[u64 len][payload]`, hand payload to the existing parser, apply the package's edits, then **resize**: strip Authenticode (zero DataDirectory[4], truncate cert blob), rewrite `.bun` `size_of_raw_data`/`virtual_size`, bump `size_of_image`, recompute the PE checksum (lean on `pefile.generate_checksum()` rather than hand-rolling). Follow §4's step list literally. Because `.bun` is last-in-file, nothing else moves — this is genuinely smaller than `macho.py`, but it *is* real repack code, not a hack. Cross-check your round-trips against [`vicnaum/bun-demincer`](https://github.com/vicnaum/bun-demincer).
+
+### Step 3 — re-pin `capybara-onsen` to the Windows binary (don't bypass fail-closed — satisfy it)
+The published package pins a macOS version + SHA-256, so it will (correctly) refuse to build against `claude.exe`. Re-pin it rather than disabling the check: set the manifest to the Windows binary's version + SHA-256, and re-verify the patch's **target module text** still matches. It almost certainly does — the patch operates on the app's JS module *contents*, which are the same across platforms for the same Claude version; only the outer binary differs. If a target range moved, re-anchor it with the manifest-v2 operations (see [`docs/manifest-v2-operations.md`](manifest-v2-operations.md)). This keeps you inside the real patch vocab — you're re-authoring a pin, not punching a hole in the safety model.
+
+### Step 4 — apply it for real
+Run the genuine verbs (or your toy driver's equivalents):
 ```
-copy "%USERPROFILE%\.local\share\claude\versions\<ver>\claude.exe" "%USERPROFILE%\claude-spike.exe"
+uv run claude-monkey enable-patch capybara-onsen
+uv run claude-monkey build --activate
 ```
-Work on the copy. (`<ver>` = whatever's in that `versions\` dir.)
+This exercises the real chain: manifest validation → `module_patch` splices → `pe.py` resize repack → a patched `claude.exe` in the state dir. (Visual packages can build-but-stay-inactive by design; force-activate it for the spike.)
 
-**Step 1 — reuse what already ports, hand-roll only the PE locate.** On Windows, `bun_graph.py` and `module_patch.py` from this repo run **unchanged** — they only need the raw `.bun` payload bytes. The only new code is ~30 lines to pull those bytes out of the PE (vs. the Mach-O path `macho.py` does today):
-```python
-import struct, pathlib
-data = bytearray(pathlib.Path(r"%USERPROFILE%\claude-spike.exe".replace("%USERPROFILE%", str(pathlib.Path.home()))).read_bytes())
-e_lfanew = struct.unpack_from("<I", data, 0x3C)[0]                 # DOS header -> PE offset
-assert data[e_lfanew:e_lfanew+4] == b"PE\0\0"
-num_sections = struct.unpack_from("<H", data, e_lfanew+6)[0]
-opt_size     = struct.unpack_from("<H", data, e_lfanew+20)[0]
-sec_table    = e_lfanew + 24 + opt_size
-for i in range(num_sections):
-    off = sec_table + i*40
-    name = data[off:off+8].rstrip(b"\0")
-    if name == b".bun":
-        raw_size = struct.unpack_from("<I", data, off+16)[0]      # SizeOfRawData
-        raw_ptr  = struct.unpack_from("<I", data, off+20)[0]      # PointerToRawData
-        break
-payload_len = struct.unpack_from("<Q", data, raw_ptr)[0]          # [u64 LE length][payload...]
-payload_start = raw_ptr + 8
-payload = data[payload_start : payload_start + payload_len]
-# -> hand `payload` to bun_graph.parse_bun_section() to find modules, pick a target
+### Step 5 — shim it (here the lazy `.cmd` is fine)
+Shimming is the one place the toy shortcut is legitimate — it's not part of the patch. Drop a `claude.cmd` ahead of `.local\bin` on `PATH`, pointing at the patched binary the build just produced:
+```bat
+@echo off
+"%USERPROFILE%\.claude-monkey\bin\claude.exe" %*
 ```
+Delete the `.cmd` to revert. (Adjust the path to wherever `build --activate` wrote the patched binary.)
 
-**Step 2 — same-length edit.** Use `bun_graph.py` to locate a module's `contents` span, find a harmless visible string in it (grep the decoded module for something that surfaces at runtime — a banner/help/label string), and overwrite it with an equal-length replacement **directly in `data`** at `payload_start + <string offset within payload>`. Same length = done; write `data` back to `claude-spike.exe`. (If you can't resist a length change, that's the §4 resize path — but don't, for the spike.)
+### Step 6 — see the cappies
+Launch `claude` in **Windows Terminal** (§8's #1 — the truecolor/half-block target `capybara-onsen` needs; WezTerm as backup). Watch for the onsen scene. If SmartScreen/Defender interrupts first launch, dismiss it — and log it, because that's the real §9 de-risking signal, not a spike blocker.
 
-**Step 3 — shim it, the lazy way.** Skip the compiled-stub and the immutable-lock entirely. Two options, both a few seconds:
-- **Overwrite-in-place** (simplest, most "installed"): close all Claude instances (Windows locks the running exe), then `copy /y claude-spike.exe` over the versioned binary you copied from in Step 0 — the existing `%USERPROFILE%\.local\bin\claude.exe` launcher will now run your patched build with no shim at all. Keep the pristine copy from Step 0 as your manual rollback.
-- **`.cmd` shim on PATH** (non-destructive): drop `claude.cmd` in a folder placed *ahead* of `.local\bin` on `PATH`:
-  ```bat
-  @echo off
-  "%USERPROFILE%\claude-spike.exe" %*
-  ```
-  Now `claude` resolves to your wrapper → patched binary; delete the `.cmd` to revert.
-
-**Step 4 — run it.** `claude --version` / launch it and look for your changed string. If SmartScreen/Defender interrupts on first run, that's the reputation prompt (dismiss it) — a real signal for §9's de-risking, but not a spike blocker.
-
-**What you've proven when this works:** the full chain — locate binary → extract `.bun` → parse module graph (reused code) → edit → repack → launch patched — works on Windows. Everything in §10 after that (resize support, checksum/sig hygiene, fail-closed pinning, a real shim, GUI, start-at-login) is hardening on top of a chain you've already shown runs. **What it deliberately skips and why it's safe to skip for a spike:** checksum recompute (not enforced for user-mode exes), signature stripping (invalid sig doesn't block execution), resize bookkeeping (avoided by same-length editing), rollback tooling (you kept a manual copy).
+**What you've proven when the capybaras appear:** the entire real pipeline runs on Windows — locate binary → extract `.bun` → parse graph → apply a real length-changing package through the actual manifest/patch vocab → resize-repack → launch. Everything left in §10 (a proper shim/stub, checksum-and-sig hygiene you'll already have written, fail-closed pinning as a first-class flow, GUI, start-at-login, rollback, updater-clobber handling) is hardening on a pipeline you've shown end-to-end. **What the spike legitimately skips:** the tooling long-tail (GUI/menubar/login/lock/rollback/elevation) and a production shim — never the patch application itself, which is real throughout.

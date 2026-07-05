@@ -31,6 +31,32 @@ def test_rejects_non_pe():
         find_pe_layout(b"\x00" * 512)
 
 
+def test_rejects_truncated_optional_header():
+    # Valid MZ/e_lfanew/PE signature and PE32+ magic present, but the buffer
+    # is cut off before the Security DataDirectory entry in the optional
+    # header. Must raise PEError, not struct.error.
+    section, _ = build_payload()
+    data = build_pe_fixture(section)
+    e_lfanew = struct.unpack_from("<I", data, 0x3C)[0]
+    opt = e_lfanew + 24
+    truncated = data[:opt + 40]
+    with pytest.raises(PEError):
+        find_pe_layout(truncated)
+
+
+def test_rejects_truncated_section_table():
+    # Full, valid optional header present, but cut off partway through the
+    # first section header. Must raise PEError, not struct.error.
+    section, _ = build_payload()
+    data = build_pe_fixture(section)
+    e_lfanew = struct.unpack_from("<I", data, 0x3C)[0]
+    size_opt = struct.unpack_from("<H", data, e_lfanew + 20)[0]
+    st = e_lfanew + 24 + size_opt
+    truncated = data[:st + 10]
+    with pytest.raises(PEError):
+        find_pe_layout(truncated)
+
+
 def test_find_pe_layout_on_real_windows_binary():
     src = win_claude_bin()
     if not src.exists():

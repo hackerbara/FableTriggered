@@ -65,6 +65,9 @@ def find_pe_layout(data: bytes | bytearray) -> PELayout:
     num_sections = _u16(data, e_lfanew + 6)
     size_opt = _u16(data, e_lfanew + 20)
     opt = e_lfanew + 24
+    security_dir_offset = opt + 112 + SECURITY_DIR_INDEX * 8
+    if opt + size_opt > len(data) or security_dir_offset + 8 > len(data):
+        raise PEError("truncated_pe_header")
     if _u16(data, opt) != PE32PLUS_MAGIC:
         raise PEError("unsupported_optional_header_not_pe32plus")
     if machine != MACHINE_AMD64:
@@ -75,10 +78,12 @@ def find_pe_layout(data: bytes | bytearray) -> PELayout:
     checksum_offset = opt + 64
     dll_characteristics_offset = opt + 70
     size_of_image_offset = opt + 56
-    security_rva = _u32(data, opt + 112 + SECURITY_DIR_INDEX * 8)
-    security_size = _u32(data, opt + 112 + SECURITY_DIR_INDEX * 8 + 4)
+    security_rva = _u32(data, security_dir_offset)
+    security_size = _u32(data, security_dir_offset + 4)
 
     st = opt + size_opt
+    if st + num_sections * 40 > len(data):
+        raise PEError("truncated_pe_header")
     sections = []
     for i in range(num_sections):
         off = st + i * 40

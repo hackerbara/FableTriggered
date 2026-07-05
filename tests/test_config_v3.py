@@ -25,7 +25,7 @@ def test_v3_config_round_trip(tmp_path):
         profiles={
             "default": LaunchProfile(
                 prompt="research",
-                patches=["fable-fallback", "reminder-suppression"],
+                patches=["fable-fallback", "hidden-context-drawer"],
                 options=["local-proxy", "dangerous-permissions"],
             )
         },
@@ -38,7 +38,7 @@ def test_v3_config_round_trip(tmp_path):
     assert loaded.schemaVersion == 1
     assert loaded.activeProfile == "default"
     assert loaded.profiles["default"].prompt == "research"
-    assert loaded.profiles["default"].patches == ["fable-fallback", "reminder-suppression"]
+    assert loaded.profiles["default"].patches == ["fable-fallback", "hidden-context-drawer"]
     assert loaded.profiles["default"].options == ["local-proxy", "dangerous-permissions"]
     assert loaded.officialClaudePath == "/tmp/claude-official"
 
@@ -88,13 +88,13 @@ def test_legacy_v2_profile_fields_are_migrated_on_read(tmp_path):
     path = tmp_path / ".claude-monkey" / "config.json"
     path.parent.mkdir(parents=True)
     path.write_text(
-        '{"schemaVersion":1,"activeProfile":"default","profiles":{"default":{"enabledPatches":["fable-fallback","reminder-suppression"],"promptProfile":"research"}}}'
+        '{"schemaVersion":1,"activeProfile":"default","profiles":{"default":{"enabledPatches":["fable-fallback","hidden-context-drawer"],"promptProfile":"research"}}}'
     )
 
     loaded = load_config(path)
 
     profile = loaded.profiles["default"]
-    assert profile.patches == ["fable-fallback", "reminder-suppression"]
+    assert profile.patches == ["fable-fallback", "hidden-context-drawer"]
     assert profile.prompt == "research"
     assert profile.options == []
 
@@ -120,7 +120,7 @@ def test_patches_field_takes_precedence_over_stale_legacy_fields(tmp_path):
     path.write_text(
         '{"schemaVersion":1,"activeProfile":"default","profiles":{"default":{'
         '"patches":["fable-fallback"],'
-        '"enabledPatches":["reminder-suppression"],'
+        '"enabledPatches":["hidden-context-drawer"],'
         '"patchIds":["hotrod-dragons"]'
         "}}}"
     )

@@ -63,7 +63,7 @@ from claude_monkey.repair import (
 )
 from claude_monkey.shim_entry import compute_launch_with_paths
 from claude_monkey.smoke import run_command
-from claude_monkey.source_discovery import discover_official_claude
+from claude_monkey.source_discovery import discover_official_claude, recorded_source_path
 from claude_monkey.status import status_payload
 
 
@@ -2036,6 +2036,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         print(f"stateDir={paths.state_dir}")
         print(f"sourceDiscovery={_discover_source(None) or 'missing'}")
+        recorded = recorded_source_path(paths)
+        if config.officialClaudePath and recorded is not None:
+            configured = Path(config.officialClaudePath).expanduser().resolve(strict=False)
+            if configured != recorded:
+                print(
+                    "warning: config officialClaudePath differs from the shim "
+                    f"install record's source\n  config:  {configured}\n"
+                    f"  record:  {recorded}\n"
+                    "  builds use the config value; if the recorded source is newer, "
+                    "update officialClaudePath (use-official) or re-run install-shim"
+                )
         return 0
     parser.print_help()
     return 0

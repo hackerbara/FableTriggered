@@ -116,6 +116,21 @@ def _recorded_managed_target(paths: StatePaths) -> Path | None:
         return Path(target).expanduser().resolve(strict=False)
 
 
+def recorded_source_path(paths: StatePaths) -> Path | None:
+    """The original claude binary captured in the shim install record, if any."""
+    record_path = paths.state_dir / "install-record.json"
+    try:
+        raw = json.loads(record_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict) or raw.get("owner") != "ClaudeMonkey managed shim":
+        return None
+    source = raw.get("sourcePath")
+    if not isinstance(source, str):
+        return None
+    return Path(source).expanduser().resolve(strict=False)
+
+
 def source_identity(path: str | Path | None, paths: StatePaths, kind: str) -> SourceIdentity | None:
     if _is_current_launcher_path(path, paths):
         return None

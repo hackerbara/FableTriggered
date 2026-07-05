@@ -133,3 +133,60 @@ def test_cli_install_shim_dry_run_has_no_side_effects(tmp_path):
     )
     assert target.read_text() == "official"
     assert not (tmp_path / "state").exists()
+
+
+def test_doctor_warns_when_config_source_differs_from_install_record(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    state = tmp_path / ".claude-monkey"
+    state.mkdir(parents=True)
+    newer = tmp_path / "versions" / "2.1.201" / "claude"
+    older = tmp_path / "versions" / "2.1.199" / "claude"
+    for binary in (newer, older):
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b"claude")
+        binary.chmod(0o755)
+    (state / "install-record.json").write_text(
+        json.dumps(
+            {
+                "owner": "ClaudeMonkey managed shim",
+                "targetPath": str(tmp_path / "bin" / "claude"),
+                "sourcePath": str(newer),
+            }
+        )
+    )
+    (state / "config.json").write_text(
+        json.dumps({"schemaVersion": 1, "activeProfile": "default", "profiles": {"default": {}}, "officialClaudePath": str(older)})
+    )
+    assert main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "officialClaudePath" in out
+    assert "install record" in out
+    assert str(newer) in out
+
+
+def test_doctor_quiet_when_config_source_matches_install_record(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    state = tmp_path / ".claude-monkey"
+    state.mkdir(parents=True)
+    binary = tmp_path / "versions" / "2.1.201" / "claude"
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(b"claude")
+    binary.chmod(0o755)
+    (state / "install-record.json").write_text(
+        json.dumps(
+            {
+                "owner": "ClaudeMonkey managed shim",
+                "targetPath": str(tmp_path / "bin" / "claude"),
+                "sourcePath": str(binary),
+            }
+        )
+    )
+    (state / "config.json").write_text(
+        json.dumps({"schemaVersion": 1, "activeProfile": "default", "profiles": {"default": {}}, "officialClaudePath": str(binary)})
+    )
+    assert main(["doctor"]) == 0
+    assert "differs" not in capsys.readouterr().out

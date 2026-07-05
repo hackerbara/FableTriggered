@@ -9,6 +9,12 @@ from pathlib import Path
 
 from claude_monkey.config import ClaudeMonkeyConfig
 from claude_monkey.paths import StatePaths
+from claude_monkey.platform_support import (
+    claude_executable_name,
+    is_executable_file,
+    is_windows,
+    windows_claude_install_candidates,
+)
 
 
 @dataclass(frozen=True)
@@ -54,7 +60,7 @@ def _resolve_existing_executable(candidate: str | Path | None) -> Path | None:
         path = Path(candidate).expanduser().resolve(strict=True)
     except (OSError, RuntimeError):
         return None
-    if path.is_file() and os.access(path, os.X_OK):
+    if is_executable_file(path):
         return path
     return None
 
@@ -152,11 +158,14 @@ def discover_official_claude(
     environ = os.environ if environ is None else environ
     which = shutil.which if which is None else which
 
-    for candidate, kind in (
+    candidates: list[tuple[str | Path | None, str]] = [
         (config.officialClaudePath, "config"),
         (environ.get("CLAUDE_MONKEY_SOURCE"), "env"),
-        (which("claude"), "path"),
-    ):
+        (which(claude_executable_name()), "path"),
+    ]
+    if is_windows():
+        candidates.extend((c, "install") for c in windows_claude_install_candidates(environ))
+    for candidate, kind in candidates:
         identity = source_identity(candidate, paths, kind)
         if identity is not None:
             return identity.path

@@ -83,7 +83,7 @@ def test_cli_build_with_explicit_source_and_package(monkeypatch, tmp_path, capsy
     assert not (out_dir / "claude").exists()
     out = capsys.readouterr().out
     assert "failed" in out
-    assert "schema_v1_migration_required" in out
+    assert "unsupported_manifest_format: expected schemaVersion 1 with kind" in out
 
 
 def test_cli_use_official_updates_current_symlink(monkeypatch, tmp_path):

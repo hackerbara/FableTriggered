@@ -33,12 +33,13 @@ def runner(argv):
 
 def write_package(package: Path, binary: Path, package_id: str, payload: str, order: int) -> None:
     manifest = {
-        "schemaVersion": 2,
+        "schemaVersion": 1,
+        "kind": "patch",
         "id": package_id,
-        "name": package_id,
+        "label": package_id,
         "description": "Shared-anchor insertion fixture",
         "packageVersion": "0.1.0",
-        "targets": [
+        "patch": {"engine": "bun_graph_repack", "targets": [
             {
                 "sourceIdentity": {
                     "claudeVersion": "fixture",
@@ -75,7 +76,7 @@ def write_package(package: Path, binary: Path, package_id: str, payload: str, or
                     }
                 ],
             }
-        ],
+        ]},
     }
     package.mkdir()
     (package / "patch.json").write_text(json.dumps(manifest))
@@ -145,8 +146,8 @@ def test_insertion_composes_with_disjoint_replacement_package(tmp_path):
     pkg_c = tmp_path / "pkg-c"
     manifest = json.loads((pkg_a / "patch.json").read_text())
     manifest["id"] = "pkg-c"
-    manifest["name"] = "pkg-c"
-    manifest["targets"][0]["modules"][0]["operations"] = [
+    manifest["label"] = "pkg-c"
+    manifest["patch"]["targets"][0]["modules"][0]["operations"] = [
         {
             "opId": "pkg-c-replace",
             "label": "Replace return",
@@ -155,7 +156,7 @@ def test_insertion_composes_with_disjoint_replacement_package(tmp_path):
             "replacement": {"inline": "return 2"},
         }
     ]
-    manifest["targets"][0]["postconditions"] = [
+    manifest["patch"]["targets"][0]["postconditions"] = [
         {"type": "module_must_contain", "modulePath": MODULE_PATH, "value": "return 2"}
     ]
     pkg_c.mkdir()

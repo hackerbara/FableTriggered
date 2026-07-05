@@ -23,8 +23,10 @@ def _manifest() -> dict:
 def test_hotrod_dragons_manifest_shape_and_pins():
     manifest = _manifest()
     assert manifest["id"] == "hotrod-dragons"
-    assert manifest["schemaVersion"] == 2
-    target = manifest["targets"][0]
+    assert manifest["schemaVersion"] == 1
+    assert manifest["kind"] == "patch"
+    assert manifest["patch"]["engine"] == "bun_graph_repack"
+    target = manifest["patch"]["targets"][0]
     assert target["requiredEngine"] == "bun_graph_repack"
     assert target["requiredBinaryFormat"] == "bun_standalone_macho64"
     assert target["sourceIdentity"]["sha256"] == EXPECTED_SOURCE_SHA
@@ -54,7 +56,7 @@ def test_hotrod_dragons_manifest_shape_and_pins():
 
 def test_hotrod_dragons_payloads_match_hashes_and_are_mojibake_safe():
     manifest = _manifest()
-    operations = manifest["targets"][0]["modules"][0]["operations"]
+    operations = manifest["patch"]["targets"][0]["modules"][0]["operations"]
     import hashlib
     joined = ""
     for op in operations:

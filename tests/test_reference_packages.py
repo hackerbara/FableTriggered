@@ -212,7 +212,7 @@ def test_hidden_context_drawer_package_uses_footer_overlay_without_global_ijo_ca
     assert 'position:"absolute",marginTop:-(hCh+1)' not in "".join(payloads.values())
     assert 'position:"absolute",marginTop:-(hCh+1)' not in overlay_payload
     postcondition_values = {
-        assertion["value"] for assertion in manifest_data["targets"][0]["postconditions"]
+        assertion["value"] for assertion in targets[0]["postconditions"]
     }
     assert "__CODEX_HIDDEN_CONTEXT_DRAWER_FRAME_V13__" in postcondition_values
     assert "function __codexNCHCPanel" in postcondition_values

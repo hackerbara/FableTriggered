@@ -111,10 +111,8 @@ def load_manifest_v2(package_dir: Path) -> ManifestV2:
             raise ManifestV2Error(f"patch.json read_error: {type(exc).__name__}: {exc}") from exc
         if not isinstance(data, dict):
             raise ManifestV2Error("patch.json must be an object")
-        if data.get("schemaVersion") == 2 or (
-            data.get("schemaVersion") == 1 and "kind" not in data
-        ):
-            return load_manifest_v2_dict(data)
+        if data.get("schemaVersion") != 1 or "kind" not in data:
+            raise ManifestV2Error("unsupported_manifest_format: expected schemaVersion 1 with kind")
     return load_manifest_v2_dict(_v3_manifest_as_v2_dict(package_dir))
 
 

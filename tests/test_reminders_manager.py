@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from claude_monkey.builder_v15 import BuildRequestV15, build_patchset_v15, load_manifest_v2
-from claude_monkey.manifest_v2 import load_manifest_v2_dict
 from claude_monkey.payloads import load_payload_bytes
 from tests.claude_binary import claude_version_path
 
@@ -26,7 +25,7 @@ DENY_FAMILIES = ["todo_reminder", "task_reminder", "tool_search_usage_reminder",
 
 
 def _load_manifest():
-    return load_manifest_v2_dict(json.loads((PACKAGE_DIR / "patch.json").read_text()))
+    return load_manifest_v2(PACKAGE_DIR)
 
 
 def _live_source_or_skip() -> bytes:
@@ -50,7 +49,7 @@ def _rm_payload_texts() -> tuple[str, str, str]:
     return wrapper, xye, panel
 
 
-def test_reminders_manager_manifest_loads_v15_schema_v2_with_valid_payload_hashes():
+def test_reminders_manager_manifest_loads_package_model_with_valid_payload_hashes():
     manifest = _load_manifest()
     assert manifest.id == "reminders-manager"
     assert manifest.schema_version == 2
@@ -217,7 +216,7 @@ def test_reminders_manager_conflicts_with_matching_uas_fixture_when_framework_pr
     (fixture / "payloads").mkdir(parents=True)
     payload = b"/* unused */\n"
     (fixture / "payloads" / "noop.js").write_bytes(payload)
-    manifest = {"schemaVersion": 2, "id": "upstream-attachment-suppression", "name": "UAS Fixture", "description": "relationship fixture", "packageVersion": "2.1.201-fixture", "targets": [{"sourceIdentity": {"claudeVersion":"2.1.201","versionOutput":"2.1.201 (Claude Code)","sha256":EXPECTED_SOURCE_SHA,"sizeBytes":EXPECTED_SOURCE_SIZE,"platform":"darwin","arch":"arm64"}, "requiredEngine":"bun_graph_repack", "requiredBinaryFormat":"bun_standalone_macho64", "modules":[{"path":MODULE_PATH,"contentSha256":EXPECTED_MODULE_SHA,"contentLength":EXPECTED_MODULE_LENGTH,"operations":[{"opId":"noop","label":"noop","type":"replace_exact","exact":"__never__","replacement":{"path":"payloads/noop.js","sha256":hashlib.sha256(payload).hexdigest()}}]}], "manualSmoke":{"required":False,"reason":None}}]}
+    manifest = {"schemaVersion": 1, "kind": "patch", "id": "upstream-attachment-suppression", "label": "UAS Fixture", "description": "relationship fixture", "packageVersion": "2.1.201-fixture", "conflictsWithPackages": ["reminders-manager"], "patch": {"engine": "bun_graph_repack", "targets": [{"sourceIdentity": {"claudeVersion":"2.1.201","versionOutput":"2.1.201 (Claude Code)","sha256":EXPECTED_SOURCE_SHA,"sizeBytes":EXPECTED_SOURCE_SIZE,"platform":"darwin","arch":"arm64"}, "requiredEngine":"bun_graph_repack", "requiredBinaryFormat":"bun_standalone_macho64", "modules":[{"path":MODULE_PATH,"contentSha256":EXPECTED_MODULE_SHA,"contentLength":EXPECTED_MODULE_LENGTH,"operations":[{"opId":"noop","label":"noop","type":"replace_exact","exact":"__never__","replacement":{"path":"payloads/noop.js","sha256":hashlib.sha256(payload).hexdigest()}}]}], "manualSmoke":{"required":False,"reason":None}}]}}
     (fixture / "patch.json").write_text(json.dumps(manifest))
     report = _build(tmp_path, [FOOTER_DRAWERS_DIR, PACKAGE_DIR, fixture])
     assert report.status == "failed"

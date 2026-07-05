@@ -4,13 +4,36 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
 from tests.builder_fixtures import write_fixture_package  # noqa: F401 - re-exported for other tests
 from tests.fixtures_bun import MODULE_0, MODULE_1, MODULE_PATH_1, build_aligned_macho_fixture
 
-from claude_monkey.builder_v15 import BuildRequestV15, build_patchset_v15
+from claude_monkey.builder_v15 import BuildRequestV15, build_patchset_v15, load_manifest_v2
+from claude_monkey.manifest_v2 import ManifestV2Error
 from claude_monkey.smoke import CommandResult
 
 pytest_plugins = ["tests.builder_fixtures"]
+
+
+
+
+def test_flat_v2_manifest_rejected(tmp_path):
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "patch.json").write_text(json.dumps({
+        "schemaVersion": 2, "id": "x", "name": "X", "description": "d",
+        "packageVersion": "0.0.1", "targets": [],
+    }))
+    with pytest.raises(ManifestV2Error, match="unsupported_manifest_format"):
+        load_manifest_v2(pkg)
+
+
+def test_schema_one_without_kind_rejected(tmp_path):
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "patch.json").write_text(json.dumps({"schemaVersion": 1, "id": "x"}))
+    with pytest.raises(ManifestV2Error, match="unsupported_manifest_format"):
+        load_manifest_v2(pkg)
 
 
 def test_build_patchset_v15_writes_copied_output_and_report(successful_build_request):
@@ -51,10 +74,13 @@ def test_build_patchset_v15_activate_true_activates_with_manual_smoke_flag(
     assert current_path.is_symlink()
 
 
-def test_schema_v1_package_is_migration_required(bad_manifest_build_request):
+def test_unsupported_manifest_format_fails_build(bad_manifest_build_request):
     report = build_patchset_v15(bad_manifest_build_request())
     assert report.status == "failed"
-    assert report.failureReason == "schema_v1_migration_required"
+    assert report.failureReason == (
+        "manifest_v2_invalid:unsupported_manifest_format: "
+        "expected schemaVersion 1 with kind"
+    )
 
 
 def test_source_identity_mismatch_report_names_current_and_target(successful_build_request):
@@ -96,12 +122,13 @@ def write_insertion_package(
     postcondition_value: str,
 ) -> None:
     manifest = {
-        "schemaVersion": 2,
+        "schemaVersion": 1,
+        "kind": "patch",
         "id": package_id,
-        "name": package_id,
+        "label": package_id,
         "description": "Insertion fixture",
         "packageVersion": "0.1.0",
-        "targets": [
+        "patch": {"engine": "bun_graph_repack", "targets": [
             {
                 "sourceIdentity": {
                     "claudeVersion": "fixture",
@@ -139,9 +166,9 @@ def write_insertion_package(
                     }
                 ],
             }
-        ],
+        ]},
     }
-    package.mkdir()
+    package.mkdir(parents=True)
     (package / "patch.json").write_text(json.dumps(manifest))
 
 
@@ -313,12 +340,13 @@ def test_operations_applied_report_uses_render_order_for_shared_insertions(tmp_p
 
 def write_module1_marker_package(package: Path, binary: Path) -> None:
     manifest = {
-        "schemaVersion": 2,
+        "schemaVersion": 1,
+        "kind": "patch",
         "id": "module-one-guard",
-        "name": "Module One Guard",
+        "label": "Module One Guard",
         "description": "Module one postcondition fixture",
         "packageVersion": "0.1.0",
-        "targets": [
+        "patch": {"engine": "bun_graph_repack", "targets": [
             {
                 "sourceIdentity": {
                     "claudeVersion": "fixture",
@@ -354,9 +382,9 @@ def write_module1_marker_package(package: Path, binary: Path) -> None:
                     }
                 ],
             }
-        ],
+        ]},
     }
-    package.mkdir()
+    package.mkdir(parents=True)
     (package / "patch.json").write_text(json.dumps(manifest))
 
 
@@ -384,8 +412,8 @@ def test_composition_sensitive_postcondition_scoped_to_assertion_module(tmp_path
 def test_duplicate_package_id_fails_before_planning(tmp_path):
     source = tmp_path / "claude-source"
     source.write_bytes(build_aligned_macho_fixture()[0])
-    pkg_a = tmp_path / "pkg-a"
-    pkg_copy = tmp_path / "pkg-a-copy"
+    pkg_a = tmp_path / "left" / "pkg-a"
+    pkg_copy = tmp_path / "right" / "pkg-a"
     write_insertion_package(
         pkg_a, source, package_id="pkg-a", payload=",A_ENTRY",
         insert_order=100, postcondition_value="A_ENTRY",
@@ -398,4 +426,4 @@ def test_duplicate_package_id_fails_before_planning(tmp_path):
     report = _build(tmp_path, source, [pkg_a, pkg_copy])
 
     assert report.status == "failed"
-    assert report.failureReason == "duplicate_package_id:pkg-a:pkg-a-copy"
+    assert report.failureReason == "duplicate_package_id:pkg-a:pkg-a"

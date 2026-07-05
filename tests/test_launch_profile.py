@@ -52,6 +52,7 @@ def manifest(
         id=package_id,
         label=package_id,
         description=package_id,
+        package_version="0.0.0",
         package_dir=package_dir,
         manifest_path=package_dir / f"{package_id}.json",
         risk=None,

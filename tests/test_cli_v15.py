@@ -34,12 +34,13 @@ def test_validate_package_json_resolves_module_operation(tmp_path, capsys):
     package = tmp_path / "pkg"
     package.mkdir()
     manifest = {
-        "schemaVersion": 2,
-        "id": "fixture-v15",
-        "name": "Fixture V1.5",
+        "schemaVersion": 1,
+        "kind": "patch",
+        "id": "pkg",
+        "label": "Fixture V1.5",
         "description": "Fixture package",
         "packageVersion": "0.1.0",
-        "targets": [
+        "patch": {"engine": "bun_graph_repack", "targets": [
             {
                 "sourceIdentity": {
                     "claudeVersion": "fixture",
@@ -82,7 +83,7 @@ def test_validate_package_json_resolves_module_operation(tmp_path, capsys):
                 ],
                 "manualSmoke": {"required": False},
             }
-        ],
+        ]},
     }
     (package / "patch.json").write_text(json.dumps(manifest))
     assert (
@@ -113,7 +114,7 @@ def test_build_json_uses_v15_repack_engine_with_skip_gates(tmp_path, capsys):
 
     binary = tmp_path / "claude"
     binary.write_bytes(build_aligned_macho_fixture()[0])
-    package = tmp_path / "pkg"
+    package = tmp_path / "fixture-v15"
     write_fixture_package(package, binary)
     out_dir = tmp_path / "out"
 
@@ -289,7 +290,7 @@ def test_validate_package_json_reports_schema_v1_without_traceback(tmp_path, cap
     assert captured.err == ""
     payload = json.loads(captured.out)
     assert payload["ok"] is False
-    assert payload["errorCode"] == "schema_v1_migration_required"
+    assert payload["errorCode"] == "unsupported_manifest_format: expected schemaVersion 1 with kind"
 
 
 def test_validate_package_json_reports_invalid_v3_envelope_with_machine_code(
@@ -341,12 +342,13 @@ def test_validate_package_json_reports_non_macho_without_traceback(tmp_path, cap
     binary = tmp_path / "claude"
     binary.write_bytes(b"notmacho")
     manifest = {
-        "schemaVersion": 2,
-        "id": "fixture-v15",
-        "name": "Fixture V1.5",
+        "schemaVersion": 1,
+        "kind": "patch",
+        "id": "pkg",
+        "label": "Fixture V1.5",
         "description": "Fixture package",
         "packageVersion": "0.1.0",
-        "targets": [
+        "patch": {"engine": "bun_graph_repack", "targets": [
             {
                 "sourceIdentity": {
                     "claudeVersion": "fixture",
@@ -375,11 +377,11 @@ def test_validate_package_json_reports_non_macho_without_traceback(tmp_path, cap
                     }
                 ],
             }
-        ],
+        ]},
     }
     import hashlib
 
-    manifest["targets"][0]["sourceIdentity"]["sha256"] = hashlib.sha256(
+    manifest["patch"]["targets"][0]["sourceIdentity"]["sha256"] = hashlib.sha256(
         binary.read_bytes()
     ).hexdigest()
     (package / "patch.json").write_text(json.dumps(manifest))

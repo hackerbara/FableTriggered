@@ -76,11 +76,13 @@ def _module_dump_or_skip() -> str:
 
 def test_footer_drawers_manifest_targets_latest_local_2_1_201() -> None:
     manifest = _manifest_json(FOOTER_DRAWERS)
-    assert manifest["schemaVersion"] == 2
+    assert manifest["schemaVersion"] == 1
+    assert manifest["kind"] == "patch"
+    assert manifest["patch"]["engine"] == "bun_graph_repack"
     assert manifest["id"] == "footer-drawers"
     assert manifest.get("requiresPackages", []) == []
     assert manifest.get("conflictsWithPackages", []) == []
-    target = manifest["targets"][0]
+    target = manifest["patch"]["targets"][0]
     assert target["sourceIdentity"] == {
         "claudeVersion": "2.1.201",
         "versionOutput": "2.1.201 (Claude Code)",
@@ -187,7 +189,7 @@ def test_footer_drawers_action_wrapper_routes_by_real_selected_target() -> None:
 def test_footer_drawers_operations_resolve_once_in_2_1_201_module_dump() -> None:
     source = _module_dump_or_skip()
     manifest = _manifest_json(FOOTER_DRAWERS)
-    operations = manifest["targets"][0]["modules"][0]["operations"]
+    operations = manifest["patch"]["targets"][0]["modules"][0]["operations"]
     for operation in operations:
         if operation["type"] == "replace_exact":
             exact = operation["exact"]
@@ -260,12 +262,14 @@ def _write_matching_uas_conflict_fixture(tmp_path: Path) -> Path:
     payload = b"/* unused: package conflict is checked before operation planning */\n"
     (payload_dir / "noop.js").write_bytes(payload)
     manifest = {
-        "schemaVersion": 2,
-        "id": "upstream-attachment-suppression",
-        "name": "UAS Conflict Fixture",
+        "schemaVersion": 1,
+        "kind": "patch",
+        "id": "upstream-attachment-suppression-fixture",
+        "label": "UAS Conflict Fixture",
         "description": "2.1.201 identity fixture used only to verify Reminders package relationship conflicts.",
         "packageVersion": "2.1.201-fixture",
-        "targets": [{
+        "conflictsWithPackages": ["reminders-manager"],
+        "patch": {"engine": "bun_graph_repack", "targets": [{
             "sourceIdentity": {
                 "claudeVersion": "2.1.201",
                 "versionOutput": "2.1.201 (Claude Code)",
@@ -292,7 +296,7 @@ def _write_matching_uas_conflict_fixture(tmp_path: Path) -> Path:
             "preconditions": [],
             "postconditions": [],
             "manualSmoke": {"required": False, "reason": None},
-        }],
+        }]},
     }
     (fixture / "patch.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return fixture
@@ -314,7 +318,7 @@ def test_reminders_conflicts_with_matching_uas_fixture_when_framework_is_present
     )
     assert report.status == "failed"
     assert report.failureReason is not None
-    assert "patch_conflict:package_conflict:reminders-manager:upstream-attachment-suppression" in report.failureReason
+    assert "patch_conflict:package_conflict:upstream-attachment-suppression-fixture:reminders-manager" in report.failureReason
 import itertools
 
 
@@ -386,17 +390,18 @@ def test_old_direct_footer_owner_with_framework_fails_closed(tmp_path) -> None:
     exact = 'ss=wo.useMemo(()=>[Ui&&"tasks",po&&"workflows",Fn&&"tmux",_e&&"bagel",Tr&&"bridge",Ne&&"frame"].filter(Boolean),[Ui,po,Fn,_e,Tr,Ne])'
     replacement = exact.replace('[Ui&&"tasks"', '["thinking",Ui&&"tasks"')
     manifest = {
-        "schemaVersion": 2,
-        "id": "stale-direct-thinking",
-        "name": "Stale Direct Thinking",
+        "schemaVersion": 1,
+        "kind": "patch",
+        "id": "thinking-text-drawer",
+        "label": "Stale Direct Thinking",
         "description": "Fixture direct footer owner",
         "packageVersion": "0.0.0",
-        "targets": [{
+        "patch": {"engine": "bun_graph_repack", "targets": [{
             "sourceIdentity": {"claudeVersion":"2.1.201","versionOutput":"2.1.201 (Claude Code)","sha256":EXPECTED_BINARY_SHA,"sizeBytes":EXPECTED_BINARY_SIZE,"platform":"darwin","arch":"arm64"},
             "requiredEngine": "bun_graph_repack",
             "requiredBinaryFormat": "bun_standalone_macho64",
             "modules": [{"path":MODULE_PATH,"contentSha256":EXPECTED_MODULE_SHA,"contentLength":EXPECTED_MODULE_LENGTH,"operations":[{"opId":"stale-footer-target","label":"Stale footer target","type":"replace_exact","exact":exact,"requireWithinRange":[],"oldRangeSha256":hashlib.sha256(exact.encode()).hexdigest(),"oldRangeLength":len(exact.encode()),"replacement":{"inline":replacement}}]}],
-        }],
+        }]},
     }
     (stale / "patch.json").write_text(json.dumps(manifest))
     report = build_patchset_v15(BuildRequestV15(source_path=source, output_dir=tmp_path / "stale", package_dirs=[FOOTER_DRAWERS, stale], source_version="2.1.201", source_version_output="2.1.201 (Claude Code)", platform="darwin", arch="arm64"))

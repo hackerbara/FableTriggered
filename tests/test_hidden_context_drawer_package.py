@@ -28,7 +28,7 @@ def payloads_text() -> str:
 
 def test_hidden_context_drawer_targets_claude_2_1_201() -> None:
     manifest = manifest_json()
-    target = manifest["targets"][0]
+    target = manifest["patch"]["targets"][0]
     identity = target["sourceIdentity"]
     module = target["modules"][0]
     assert identity == {
@@ -49,7 +49,7 @@ def test_hidden_context_drawer_targets_claude_2_1_201() -> None:
 def test_hidden_context_drawer_real_target_panel_keeps_x_only_contract() -> None:
     manifest = manifest_json()
     assert manifest["requiresPackages"] == ["footer-drawers"]
-    ops = manifest["targets"][0]["modules"][0]["operations"]
+    ops = manifest["patch"]["targets"][0]["modules"][0]["operations"]
     op_ids = {op["opId"] for op in ops}
     assert {"projection-helpers-before-ypr", "yt-projection-list-drawer-frame", "hidden-context-panel-real-target"}.issubset(op_ids)
     assert "hidden-context-register-footer-drawer" not in op_ids
@@ -75,7 +75,7 @@ def test_hidden_context_drawer_real_target_panel_keeps_x_only_contract() -> None
 
 def test_hidden_context_operations_match_source_and_payload_hashes() -> None:
     source = MODULE_DUMP.read_text(encoding="utf-8") if MODULE_DUMP.exists() else None
-    module = manifest_json()["targets"][0]["modules"][0]
+    module = manifest_json()["patch"]["targets"][0]["modules"][0]
     for op in module["operations"]:
         payload = PACKAGE / op["replacement"]["path"]
         assert payload.exists(), op["opId"]

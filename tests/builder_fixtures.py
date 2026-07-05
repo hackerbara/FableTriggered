@@ -15,12 +15,13 @@ from claude_monkey.smoke import CommandResult
 def write_fixture_package(package: Path, binary: Path, *, manual_smoke: bool = False) -> None:
     old = MODULE_0[: MODULE_0.index(b"function after(){")]
     manifest = {
-        "schemaVersion": 2,
+        "schemaVersion": 1,
+        "kind": "patch",
         "id": "fixture-v15",
-        "name": "Fixture V1.5",
+        "label": "Fixture V1.5",
         "description": "Fixture package",
         "packageVersion": "0.1.0",
-        "targets": [
+        "patch": {"engine": "bun_graph_repack", "targets": [
             {
                 "sourceIdentity": {
                     "claudeVersion": "fixture",
@@ -63,7 +64,7 @@ def write_fixture_package(package: Path, binary: Path, *, manual_smoke: bool = F
                 ],
                 "manualSmoke": {"required": manual_smoke, "reason": "UI" if manual_smoke else None},
             }
-        ],
+        ]},
     }
     package.mkdir()
     (package / "patch.json").write_text(json.dumps(manifest))
@@ -98,7 +99,7 @@ def successful_build_request(tmp_path: Path):
     def factory(**overrides: Any) -> BuildRequestV15:
         manual_smoke = overrides.pop("manual_smoke", False)
         source = _default_source(tmp_path)
-        package = tmp_path / "pkg"
+        package = tmp_path / "fixture-v15"
         write_fixture_package(package, source, manual_smoke=manual_smoke)
         kwargs: dict[str, Any] = dict(
             source_path=source,
@@ -124,7 +125,7 @@ def bad_manifest_build_request(tmp_path: Path):
 
     def factory(**overrides: Any) -> BuildRequestV15:
         source = _default_source(tmp_path)
-        package = tmp_path / "pkg"
+        package = tmp_path / "fixture-v15"
         package.mkdir()
         (package / "patch.json").write_text(json.dumps({"schemaVersion": 1}))
         kwargs: dict[str, Any] = dict(

@@ -12,64 +12,65 @@
         },
         "modules": [
           {
-            "contentLength": 18593981,
-            "contentSha256": "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55",
+            "contentLength": 18700756,
+            "contentSha256": "46db617a7b13c062fb31595f6244819b11f7cdc6e6fed8e2c3f74a27fb6da1bd",
             "operations": [
               {
-                "endMarker": "case\"user\":{if(n.isCompactSummary){let L=h?\"transcript\":\"prompt\",H;",
+                "endMarker": "case\"user\":{if(n.isCompactSummary){let O=f?\"transcript\":\"prompt\",M;",
                 "expectedEndMarkerCount": 1,
                 "expectedStartMarkerCount": 1,
                 "label": "Render assistant fallback as system warning banner",
-                "oldRangeLength": 1638,
-                "oldRangeSha256": "8a697576f3854cd0d0338003afc0174aa1cd5232d8dbdce09e9f1786813fb290",
+                "oldRangeLength": 1573,
+                "oldRangeSha256": "aae47c8c9d6daabf161025257261fa68bc0fc4db95442bc0ac6a8d1afacb5495",
                 "opId": "gcm-assistant-fallback-banner",
                 "replacement": {
                   "path": "payloads/gcm-assistant-case.js",
-                  "sha256": "909202de46d4d068c4c049ddc5e343a6e50504b53408d4fb647e70a9de004715"
+                  "sha256": "529c2598b1fdc3fdda35f27b66ce41d17d7beefe6fcfd3d61bea38fa9c1cd77b"
                 },
                 "requireWithinRange": [
-                  "D=(O,L)=>Hb.jsx(e0m",
-                  "w=n.message.content.map(D)"
+                  "n.message.content.map",
+                  "firstTextBlockUuidByMessageID"
                 ],
-                "startMarker": "case\"assistant\":{let R;if(t[20]!==r.firstTextBlockUuidByMessageID",
-                "type": "replace_between"
+                "startMarker": "case\"assistant\":{let A;if(t[20]!==r.firstTextBlockUuidByMessageID",
+                "type": "replace_between",
+                "knownBehaviorChange": "Renders fallback content blocks as a warning row before the stock 2.1.201 assistant message renderer."
               },
               {
-                "endMarker": "function Jte",
+                "endMarker": "function lne(e,t=!1,n=!0,r=!1){",
                 "expectedEndMarkerCount": 1,
                 "expectedStartMarkerCount": 1,
-                "knownBehaviorChange": "This compact formatter appends the Fable classifier marker while preserving the current 2.1.199 resume metadata fields.",
+                "knownBehaviorChange": "This compact formatter appends the Fable classifier marker while preserving the current 2.1.201 resume metadata fields.",
                 "label": "Append Fable classifier marker to resume metadata",
                 "oldRangeLength": 377,
-                "oldRangeSha256": "10ee4f87123c9aa7e70a8f278f213b8bc09a261a20124dec7c589986b7fdee8c",
+                "oldRangeSha256": "db5ee4086344e33b238d90fff72a2f9e2fd4b1d4aff1a070a54226d689c35ad6",
                 "opId": "net-resume-marker",
                 "replacement": {
                   "path": "payloads/net-metadata-formatter.js",
-                  "sha256": "a9efe39985101cec46d2a6da77fdf32918bf3ef2dc099a5d7c574aa3df99a186"
+                  "sha256": "9f1ce6e79d9ae299dbff216928e3d457086684875f995135249ef13647e59110"
                 },
                 "requireWithinRange": [
                   "return n.join(\" \\xB7 \")"
                 ],
-                "startMarker": "function ctt(e){let t=e.fileSize!==void 0?Ia(e.fileSize):`${e.messageCount} messages`",
+                "startMarker": "function Ktt(e){let t=e.fileSize!==void 0?Ia(e.fileSize):`${e.messageCount} messages`",
                 "type": "replace_between"
               },
               {
-                "endMarker": "async function LXe",
+                "endMarker": "async function CQe(e,t,n){",
                 "expectedEndMarkerCount": 1,
                 "expectedStartMarkerCount": 1,
                 "label": "Detect Fable fallback during resume lite-log enrichment",
                 "oldRangeLength": 1270,
-                "oldRangeSha256": "6cf1c9d16abdf339b6690d2b8f7cbade4fe8d06713c056dd5408084d2d7b9330",
+                "oldRangeSha256": "35747e2024b991b7ab274a18e5f5b165291b43453a501cad4ed34f6bc0ca378a",
                 "opId": "wpf-lite-log-detector",
                 "replacement": {
                   "path": "payloads/wpf-lite-log-enrichment.js",
-                  "sha256": "dbae6a1fab434e8cc78ea45889dbc2fbcd4ec60a170c2f0c44c4ad6f61989bf4"
+                  "sha256": "72a861e6a9e9b1baf843eafa0057b80234f275799307d2fa44dcd02ba7062967"
                 },
                 "requireWithinRange": [
-                  "let n=await Byc(e.fullPath,e.fileSize??0,t)",
+                  "let n=await kCc(e.fullPath,e.fileSize??0,t)",
                   "projectPath:s"
                 ],
-                "startMarker": "async function CTf(e,t){if(!e.isLite||!e.fullPath)return e;",
+                "startMarker": "async function Rvf(e,t){if(!e.isLite||!e.fullPath)return e;",
                 "type": "replace_between"
               }
             ],
@@ -91,12 +92,12 @@
         "requiredBinaryFormat": "bun_standalone_macho64",
         "requiredEngine": "bun_graph_repack",
         "sourceIdentity": {
-          "arch": "arm64",
-          "claudeVersion": "2.1.199",
+          "claudeVersion": "2.1.201",
+          "versionOutput": "2.1.201 (Claude Code)",
+          "sha256": "a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd",
+          "sizeBytes": 231708784,
           "platform": "darwin",
-          "sha256": "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0",
-          "sizeBytes": 232155536,
-          "versionOutput": "2.1.199 (Claude Code)"
+          "arch": "arm64"
         }
       }
     ]
@@ -105,5 +106,10 @@
     "level": "low"
   },
   "schemaVersion": 1,
-  "x-packageVersion": "0.1.0"
+  "packageVersion": "0.1.0",
+  "compatibility": {
+    "claudeVersions": [
+      "2.1.201"
+    ]
+  }
 }

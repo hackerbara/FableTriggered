@@ -111,6 +111,12 @@ def build_rename_map(mac: str, win: str):
     mapping: dict[str, str] = {}
     for (ak, av, *_), (bk, bv, *_) in zip(tm, tw):
         if ak == "id" and bk == "id" and av != bv:
+            if av in mapping and mapping[av] != bv:
+                raise RuntimeError(
+                    f"inconsistent rename for {av!r}: maps to both "
+                    f"{mapping[av]!r} and {bv!r} — app-shell alignment is ambiguous, "
+                    "the two bundles may not be the same source revision"
+                )
             mapping[av] = bv
     return mapping, tm, tw
 

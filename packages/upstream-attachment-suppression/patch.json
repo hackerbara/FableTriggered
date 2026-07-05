@@ -12,50 +12,50 @@
         },
         "modules": [
           {
-            "contentLength": 18593981,
-            "contentSha256": "e30c857c2e1130ff0fa9d14349a210c588f8115fc8ac86e120c454547efc0c55",
+            "contentLength": 18700756,
+            "contentSha256": "46db617a7b13c062fb31595f6244819b11f7cdc6e6fed8e2c3f74a27fb6da1bd",
             "operations": [
               {
-                "endMarker": "async function XQt(e,t){",
-                "expectedEndMarkerCount": 1,
-                "expectedStartMarkerCount": 1,
-                "knownBehaviorChange": "Selected reminder/accounting attachment generators return an empty list before their generator function and compute-duration telemetry run.",
+                "opId": "_g-drop-denied-labels-2-1-201",
                 "label": "Drop denied attachment generator labels before generator execution and compute telemetry",
-                "oldRangeLength": 602,
-                "oldRangeSha256": "4c0825d2dcf2d6188b1ff3607cd37398274af2217a4a2ada8a3c2fc274840533",
-                "opId": "ug-drop-denied-labels-2-1-199",
-                "replacement": {
-                  "path": "payloads/filter-labels-before-ug-2.1.199.js",
-                  "sha256": "4c551eb16902a790b15fc4562a28e23bb1b221d88495e15d11734bb296cdbc17"
-                },
+                "type": "replace_between",
+                "startMarker": "async function _g(e,t){",
+                "endMarker": "async function len(e,t){",
+                "expectedStartMarkerCount": 1,
+                "expectedEndMarkerCount": 1,
                 "requireWithinRange": [
                   "let n=Date.now()",
                   "let r=await t()",
                   "G(\"tengu_attachment_compute_duration\""
                 ],
-                "startMarker": "async function ug(e,t){",
-                "type": "replace_between"
+                "oldRangeSha256": "8d9b098b1d2bcef25a34776a820ee94b7398fcc40de77cf9da68a4d72bffac0f",
+                "oldRangeLength": 602,
+                "replacement": {
+                  "path": "payloads/filter-labels-before-_g-2.1.201.js",
+                  "sha256": "d28801c079ca327a96dba53eddd2d76f548cea1c90c655a149bbaac7deafcde9"
+                },
+                "knownBehaviorChange": "Selected reminder/accounting attachment generators return an empty list before their generator function and compute-duration telemetry run."
               },
               {
-                "endMarker": "async function i3l(e){",
-                "expectedEndMarkerCount": 1,
+                "opId": "xye-filter-before-ki-2-1-201",
+                "label": "Filter denied attachment objects before attachment telemetry and ki row construction",
+                "type": "replace_between",
+                "startMarker": "async function*XYe(e,t,n,r,o,s,i,a){",
+                "endMarker": "async function E5l(e){",
                 "expectedStartMarkerCount": 1,
-                "knownBehaviorChange": "Denied attachment objects are filtered before active attachment telemetry and before li(...) can create transcript rows.",
-                "label": "Filter denied attachment objects before attachment telemetry and li row construction",
-                "oldRangeLength": 180,
-                "oldRangeSha256": "528f9c3051a2b003d01023e68c13af05bc7752d96639eb9a34edb272165a36e9",
-                "opId": "hze-filter-before-li-2-1-199",
-                "replacement": {
-                  "path": "payloads/filter-before-li-2.1.199.js",
-                  "sha256": "14934fa13fcfbb326fbdebc44488ff4debb2d8eb25b3cd5b15c08825ed17c284"
-                },
+                "expectedEndMarkerCount": 1,
                 "requireWithinRange": [
-                  "let l=await W9l(e,t,n,r,s,i,a)",
+                  "let l=await i5l(e,t,n,r,s,i,a)",
                   "G(\"tengu_attachments\"",
-                  "yield li(c,o)"
+                  "yield ki(c,o)"
                 ],
-                "startMarker": "async function*Hze(e,t,n,r,o,s,i,a){",
-                "type": "replace_between"
+                "oldRangeSha256": "3db820176d27dcac53b2a845322ca30fb882e7ebcf4e8c141ac5c6e423f208e6",
+                "oldRangeLength": 180,
+                "replacement": {
+                  "path": "payloads/filter-before-ki-2.1.201.js",
+                  "sha256": "eb960b1ee9429ca7fbe034e32ec444cd26d30996335575b6b918b5b544695131"
+                },
+                "knownBehaviorChange": "Denied attachment objects are filtered before active attachment telemetry and before ki(...) can create transcript rows."
               }
             ],
             "path": "/$bunfs/root/src/entrypoints/cli.js"
@@ -63,57 +63,57 @@
         ],
         "postconditions": [
           {
-            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "value": "function __codexUASDropLabel(e)"
           },
           {
-            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "value": "function __codexUASDropAttachment(e)"
           },
           {
-            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "value": "if(__codexUASDropLabel(e))return[];let n=Date.now()"
           },
           {
-            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "value": "l=l.filter((c)=>!__codexUASDropAttachment(c));if(l.length===0)return;G(\"tengu_attachments\""
           },
           {
-            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "type": "module_must_not_contain",
-            "value": "async function ug(e,t){let n=Date.now();try{let r=await t()"
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "async function _g(e,t){let n=Date.now();try{let r=await t()"
           },
           {
-            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "type": "module_must_not_contain",
-            "value": "async function*Hze(e,t,n,r,o,s,i,a){let l=await W9l(e,t,n,r,s,i,a);if(l.length===0)return;G(\"tengu_attachments\""
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "async function*XYe(e,t,n,r,o,s,i,a){let l=await i5l(e,t,n,r,s,i,a);if(l.length===0)return;G(\"tengu_attachments\""
           }
         ],
         "preconditions": [
           {
-            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "type": "module_must_contain",
-            "value": "async function ug(e,t){let n=Date.now();try{let r=await t()"
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "async function _g(e,t){let n=Date.now();try{let r=await t()"
           },
           {
-            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "type": "module_must_contain",
-            "value": "async function*Hze(e,t,n,r,o,s,i,a){let l=await W9l(e,t,n,r,s,i,a);if(l.length===0)return;G(\"tengu_attachments\""
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "async function*XYe(e,t,n,r,o,s,i,a){let l=await i5l(e,t,n,r,s,i,a);if(l.length===0)return;G(\"tengu_attachments\""
           }
         ],
         "requiredBinaryFormat": "bun_standalone_macho64",
         "requiredEngine": "bun_graph_repack",
         "sourceIdentity": {
-          "arch": "arm64",
-          "claudeVersion": "2.1.199",
+          "claudeVersion": "2.1.201",
+          "versionOutput": "2.1.201 (Claude Code)",
+          "sha256": "a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd",
+          "sizeBytes": 231708784,
           "platform": "darwin",
-          "sha256": "e3cb61abc8a2ec7b98976cee1ffdde5a3fa755c9990bc8d688cd89290e0dcec0",
-          "sizeBytes": 232155536,
-          "versionOutput": "2.1.199 (Claude Code)"
+          "arch": "arm64"
         }
       }
     ]
@@ -122,5 +122,10 @@
     "level": "low"
   },
   "schemaVersion": 1,
-  "x-packageVersion": "1.0.0"
+  "packageVersion": "1.0.0",
+  "compatibility": {
+    "claudeVersions": [
+      "2.1.201"
+    ]
+  }
 }

@@ -8,16 +8,15 @@ Provides a Python CLI tool, (ugly) GUI, and menubar manager. Reference for Mac o
 
 | Package | What it does | Demo |
 |---------|--------------|------|
-
 | [`thinking-drawer`](packages/thinking-drawer) | A footer drawer projecting the model's thinking text, raw and structured. | ![demo](assets/demos/thinking-drawer.gif) |
 | [`reminders-drawer`](packages/reminders-drawer) | A footer drawer with live on/off toggles for seven recurring reminder/accounting attachment families. Runtime control instead of build-time suppression. | ![demo](assets/demos/reminders-drawer.gif) |
-| [`mute-reminders`](packages/mute-reminders) | Statically suppresses those same seven attachment families upstream. The "just make it all quiet" option. Conflicts with `reminders-drawer` — pick one. | ![demo](assets/demos/mute-reminders.gif) |
+| [`mute-reminders`](packages/mute-reminders) | Statically suppresses those same seven attachment families upstream. The "just make it all quiet" option. Conflicts with `reminders-drawer` — pick one. | — |
 | [`hidden-context-drawer`](packages/hidden-context-drawer) | A footer "Hidden Context" drawer so you can read the model-visible attachment context (reminders, timestamps, token accounting) the harness normally hides from you. | ![demo](assets/demos/hidden-context-drawer.gif) |
 | [`hidden-context-inline`](packages/hidden-context-inline) | Same hidden context, projected straight into the transcript as inline warning rows. Conflicts with the drawer — pick one. | ![demo](assets/demos/hidden-context-inline.gif) |
-| [`heraldic-dragons`](packages/heraldic-dragons) | Two heraldic fire-breathing pixel-art dragons flanking your terminal, with animated flames. Take it to 11 sometime, you know? Needs a truecolor terminal, Ghostty etc. | ![demo](assets/demos/heraldic-dragons.gif) |
-| [`capybara-onsen`](packages/capybara-onsen) | Capybaras chilling. It's very brave of them to do so if you think about it. Also truecolor. | ![demo](assets/demos/capybara-onsen.gif) |
+| [`heraldic-dragons`](packages/heraldic-dragons) | Two heraldic fire-breathing pixel-art dragons flanking your terminal, with animated flames. Take it to 11 sometime, you know? Needs a truecolor terminal, Ghostty etc. One art scene at a time — conflicts with `capybara-onsen`. | ![demo](assets/demos/heraldic-dragons.gif) |
+| [`capybara-onsen`](packages/capybara-onsen) | Capybaras chilling. It's very brave of them to do so if you think about it. Also truecolor, also one scene at a time. | ![demo](assets/demos/capybara-onsen.gif) |
 | [`fable-fallback`](packages/fable-fallback) | Un-hides Fable→Opus safety-classifier downgrade events: warning banner in resumed chats, marker in the `/resume` picker. The original reason this repo exists. | ![demo](assets/demos/fable-fallback.gif) |
-| [`drawer-dock`](packages/drawer-dock) | The shared footer-drawer framework the three drawer scripts below plug into. Enable it alongside any of them. | ![demo](assets/demos/drawer-dock.gif) |
+| [`drawer-dock`](packages/drawer-dock) | The shared footer-drawer framework the three drawer scripts above plug into. Enable it alongside any of them. Demo shows the full dock with all three aboard. | ![demo](assets/demos/drawer-dock.gif) |
 
 ### Why these scripts?
 
@@ -48,6 +47,8 @@ uv run harnessmonkey install
 
 That's it — the monkey lands in your menubar (and comes back on login), with all the scripts loaded and switched off. From there, the three steps below.
 
+(If the monkey doesn't appear — macOS can be shy about new login items — launch it directly: `uv run harnessmonkey-gui`.)
+
 Prefer terminal-only? `uv run harnessmonkey install --cli` skips the menubar app; everything it does has a CLI verb (`uv run harnessmonkey --help`).
 
 Changed your mind? `uv run harnessmonkey uninstall` takes the menubar app back out.
@@ -75,5 +76,7 @@ Ummm, yep, there's a lot of trouble to shoot in this here endeavor! Scripts and 
 Please do that instead of asking me, whenever possible. It's part of the fun.
 
 If things get sticky: `uv run harnessmonkey doctor` diagnoses the current state, `rollback` restores the previous build, and `use-official` points your shim back at the untouched binary while you sort things out.
+
+Known issue at launch: composing `capybara-onsen` with the drawer scripts currently eats the Enter-to-open key. Fix in progress — run the drawers and the capys in separate builds for now. (The capybaras deny involvement.)
 
 <3 Hackerbara

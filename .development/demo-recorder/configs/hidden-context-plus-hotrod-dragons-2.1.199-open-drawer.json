@@ -1,0 +1,66 @@
+{
+  "demoName": "hidden-context-plus-hotrod-dragons-2.1.199-open-drawer",
+  "app": {
+    "name": "Ghostty",
+    "bundleId": "com.mitchellh.ghostty",
+    "leaveOpenAtEnd": true,
+    "launchMode": "reuseRunning"
+  },
+  "screen": {
+    "avfoundationDevice": "2",
+    "label": "screen-0-dell",
+    "crop": null,
+    "fps": 12,
+    "scaleWidth": 960
+  },
+  "command": {
+    "cwd": "/Users/MAC/.config/superpowers/worktrees/Claude-patch/demo-recorder",
+    "path": "/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hidden-context-plus-hotrod-dragons-2.1.199/claude",
+    "args": [
+      "--dangerously-skip-permissions"
+    ]
+  },
+  "recording": {
+    "start": "afterLaunchSettle",
+    "postLaunchWaitSeconds": 5,
+    "recordSeconds": 20
+  },
+  "events": [
+    {
+      "type": "wait",
+      "seconds": 2
+    },
+    {
+      "type": "key",
+      "key": "down"
+    },
+    {
+      "type": "wait",
+      "seconds": 0.7
+    },
+    {
+      "type": "key",
+      "key": "down"
+    },
+    {
+      "type": "wait",
+      "seconds": 5
+    },
+    {
+      "type": "key",
+      "key": "x"
+    },
+    {
+      "type": "wait",
+      "seconds": 5
+    },
+    {
+      "type": "key",
+      "key": "ctrl-c"
+    }
+  ],
+  "publish": {
+    "enabled": false,
+    "outputGif": "/Users/MAC/.config/superpowers/worktrees/Claude-patch/demo-recorder/assets/demos/hidden-context-plus-hotrod-dragons-open-drawer.gif"
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "defaults": {
+    "app": {
+      "name": "Ghostty",
+      "bundleId": "com.mitchellh.ghostty",
+      "leaveOpenAtEnd": true,
+      "launchMode": "reuseRunning"
+    },
+    "screen": {
+      "avfoundationDevice": "2",
+      "label": "screen-0-dell",
+      "crop": null,
+      "fps": 12,
+      "scaleWidth": 960
+    },
+    "cwd": "/Users/MAC/.config/superpowers/worktrees/Claude-patch/demo-recorder",
+    "args": [
+      "--dangerously-skip-permissions"
+    ],
+    "recording": {
+      "start": "afterLaunchSettle",
+      "postLaunchWaitSeconds": 5,
+      "recordSeconds": 18
+    },
+    "preparedGhostty": {
+      "requireAlreadyRunning": true,
+      "requireSingleWindowIfDetectable": true,
+      "allowMultipleWindows": false,
+      "assumeCleanShellPrompt": true
+    }
+  },
+  "recipes": [
+    {
+      "id": "hotrod-dragons-2.1.201-wrap-comparison",
+      "enabled": true,
+      "category": "visual",
+      "purpose": "Show the rich Hotrod Dragons terminal frame.",
+      "binary": "/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hotrod-dragons-2.1.201-wrap-comparison/claude",
+      "recording": {
+        "recordSeconds": 14
+      },
+      "events": [
+        {
+          "type": "wait",
+          "seconds": 10
+        },
+        {
+          "type": "key",
+          "key": "ctrl-c"
+        }
+      ],
+      "checkpoints": [
+        {
+          "name": "final",
+          "atSeconds": 8
+        }
+      ],
+      "publishGif": "/Users/MAC/.config/superpowers/worktrees/Claude-patch/demo-recorder/assets/demos/hotrod-dragons.gif"
+    },
+    {
+      "id": "hidden-context-plus-hotrod-dragons-open-close",
+      "demoName": "hidden-context-plus-hotrod-dragons-2.1.199-open-drawer",
+      "enabled": true,
+      "category": "stack",
+      "purpose": "Show Hotrod Dragons plus Hidden Context drawer opening and closing; Down selects Hidden Context, Return opens it, x closes it.",
+      "binary": "/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hidden-context-plus-hotrod-dragons-2.1.199/claude",
+      "recording": {
+        "recordSeconds": 8
+      },
+      "events": [
+        {
+          "type": "wait",
+          "seconds": 0.2
+        },
+        {
+          "type": "key",
+          "key": "down"
+        },
+        {
+          "type": "wait",
+          "seconds": 0.2
+        },
+        {
+          "type": "key",
+          "key": "return"
+        },
+        {
+          "type": "wait",
+          "seconds": 2
+        },
+        {
+          "type": "key",
+          "key": "x"
+        },
+        {
+          "type": "wait",
+          "seconds": 2
+        },
+        {
+          "type": "key",
+          "key": "ctrl-c"
+        }
+      ],
+      "checkpoints": [
+        {
+          "name": "open",
+          "atSeconds": 2
+        },
+        {
+          "name": "closed",
+          "atSeconds": 5
+        }
+      ],
+      "publishGif": "/Users/MAC/.config/superpowers/worktrees/Claude-patch/demo-recorder/assets/demos/hidden-context-plus-hotrod-dragons-open-close.gif"
+    },
+    {
+      "id": "capybara-onsen",
+      "enabled": false,
+      "category": "visual",
+      "purpose": "Future Capybara Onsen visual frame demo.",
+      "disabledReason": "Preferred reviewed artifact and framing have not been selected.",
+      "events": []
+    },
+    {
+      "id": "hidden-context-drawer-open-close",
+      "enabled": false,
+      "category": "drawer",
+      "purpose": "Future standalone Hidden Context drawer open-close demo.",
+      "disabledReason": "Preferred standalone drawer artifact and deterministic open-close sequence have not been selected.",
+      "events": []
+    },
+    {
+      "id": "reminders-manager-open-close",
+      "enabled": false,
+      "category": "drawer",
+      "purpose": "Future Reminders Manager drawer demo.",
+      "disabledReason": "Preferred reviewed stack artifact and deterministic key path have not been selected.",
+      "events": []
+    },
+    {
+      "id": "thinking-text-drawer-open-close",
+      "enabled": false,
+      "category": "drawer",
+      "purpose": "Future Thinking Text drawer empty/open-state demo.",
+      "disabledReason": "Preferred reviewed stack artifact and deterministic empty-state/open key path have not been selected.",
+      "events": []
+    }
+  ]
+}

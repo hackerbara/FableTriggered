@@ -1,0 +1,34 @@
+{
+  "demoName": "hotrod-dragons-2.1.201-wrap-comparison",
+  "app": {
+    "name": "Ghostty",
+    "bundleId": "com.mitchellh.ghostty",
+    "leaveOpenAtEnd": true,
+    "launchMode": "reuseRunning"
+  },
+  "screen": {
+    "avfoundationDevice": "2",
+    "label": "screen-0-dell",
+    "crop": null,
+    "fps": 12,
+    "scaleWidth": 960
+  },
+  "command": {
+    "cwd": "/Users/MAC/.config/superpowers/worktrees/Claude-patch/demo-recorder",
+    "path": "/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hotrod-dragons-2.1.201-wrap-comparison/claude",
+    "args": ["--dangerously-skip-permissions"]
+  },
+  "recording": {
+    "start": "afterLaunchSettle",
+    "postLaunchWaitSeconds": 5,
+    "recordSeconds": 14
+  },
+  "events": [
+    {"type": "wait", "seconds": 10},
+    {"type": "key", "key": "ctrl-c"}
+  ],
+  "publish": {
+    "enabled": false,
+    "outputGif": "/Users/MAC/.config/superpowers/worktrees/Claude-patch/demo-recorder/assets/demos/hotrod-dragons.gif"
+  }
+}

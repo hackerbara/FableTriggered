@@ -73,21 +73,28 @@ exclusive**; the builder's byte-range overlap check rejects co-application:
 
 ## Build pipeline
 
-Art sources live in `.development/capy-onsen-20260703/`: `paint_scene.py`
-(hand-authored masks + preview PNGs), `water_sim.py` (deterministic phase
-animation, no `random`), `compile.py` (RLE + palette → `onsen-data.json`, with
-determinism and static-band asserts), `generate_package.py` (emits this package
-from the pinned live source).
+This package is generated, not hand-edited. Its source pipeline lives in
+`examples/capybara-onsen-generator/`: `paint_scene.py` (hand-authored masks +
+preview PNGs), `water_sim.py` (deterministic phase animation, no `random`),
+`compile.py` (RLE + palette → `onsen-data.json`, with determinism and
+static-band asserts), `generate_package.py` (emits this package from whichever
+target binary you point it at). See that directory's README for the full
+regeneration walkthrough.
 
 ```bash
-cd /Users/MAC/Documents/Claude-patch
-PYTHONPATH=src python3 -m claude_monkey build \
-  --source /Users/MAC/.local/share/claude/versions/2.1.201 \
-  --package packages/capybara-onsen \
-  --output-dir .development/claude-monkey-builds/capybara-onsen-2.1.201-clipped-30-gutters-140 \
+cd examples/capybara-onsen-generator
+python3 compile.py
+python3 generate_package.py \
+  --source ~/.local/share/claude/versions/2.1.201 \
   --source-version 2.1.201 \
-  --source-version-output "2.1.201 (Claude Code)" \
-  --platform darwin --arch arm64
+  --source-version-output "2.1.201 (Claude Code)"
+```
+
+Then build the patched binary from the repo root:
+
+```bash
+uv run claude-monkey enable-patch capybara-onsen
+uv run claude-monkey build --activate
 ```
 
 ## Manual smoke

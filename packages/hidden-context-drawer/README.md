@@ -19,40 +19,22 @@ Manual smoke is required: arrow down to select Hidden Context, arrow down again 
 
 ## Compatibility
 
-This package is V1.5 merge-domain compatible with non-overlapping packages such as `fable-fallback` and `reminder-suppression`.
+This package is V1.5 merge-domain compatible with non-overlapping packages such as `fable-fallback`.
 
 It intentionally conflicts with `normal-channel-hidden-context`: both packages own the same projection seam before Claude Code's hidden-attachment filter. Use this drawer package instead of the normal-channel projection package when you want the integrated footer drawer UI.
 
-## Build from this checkout
+## Build
+
+Enable the package (and its `footer-drawers` dependency) and rebuild:
 
 ```bash
-cd /Users/MAC/Documents/Claude-patch
-PYTHONPATH=src python3 - <<'PY'
-from claude_monkey.cli import main
-raise SystemExit(main([
-    "build",
-    "--source", "/Users/MAC/.local/share/claude/versions/2.1.199",
-    "--package", "hidden-context-drawer",
-    "--output-dir", "/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hidden-context-drawer-2.1.199",
-    "--source-version", "2.1.199",
-    "--source-version-output", "2.1.199 (Claude Code)",
-    "--platform", "darwin",
-    "--arch", "arm64",
-]))
-PY
+uv run claude-monkey enable-patch footer-drawers
+uv run claude-monkey enable-patch hidden-context-drawer
+uv run claude-monkey build --activate
 ```
 
-The built binary will be:
-
-```bash
-/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hidden-context-drawer-2.1.199/claude
-```
-
-Run it for manual smoke:
-
-```bash
-/Users/MAC/Documents/Claude-patch/.development/claude-monkey-builds/hidden-context-drawer-2.1.199/claude --dangerously-skip-permissions
-```
+Then run manual smoke against the activated shim/build with
+`--dangerously-skip-permissions`.
 
 ## Footer Drawers framework migration
 

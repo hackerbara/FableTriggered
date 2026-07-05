@@ -80,18 +80,30 @@ truecolor terminal.
 - This package is meant to be built alone or with non-overlapping patches, not alongside
   another package that owns the same full-frame layout.
 
-## Build
+## Build pipeline
+
+This package is generated, not hand-edited. Its source pipeline lives in
+`examples/hotrod-dragons-generator/`: `dragon_v13.py` (hand-authored serpentine
+dragon body), `paint_scene_v13.py` (adds the flame plume animation),
+`compile_v13.py` (RLE-encodes into the data file), `generate_package.py`
+(emits this package from whichever target binary you point it at). See that
+directory's README for the full regeneration walkthrough.
 
 ```bash
-cd /Users/MAC/Documents/Claude-patch
-.venv/bin/claude-monkey build \
-  --source /Users/MAC/.local/share/claude/versions/2.1.201 \
-  --package packages/hotrod-dragons \
-  --output-dir .development/claude-monkey-builds/hotrod-dragons-2.1.201-clipped-30-gutters-140 \
+cd examples/hotrod-dragons-generator
+python3 compile_v13.py
+python3 generate_package.py \
+  --source ~/.local/share/claude/versions/2.1.201 \
   --source-version 2.1.201 \
-  --source-version-output "2.1.201 (Claude Code)" \
-  --platform darwin --arch arm64
+  --source-version-output "2.1.201 (Claude Code)"
+```
+
+Then build the patched binary from the repo root:
+
+```bash
+uv run claude-monkey enable-patch hotrod-dragons
+uv run claude-monkey build --activate
 ```
 
 Report `status` should be `manual_smoke_pending` with automated checks passed. Run the
-produced `…/claude` in a truecolor terminal to confirm before activation.
+produced binary in a truecolor terminal to confirm before activation.

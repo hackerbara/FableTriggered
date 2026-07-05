@@ -152,7 +152,7 @@ def test_uninstall_removes_launch_agent_only_and_leaves_state(tmp_path, monkeypa
     assert payload["shimUntouched"] is True
 
 
-def test_install_accepts_repo_schema_v2_patch_packages(tmp_path, monkeypatch, capsys):
+def test_install_rejects_repo_schema_v2_patch_packages(tmp_path, monkeypatch, capsys):
     home, packages_root = configure_install(monkeypatch, tmp_path, package_ids=())
     package_dir = packages_root / "schema-two"
     write_json(
@@ -173,8 +173,11 @@ def test_install_accepts_repo_schema_v2_patch_packages(tmp_path, monkeypatch, ca
         },
     )
 
-    assert main(["install", "--cli", "--json"]) == 0
+    assert main(["install", "--cli", "--json"]) == 1
 
     payload = read_cli_json(capsys)
-    assert payload["packages"]["schema-two"]["ok"] is True
-    assert (home / ".claude-monkey" / "patches" / "schema-two" / "patch.json").exists()
+    assert payload["ok"] is False
+    assert payload["packages"]["schema-two"]["ok"] is False
+    assert payload["packages"]["schema-two"]["error"]["code"] == "invalid_package"
+    assert "schemaVersion_must_be_1" in payload["packages"]["schema-two"]["error"]["message"]
+    assert not (home / ".claude-monkey" / "patches" / "schema-two" / "patch.json").exists()

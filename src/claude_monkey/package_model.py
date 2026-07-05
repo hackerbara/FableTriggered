@@ -23,7 +23,6 @@ TOP_LEVEL_FIELDS = {
     "kind",
     "id",
     "label",
-    "name",
     "description",
     "packageVersion",
     "requiresPackages",
@@ -33,7 +32,6 @@ TOP_LEVEL_FIELDS = {
     "prompt",
     "option",
     "patch",
-    "targets",
 }
 RISK_LEVELS = {"low", "medium", "high"}
 PROMPT_MODES = {"append", "replace"}
@@ -369,19 +367,6 @@ def _parse_patch(value: Any, package_dir: Path) -> PatchPackage:
     return PatchPackage(engine=engine, targets=tuple(targets))
 
 
-def _parse_patch_v2(top: dict[str, Any], package_dir: Path) -> PatchPackage:
-    targets = top.get("targets")
-    if not isinstance(targets, list) or not all(isinstance(item, dict) for item in targets):
-        _fail("targets_must_be_object_list")
-    for target in targets:
-        engine = target.get("requiredEngine")
-        if not isinstance(engine, str):
-            _fail("targets.requiredEngine_must_be_string")
-        if engine not in SUPPORTED_PATCH_ENGINES:
-            _fail("patch_engine_unsupported")
-    _validate_patch_replacement_paths(targets, package_dir)
-    return PatchPackage(engine="bun_graph_repack", targets=tuple(targets))
-
 
 def _kind(value: Any) -> PackageKind:
     if not isinstance(value, str):
@@ -399,30 +384,26 @@ def load_package_manifest_from_dict(
     manifest_path: Path | None = None,
 ) -> PackageManifest:
     top = _require_mapping(data, "manifest")
+    schema_version = top.get("schemaVersion")
+    if isinstance(schema_version, bool) or schema_version != 1:
+        _fail("schemaVersion_must_be_1")
     unknown = sorted(
         field for field in top if field not in TOP_LEVEL_FIELDS and not field.startswith("x-")
     )
     if unknown:
         _fail(f"unknown_top_level_field:{unknown[0]}")
-    schema_version = top.get("schemaVersion")
-    if isinstance(schema_version, bool) or schema_version not in {1, 2}:
-        _fail("schemaVersion_must_be_1_or_2")
     package_id = _require_string(top, "id")
     validate_package_id(package_id)
     folder_slug = package_dir.name
     _validate_slug(folder_slug, "folder")
     if package_id != folder_slug:
         _fail("id_must_match_folder")
-    kind = PackageKind.PATCH if schema_version == 2 else _kind(top.get("kind"))
+    kind = _kind(top.get("kind"))
     if kind is not expected_kind:
         _fail("kind_must_match_bucket")
 
     prompt = option = patch = None
-    if schema_version == 2:
-        if kind is not PackageKind.PATCH:
-            _fail("schema2_only_supports_patch")
-        patch = _parse_patch_v2(top, package_dir)
-    elif kind is PackageKind.PROMPT:
+    if kind is PackageKind.PROMPT:
         if "prompt" not in top:
             _fail("prompt_required")
         prompt = _parse_prompt(top.get("prompt"), package_dir)
@@ -439,7 +420,7 @@ def load_package_manifest_from_dict(
         schema_version=schema_version,
         kind=kind,
         id=package_id,
-        label=_require_string(top, "name" if schema_version == 2 else "label"),
+        label=_require_string(top, "label"),
         description=_require_string(top, "description"),
         package_version=(
             _optional_string(top, "packageVersion")

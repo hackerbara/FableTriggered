@@ -4,7 +4,7 @@
   "id": "capybara-onsen",
   "label": "Capybara Onsen",
   "description": "A calming twilight Japanese onsen scene with two capybaras \u2014 baked half-block pixel art with 16-phase water/steam animation, drawn via the renderer's native ink-raw-ansi direct-draw path.",
-  "packageVersion": "1.4.2-clipped-gutters-breakpoint-140",
+  "packageVersion": "1.4.3-memoized-center-provider",
   "compatibility": {
     "claudeVersions": [
       "2.1.201"
@@ -42,7 +42,7 @@
                 "oldRangeLength": 31,
                 "replacement": {
                   "path": "payloads/01-capy-onsen-context-frame-helpers-before-vko-2-1-201.js",
-                  "sha256": "cc412d706eed87c4eb7ea51c8ed89bd0d0e7364118f347f25a02b5ed0647b460"
+                  "sha256": "64bfabaa96d7b72f5eecb695bbf41902d0e98b2a365ce458b23b2a44188177cd"
                 },
                 "knownBehaviorChange": "Defines clipped 30-column visible side gutters, responsive right-gutter collapse at <=140 columns, and center-column providers for both fde/useTerminalSize and t4 overlay consumers."
               },
@@ -258,6 +258,11 @@
             "type": "module_must_contain",
             "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "value": "Xd.jsx(fde,{value:s,children:Xd.jsx(t4,{value:i,children:o})})"
+          },
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "s=A_.useMemo(()=>({rows:e,columns:t}),[e,t])"
           },
           {
             "type": "module_must_contain",

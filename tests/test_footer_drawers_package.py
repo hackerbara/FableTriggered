@@ -19,6 +19,7 @@ FOOTER_DRAWERS = ROOT / "packages" / "footer-drawers"
 HC = ROOT / "packages" / "hidden-context-drawer"
 THINKING = ROOT / "packages" / "thinking-text-drawer"
 REMINDERS = ROOT / "packages" / "reminders-manager"
+CAPY = ROOT / "packages" / "capybara-onsen"
 
 EXPECTED_BINARY_SHA = "a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd"
 EXPECTED_BINARY_SIZE = 231708784
@@ -347,6 +348,14 @@ def _build_packages(tmp_path: Path, name: str, packages: list[Path]):
         ("framework-hidden-reminders", [FOOTER_DRAWERS, HC, REMINDERS]),
         ("framework-thinking-reminders", [FOOTER_DRAWERS, THINKING, REMINDERS]),
         ("framework-all", [FOOTER_DRAWERS, HC, THINKING, REMINDERS]),
+        # Regression coverage for the capybara-onsen + hidden-context-drawer Enter-to-open
+        # bug: capybara-onsen's responsive frame re-provides the app's real fde/t4 React
+        # contexts around the composer/footer subtree that hosts footer-drawers' Enter
+        # wiring. This combo is the maintainer's minimal reproduction (bars rendered, but
+        # Enter no longer opened any drawer) before the center provider's context values
+        # were memoized -- see test_capybara_onsen_center_provider_memoizes_context_values.
+        ("framework-hidden-capy", [FOOTER_DRAWERS, HC, CAPY]),
+        ("framework-all-capy", [FOOTER_DRAWERS, HC, THINKING, REMINDERS, CAPY]),
     ],
 )
 @pytest.mark.local_real_smoke
@@ -358,7 +367,7 @@ def test_footer_drawers_successful_composition_matrix(tmp_path, name, packages) 
     assert report.manualSmoke["status"] == "bypassed"
     assert report.activationEligible is True
     assert report.enabledPatches == [p.name for p in packages]
-    if name == "framework-all":
+    if name in ("framework-all", "framework-all-capy"):
         panels = [
             (op["packageId"], op["opId"], op["insertOrder"], op.get("insertionVerified"))
             for op in report.operationsApplied
@@ -373,6 +382,10 @@ def test_footer_drawers_successful_composition_matrix(tmp_path, name, packages) 
             ("thinking-text-drawer", "thinking-panel-real-target", 200, True),
             ("reminders-manager", "rm-panel-real-target", 300, True),
         ]
+    if name in ("framework-hidden-capy", "framework-all-capy"):
+        capy_ops = {op["opId"] for op in report.operationsApplied if op["packageId"] == "capybara-onsen"}
+        assert "capy-onsen-main-window-me-2-1-201" in capy_ops
+        assert "capy-onsen-bottom-stack-de-2-1-201" in capy_ops
 
 
 @pytest.mark.parametrize(("name", "package_dir"), [("hc", HC), ("thinking", THINKING), ("reminders", REMINDERS)])

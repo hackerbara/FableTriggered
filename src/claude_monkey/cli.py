@@ -1536,10 +1536,17 @@ def handle_install(args: argparse.Namespace, paths: StatePaths, config) -> int:
             print(f"{package_id}: {result.get('summary')}", file=stream)
         if launch_payload.get("skipped"):
             print("LaunchAgent skipped (--cli)")
-        elif launch_payload.get("ok"):
-            print("LaunchAgent installed")
         else:
-            print(f"LaunchAgent failed: {launch_payload.get('error')}", file=sys.stderr)
+            if launch_payload.get("ok"):
+                print("LaunchAgent installed")
+            else:
+                print(f"LaunchAgent failed: {launch_payload.get('error')}", file=sys.stderr)
+            # BUG 2: launchd launches in a bare environment; if the app dies
+            # before it can open its own log, this is the only diagnostic
+            # trail. Always point the user at it, even on the happy path,
+            # since a missing menubar icon may not surface as a returncode.
+            log_path = launch_agent.menubar_log_path(Path.home())
+            print(f"If the menubar icon doesn't appear, check the log: {log_path}")
         print(payload["nextStep"])
     return 0 if ok else 1
 

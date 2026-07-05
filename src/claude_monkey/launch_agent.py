@@ -10,13 +10,28 @@ from .smoke import CommandResult, run_command
 LAUNCH_AGENT_LABEL = "com.hackerbara.claude-monkey"
 
 
-def render_plist(gui_executable: Path) -> bytes:
+def menubar_log_path(home: Path) -> Path:
+    """Where launchd redirects the menubar GUI's stdout/stderr (BUG 2).
+
+    Without this, a launch that dies in launchd's bare environment (before the
+    menubar app ever opens its own `menubar.log`) leaves zero diagnostics: the
+    install succeeds, the background-item notification fires, but no menubar
+    icon appears and there is nothing to inspect. Must expand the real home
+    passed in -- launchd does not expand a literal `~` in plist paths.
+    """
+    return Path(home).expanduser() / ".claude-monkey" / "logs" / "menubar.launchd.log"
+
+
+def render_plist(gui_executable: Path, home: Path) -> bytes:
+    log_path = str(menubar_log_path(home))
     return plistlib.dumps(
         {
             "Label": LAUNCH_AGENT_LABEL,
             "ProgramArguments": [str(gui_executable)],
             "RunAtLoad": True,
             "ProcessType": "Interactive",
+            "StandardOutPath": log_path,
+            "StandardErrorPath": log_path,
         }
     )
 
@@ -36,7 +51,11 @@ def _ok_result(argv: list[str] | None = None) -> CommandResult:
 def install_agent(gui_executable: Path, home: Path, runner=run_command) -> CommandResult:
     plist = agent_plist_path(home)
     plist.parent.mkdir(parents=True, exist_ok=True)
-    plist.write_bytes(render_plist(gui_executable))
+    # Logs dir must exist before bootstrap: launchd opens StandardOutPath/
+    # StandardErrorPath itself at launch time, and won't create missing parent
+    # directories for them.
+    menubar_log_path(home).parent.mkdir(parents=True, exist_ok=True)
+    plist.write_bytes(render_plist(gui_executable, home))
 
     runner(["launchctl", "bootout", _gui_domain(), str(plist)])
     return runner(["launchctl", "bootstrap", _gui_domain(), str(plist)])

@@ -102,6 +102,28 @@ def test_install_default_installs_launch_agent(tmp_path, monkeypatch, capsys):
     assert payload["launchAgent"]["skipped"] is False
 
 
+def test_install_prints_log_path_when_launch_agent_installed(tmp_path, monkeypatch, capsys):
+    """BUG 2: if the menubar icon doesn't appear after install, the user needs
+    to know where launchd redirected the GUI's stdout/stderr. Print it in the
+    human-readable next-steps output (not just buried in --json)."""
+    configure_install(monkeypatch, tmp_path)
+    gui = tmp_path / "venv" / "bin" / "claude-monkey-menubar"
+    gui.parent.mkdir(parents=True)
+    gui.write_text("#!/bin/sh\n")
+
+    def fake_install_agent(gui_executable, *, home, runner=None):
+        return CommandResult(argv=["launchctl", "bootstrap"], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(cli.launch_agent, "gui_executable", lambda: gui)
+    monkeypatch.setattr(cli.launch_agent, "install_agent", fake_install_agent)
+
+    assert main(["install"]) == 0
+
+    out = capsys.readouterr().out
+    expected_log = str(tmp_path / "home" / ".claude-monkey" / "logs" / "menubar.launchd.log")
+    assert expected_log in out
+
+
 def test_install_reports_per_package_failure_and_exits_nonzero(tmp_path, monkeypatch, capsys):
     home, packages_root = configure_install(monkeypatch, tmp_path, package_ids=("good-patch",))
     bad = packages_root / "bad-patch"

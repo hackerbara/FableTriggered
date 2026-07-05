@@ -1,6 +1,6 @@
 # Composition Engine Structured Splices — Design
 
-**Status:** Implemented (Phases 1–2) — see docs/superpowers/plans/2026-07-04-composition-engine-structured-splices.md and docs/manifest-v2-operations.md. **Amended 2026-07-04** after cross-review against the footer-drawers framework spec: added postcondition semantics for shared insertion points, anchor-evidence disjointness rule, promoted the `useMemo` dependency-pairing note to a stated rule, and adjusted Phase 3 so drawer migrations are subsumed by the footer-drawers framework instead of done twice.
+**Status:** Draft for user review. **Amended 2026-07-04** after cross-review against the footer-drawers framework spec: added postcondition semantics for shared insertion points, anchor-evidence disjointness rule, promoted the `useMemo` dependency-pairing note to a stated rule, and adjusted Phase 3 so drawer migrations are subsumed by the footer-drawers framework instead of done twice.  
 **Project:** ClaudeMonkey composition engine.  
 **Source handoff:** `docs/superpowers/specs/2026-07-03-composition-engine-additive-splice-handoff.md`.  
 **Target baseline:** Claude Code `2.1.199`, Bun standalone Mach-O, schema-v2 `bun_graph_repack` packages.  

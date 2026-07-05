@@ -2003,3 +2003,4 @@ git commit -m "docs: manifest v2 structured splice operation reference"
 - Do NOT implement retarget diagnostics, helper ops, or named seams.
 - Do NOT migrate any real package (`hidden-context-drawer`, `reminders-manager`, `upstream-attachment-suppression`) — that is the footer-drawers framework's job (`docs/superpowers/specs/2026-07-03-footer-drawers-framework-design.md`), which starts only after this plan is complete.
 - `tests/test_dvd_cursor_goblin.py` is pre-existing unrelated red — leave it alone.
+```

@@ -23,6 +23,8 @@ You point your preferred local coding agent at the instruction file. The actual 
 
 ## ClaudeMonkey packages
 
+See [CLAUDEMONKEY.md](CLAUDEMONKEY.md) for the full package catalog, install instructions, and how to build your own.
+
 - [`packages/fable-fallback`](packages/fable-fallback) - graph-repack package for Fable fallback visibility and `/resume` marking.
 - [`packages/hidden-context-drawer`](packages/hidden-context-drawer) - graph-repack package that adds the footer Hidden Context drawer for model-visible hidden attachment context.
 - [`packages/normal-channel-hidden-context`](packages/normal-channel-hidden-context) - graph-repack package that projects selected hidden model-visible attachment context into the normal transcript as warning rows.

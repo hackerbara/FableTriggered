@@ -10,6 +10,9 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
+from claude_monkey.bun_graph import parse_bun_section
+from claude_monkey.repack import RepackResult
+
 PE_MAGIC = b"PE\x00\x00"
 PE32PLUS_MAGIC = 0x020B
 MACHINE_AMD64 = 0x8664
@@ -106,4 +109,104 @@ def find_pe_layout(data: bytes | bytearray) -> PELayout:
         checksum_offset=checksum_offset,
         dll_characteristics_offset=dll_characteristics_offset,
         size_of_image_offset=size_of_image_offset,
+    )
+
+
+def pe_checksum(buf: bytes) -> int:
+    """Microsoft PE image checksum. Caller must zero the CheckSum field first."""
+    n = len(buf)
+    words = n // 2
+    total = sum(struct.unpack_from(f"<{words}H", buf, 0))
+    if n & 1:
+        total += buf[-1]
+    while total >> 16:
+        total = (total & 0xFFFF) + (total >> 16)
+    return (total + n) & 0xFFFFFFFF
+
+
+def _align_up(value: int, alignment: int) -> int:
+    return (value + alignment - 1) // alignment * alignment
+
+
+def strip_authenticode(data: bytearray, layout: PELayout) -> bytearray:
+    """Remove the Authenticode certificate: zero DataDirectory[4], clear
+    FORCE_INTEGRITY, and truncate the trailing cert blob. Returns a new
+    bytearray. No-op (copy) if no security directory is present."""
+    out = bytearray(data)
+    if layout.security_rva == 0:
+        return out
+    # DataDirectory[4] (SECURITY) rva is a *file offset*, not an RVA, per PE spec.
+    cert_offset = layout.security_rva
+    struct.pack_into("<II", out, layout.opt_offset + 112 + SECURITY_DIR_INDEX * 8, 0, 0)
+    dll = _u16(out, layout.dll_characteristics_offset)
+    struct.pack_into("<H", out, layout.dll_characteristics_offset, dll & ~FORCE_INTEGRITY)
+    del out[cert_offset:]
+    return out
+
+
+def repack_changed_modules(source: bytes, changed_modules: dict[str, bytes]) -> RepackResult:
+    if not changed_modules:
+        raise ValueError("changed_modules_required")
+
+    layout = find_pe_layout(source)
+    # 1. Strip Authenticode first so .bun is last-in-file for resizing.
+    data = strip_authenticode(bytearray(source), layout)
+    layout = find_pe_layout(data)  # re-derive after truncation
+
+    bun = layout.bun_section
+    section = bytes(data[bun.raw_pointer:bun.raw_pointer + bun.raw_size])
+    # The section raw_size is file-aligned and may exceed [u64 len][payload];
+    # slice to the declared logical section so parse_bun_section validates.
+    declared = struct.unpack_from("<Q", section, 0)[0]
+    logical = section[: 8 + declared]
+
+    graph = parse_bun_section(logical)
+    original_order = {m.path: m.content_offset for m in graph.modules}
+    total_delta = 0
+    shifted_pointers = 0
+    current = logical
+    for path in sorted(changed_modules, key=lambda p: original_order[p]):
+        graph = parse_bun_section(current)
+        rewrite = graph.replace_module_content(path, changed_modules[path])
+        if rewrite.validation_errors:
+            raise ValueError(f"bun_graph_validation_failed:{rewrite.validation_errors}")
+        current = rewrite.section_bytes
+        total_delta += rewrite.delta
+        shifted_pointers += rewrite.shifted_pointers
+
+    new_logical_len = len(current)
+    new_raw_size = _align_up(new_logical_len, layout.file_alignment)
+    new_section = current + b"\x00" * (new_raw_size - new_logical_len)
+
+    out = bytearray(data[: bun.raw_pointer])
+    out.extend(new_section)
+
+    # Fix the .bun section header: raw size + virtual size; ptr/vaddr unchanged.
+    sect_off = layout.section_table_offset + bun.index * 40
+    struct.pack_into("<I", out, sect_off + 8, new_logical_len)   # VirtualSize
+    struct.pack_into("<I", out, sect_off + 16, new_raw_size)     # SizeOfRawData
+
+    # Fix SizeOfImage = align_up(bun.vaddr + new virtual size, section_alignment).
+    new_size_of_image = _align_up(bun.virtual_address + new_logical_len, layout.section_alignment)
+    struct.pack_into("<I", out, layout.size_of_image_offset, new_size_of_image)
+
+    # Recompute PE checksum (zero the field first).
+    struct.pack_into("<I", out, layout.checksum_offset, 0)
+    checksum = pe_checksum(bytes(out))
+    struct.pack_into("<I", out, layout.checksum_offset, checksum)
+
+    pe_updates = {
+        "authenticodeStripped": layout.security_rva == 0 and source != bytes(data),
+        "bunSectionOldRawSize": bun.raw_size,
+        "bunSectionNewRawSize": new_raw_size,
+        "sizeOfImage": new_size_of_image,
+        "checksum": checksum,
+        "shiftedPointers": shifted_pointers,
+    }
+    return RepackResult(
+        output_bytes=bytes(out),
+        delta=total_delta,
+        bun_graph_updates={"delta": total_delta, "shiftedPointers": shifted_pointers},
+        macho_updates=pe_updates,
+        macho_update_details=[],
     )

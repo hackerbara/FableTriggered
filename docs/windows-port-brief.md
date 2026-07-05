@@ -175,3 +175,54 @@ Scope is narrowed to the **published cosmetic packages**, which need only: 24-bi
 - **Don't port `repair.py` / shim-locking 1:1** until the updater-clobber behavior is confirmed on Windows.
 - **Don't build elevation** unless a machine-wide install path turns up.
 - **Mouse reporting and inline images are out of scope** for the art — don't reintroduce them.
+
+---
+
+## 12. Fastest spike path — get *a* patched binary built, installed, and shimmed
+
+This is deliberately **not** the productionized path in §10. The goal here is the shortest route to a running, visibly-patched `claude.exe` on a Windows box — no smoke tests, no fail-closed SHA pinning, no GUI, no start-at-login, no rollback machinery. Prove the chain works end to end; harden later. Budget: an afternoon.
+
+**The one trick that collapses the work: patch same-length, in place.** A same-length byte edit inside the `.bun` payload means you touch *nothing else* — no `StringPointer` offsets, no `Offsets.byte_count`, no section resize, no `size_of_image`. For a spike you can even skip the PE checksum recompute (Windows does not enforce the PE checksum for ordinary user-mode EXE launch — it's only checked for drivers/boot images) and skip signature stripping (an invalid Authenticode signature does not block a user-mode exe from *running* — it only affects SmartScreen/AV reputation, which you can dismiss manually during a spike). So the minimal spike is: find a visible string in a JS module, overwrite it with a different string of the exact same byte length, save, run.
+
+**Step 0 — grab the binary (don't touch the installed one yet).**
+```
+copy "%USERPROFILE%\.local\share\claude\versions\<ver>\claude.exe" "%USERPROFILE%\claude-spike.exe"
+```
+Work on the copy. (`<ver>` = whatever's in that `versions\` dir.)
+
+**Step 1 — reuse what already ports, hand-roll only the PE locate.** On Windows, `bun_graph.py` and `module_patch.py` from this repo run **unchanged** — they only need the raw `.bun` payload bytes. The only new code is ~30 lines to pull those bytes out of the PE (vs. the Mach-O path `macho.py` does today):
+```python
+import struct, pathlib
+data = bytearray(pathlib.Path(r"%USERPROFILE%\claude-spike.exe".replace("%USERPROFILE%", str(pathlib.Path.home()))).read_bytes())
+e_lfanew = struct.unpack_from("<I", data, 0x3C)[0]                 # DOS header -> PE offset
+assert data[e_lfanew:e_lfanew+4] == b"PE\0\0"
+num_sections = struct.unpack_from("<H", data, e_lfanew+6)[0]
+opt_size     = struct.unpack_from("<H", data, e_lfanew+20)[0]
+sec_table    = e_lfanew + 24 + opt_size
+for i in range(num_sections):
+    off = sec_table + i*40
+    name = data[off:off+8].rstrip(b"\0")
+    if name == b".bun":
+        raw_size = struct.unpack_from("<I", data, off+16)[0]      # SizeOfRawData
+        raw_ptr  = struct.unpack_from("<I", data, off+20)[0]      # PointerToRawData
+        break
+payload_len = struct.unpack_from("<Q", data, raw_ptr)[0]          # [u64 LE length][payload...]
+payload_start = raw_ptr + 8
+payload = data[payload_start : payload_start + payload_len]
+# -> hand `payload` to bun_graph.parse_bun_section() to find modules, pick a target
+```
+
+**Step 2 — same-length edit.** Use `bun_graph.py` to locate a module's `contents` span, find a harmless visible string in it (grep the decoded module for something that surfaces at runtime — a banner/help/label string), and overwrite it with an equal-length replacement **directly in `data`** at `payload_start + <string offset within payload>`. Same length = done; write `data` back to `claude-spike.exe`. (If you can't resist a length change, that's the §4 resize path — but don't, for the spike.)
+
+**Step 3 — shim it, the lazy way.** Skip the compiled-stub and the immutable-lock entirely. Two options, both a few seconds:
+- **Overwrite-in-place** (simplest, most "installed"): close all Claude instances (Windows locks the running exe), then `copy /y claude-spike.exe` over the versioned binary you copied from in Step 0 — the existing `%USERPROFILE%\.local\bin\claude.exe` launcher will now run your patched build with no shim at all. Keep the pristine copy from Step 0 as your manual rollback.
+- **`.cmd` shim on PATH** (non-destructive): drop `claude.cmd` in a folder placed *ahead* of `.local\bin` on `PATH`:
+  ```bat
+  @echo off
+  "%USERPROFILE%\claude-spike.exe" %*
+  ```
+  Now `claude` resolves to your wrapper → patched binary; delete the `.cmd` to revert.
+
+**Step 4 — run it.** `claude --version` / launch it and look for your changed string. If SmartScreen/Defender interrupts on first run, that's the reputation prompt (dismiss it) — a real signal for §9's de-risking, but not a spike blocker.
+
+**What you've proven when this works:** the full chain — locate binary → extract `.bun` → parse module graph (reused code) → edit → repack → launch patched — works on Windows. Everything in §10 after that (resize support, checksum/sig hygiene, fail-closed pinning, a real shim, GUI, start-at-login) is hardening on top of a chain you've already shown runs. **What it deliberately skips and why it's safe to skip for a spike:** checksum recompute (not enforced for user-mode exes), signature stripping (invalid sig doesn't block execution), resize bookkeeping (avoided by same-length editing), rollback tooling (you kept a manual copy).

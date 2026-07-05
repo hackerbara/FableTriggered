@@ -132,3 +132,30 @@ Task 6's Step 3 ("port the responsive payload emission into the generators... te
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_017F4xP6pLimeBrngaYp8Pmy
+
+---
+
+# Resolution (orchestrator reply, 2026-07-04 — hand-delivered by the user)
+
+Verdict accepted. Findings 1, 3, 4 stand as written: do the rebase + the deliberate Step 3b commit exactly per "Recommended handoff instructions" items 1-6 above. Finding 3 (`reminder-suppression` on disk) needs nothing from you — runbook task 1.1 deletes it after your merge.
+
+**Finding 2 is resolved: the copy-stub is rejected. Do the real port, with one design change that makes it worth doing.**
+
+The user's decision (this supersedes the plan's Task 6 Steps 3-6 as written):
+
+## What `generate_package.py` must become
+
+The emitter is not a snapshot tool and not a byte-parity theater prop. It is the **source of the patch, parameterized by target binary**:
+
+1. **Pin as input, not constant.** Kill the hardcoded `SOURCE = ~/.local/share/claude/versions/<X>` and the literal `claudeVersion`/`versionOutput` strings. The emitter takes a target binary/version (CLI arg or env; default = newest under the versions dir) and computes every `sourceIdentity` field (claudeVersion, versionOutput, sha256, sizeBytes, module content_sha256/content_length) live from that binary, via the same inspect machinery `claude-monkey inspect-binary` uses. No identity data may be hardcoded in the emitter.
+2. **Port the responsive op structure.** The emitter must emit the CURRENT live package shape — the responsive frame ops and split payloads (`center-columns`, `main-window`, gutter/breakpoint work from `78f2b2c`/`3364d04`) — assembled from the compiled scene data (`compile.py` output) + the renderer/glue templates. Diff the live `patch.json` targets against what the old emitter produced to scope the port; the art pipeline (paint/sim/compile) is already verified byte-faithful and needs no changes.
+3. **Anchors in one obvious place.** Every op anchor string (and any glue that references minified internals — the `Jur`→`Ypr`-class identifiers) must live in a single clearly-marked block in the emitter, commented as THE spot an agent edits when a new Claude version breaks an anchor. That's the whole maintenance contract: new version → run emitter → if an anchor broke, fix one line here → re-run.
+4. **Regenerate both art packages through it** at the current pin. `git diff packages/` must then show identity-only or no changes vs. the branch's current re-pinned state (if it shows structural drift, the port is incomplete — reconcile before committing).
+5. **Parity test, now meaningful:** `emitter(currently-pinned binary) ≡ packages/<pkg>` byte-for-byte (preview.png excepted), in the suite, using the `HM_GENERATE_OUT` override so the test never writes into `packages/`. This is the same test shape the plan specified — the difference is the left-hand side is now a real generator, so the test guards against exactly the source/output drift that caused this mess.
+6. **Example READMEs** tell the true story: the pipeline draws/compiles the scene; the emitter wraps it into a patch against whatever binary you point it at; anchors are the version-fragile part and here is where they live.
+
+## Why (so the rationale travels with the instruction)
+
+Without a live emitter, every future Claude version makes the packaging hand-work on the output, and the source drifts again — the copy-stub doesn't fix the drift, it institutionalizes it. With the pin as an input, a routine version bump where anchors survive becomes literally `run emitter → done`, and when minification does shuffle names, the fix lands in the source, once. The generator can never fall behind again, and the parity test proves it every suite run.
+
+Deliver: the port + regeneration + parity test as commits on this branch (after the rebase and Step 3b cleanup, so you're building on the final loader). Then it merges.

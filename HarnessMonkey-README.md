@@ -8,15 +8,16 @@ Provides a Python CLI tool, (ugly) GUI, and menubar manager. Reference for Mac o
 
 | Package | What it does | Demo |
 |---------|--------------|------|
-| [`fable-fallback`](packages/fable-fallback) | Un-hides Fable→Opus safety-classifier downgrade events: warning banner in resumed chats, marker in the `/resume` picker. The original reason this repo exists. | ![demo](assets/demos/fable-fallback.gif) |
-| [`drawer-dock`](packages/drawer-dock) | The shared footer-drawer framework the three drawer scripts below plug into. Enable it alongside any of them. | ![demo](assets/demos/drawer-dock.gif) |
-| [`hidden-context-drawer`](packages/hidden-context-drawer) | A footer "Hidden Context" drawer so you can read the model-visible attachment context (reminders, timestamps, token accounting) the harness normally hides from you. | ![demo](assets/demos/hidden-context-drawer.gif) |
-| [`hidden-context-inline`](packages/hidden-context-inline) | Same hidden context, different delivery: projects it straight into the transcript as inline warning rows. Conflicts with the drawer — pick one. | ![demo](assets/demos/hidden-context-inline.gif) |
+
 | [`thinking-drawer`](packages/thinking-drawer) | A footer drawer projecting the model's thinking text, raw and structured. | ![demo](assets/demos/thinking-drawer.gif) |
 | [`reminders-drawer`](packages/reminders-drawer) | A footer drawer with live on/off toggles for seven recurring reminder/accounting attachment families. Runtime control instead of build-time suppression. | ![demo](assets/demos/reminders-drawer.gif) |
-| [`mute-reminders`](packages/mute-reminders) | Statically suppresses those same seven attachment families upstream, before they're ever generated. The "just make it all quiet" option. Conflicts with `reminders-drawer` — pick one. | ![demo](assets/demos/mute-reminders.gif) |
-| [`heraldic-dragons`](packages/heraldic-dragons) | Two heraldic fire-breathing pixel-art dragons flanking your terminal, with animated flames. Does nothing. Improves everything. Needs a truecolor terminal. | ![demo](assets/demos/heraldic-dragons.gif) |
-| [`capybara-onsen`](packages/capybara-onsen) | Two capybaras soaking in a moonlit hot spring around your session, with animated water and steam. The scene at the top of this page. Also needs truecolor. | ![demo](assets/demos/capybara-onsen.gif) |
+| [`mute-reminders`](packages/mute-reminders) | Statically suppresses those same seven attachment families upstream. The "just make it all quiet" option. Conflicts with `reminders-drawer` — pick one. | ![demo](assets/demos/mute-reminders.gif) |
+| [`hidden-context-drawer`](packages/hidden-context-drawer) | A footer "Hidden Context" drawer so you can read the model-visible attachment context (reminders, timestamps, token accounting) the harness normally hides from you. | ![demo](assets/demos/hidden-context-drawer.gif) |
+| [`hidden-context-inline`](packages/hidden-context-inline) | Same hidden context, projected straight into the transcript as inline warning rows. Conflicts with the drawer — pick one. | ![demo](assets/demos/hidden-context-inline.gif) |
+| [`heraldic-dragons`](packages/heraldic-dragons) | Two heraldic fire-breathing pixel-art dragons flanking your terminal, with animated flames. Take it to 11 sometime, you know? Needs a truecolor terminal, Ghostty etc. | ![demo](assets/demos/heraldic-dragons.gif) |
+| [`capybara-onsen`](packages/capybara-onsen) | Capybaras chilling. It's very brave of them to do so if you think about it. Also truecolor. | ![demo](assets/demos/capybara-onsen.gif) |
+| [`fable-fallback`](packages/fable-fallback) | Un-hides Fable→Opus safety-classifier downgrade events: warning banner in resumed chats, marker in the `/resume` picker. The original reason this repo exists. | ![demo](assets/demos/fable-fallback.gif) |
+| [`drawer-dock`](packages/drawer-dock) | The shared footer-drawer framework the three drawer scripts below plug into. Enable it alongside any of them. | ![demo](assets/demos/drawer-dock.gif) |
 
 ### Why these scripts?
 
@@ -36,7 +37,7 @@ Probably not! Don't violate your TOS, don't get hacked, don't crash your compute
 
 ## How do I install?
 
-Requires: a Mac on Apple Silicon, [uv](https://docs.astral.sh/uv/) (brings its own Python), and a local Claude Code install to patch. No Xcode needed — re-signing is ad-hoc via the stock `codesign`.
+Requires: a Mac on Apple Silicon, [uv](https://docs.astral.sh/uv/) (brings its own Python), and a local Claude Code install to patch. 
 
 ```sh
 git clone https://github.com/hackerbara/harnessmonkey
@@ -47,7 +48,7 @@ uv run harnessmonkey install
 
 That's it — the monkey lands in your menubar (and comes back on login), with all the scripts loaded and switched off. From there, the three steps below.
 
-Prefer a terminal-only life? `uv run harnessmonkey install --cli` skips the menubar app; everything it does has a CLI verb (`uv run harnessmonkey --help`).
+Prefer terminal-only? `uv run harnessmonkey install --cli` skips the menubar app; everything it does has a CLI verb (`uv run harnessmonkey --help`).
 
 Changed your mind? `uv run harnessmonkey uninstall` takes the menubar app back out.
 
@@ -61,7 +62,7 @@ Changed your mind? `uv run harnessmonkey uninstall` takes the menubar app back o
 
 Point a reasonably powerful agent at any of the examples as a starter and explain what you want.
 
-Turns out LLMs can speak React crazy-well, even when minified. Making it the perfect choice for a mod-able TUI app :)
+Turns out LLMs can speak React crazy-well, even when minified. Making it the perfect framework choice for a mod-able TUI app :)
 
 ## Does this automatically patch new versions?
 
@@ -69,7 +70,7 @@ Nope. Just fails closed safely. Every Claude Code update will break the version 
 
 ## Troubleshooting
 
-Ummm, yep, there's a lot of trouble to shoot in this endeavor! Scripts and things are guaranteed to break over time. It's designed so you can ask your favorite local agent to help keep the duct tape and hot glue running. 
+Ummm, yep, there's a lot of trouble to shoot in this here endeavor! Scripts and things are guaranteed to break over time. It's designed so you can ask your favorite local agent to help keep the duct tape and hot glue running. 
 
 Please do that instead of asking me, whenever possible. It's part of the fun.
 

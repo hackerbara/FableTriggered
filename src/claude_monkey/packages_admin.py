@@ -8,9 +8,12 @@ validated package into the per-kind bucket under the ClaudeMonkey state dir
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import shutil
 import tempfile
+import uuid
 from pathlib import Path
 
 from claude_monkey.package_model import (
@@ -198,7 +201,44 @@ def _load_manifest(package_dir: Path, kind: str) -> PackageManifest:
     return manifest
 
 
-def add_package(source: Path, kind: str, home: Path) -> dict:
+def _tree_digest(root: Path) -> str:
+    """Stable sha256 digest of every file's (relative path, content) under `root`.
+
+    Used to decide whether a would-be overwrite is actually a no-op (identical
+    content) so `add_package(..., overwrite=True)` can report "unchanged"
+    instead of needlessly recopying. Directory structure beyond file paths
+    (e.g. empty dirs) is not represented — packages are defined by their files.
+    """
+    digest = hashlib.sha256()
+    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _atomic_replace_dir(new_dir: Path, dest: Path) -> None:
+    """Swap `dest` for the fully-populated sibling `new_dir`, atomically per-step.
+
+    Pattern: rename the old `dest` out of the way (fast, same-filesystem rename,
+    effectively can't fail), then rename `new_dir` into `dest`'s place. If that
+    second rename somehow fails, the backup is renamed straight back so `dest`
+    is never left missing or half-written. Mirrors the temp-sibling + rename
+    swap pattern used for single files in install.py's `atomic_write_bytes`.
+    """
+    backup = dest.parent / f".{dest.name}.bak-{uuid.uuid4().hex}"
+    os.replace(dest, backup)
+    try:
+        os.replace(new_dir, dest)
+    except Exception:
+        os.replace(backup, dest)
+        raise
+    else:
+        shutil.rmtree(backup, ignore_errors=True)
+
+
+def add_package(source: Path, kind: str, home: Path, overwrite: bool = False) -> dict:
     source = Path(source)
     home = Path(home)
     try:
@@ -219,12 +259,26 @@ def add_package(source: Path, kind: str, home: Path) -> dict:
 
     package_id = manifest.id
     dest = home / _BUCKETS[kind] / package_id
-    if dest.exists():
-        return _envelope(False, f"package already installed: {package_id}", code="package_exists")
-
     warnings = []
     if source.name != package_id:
         warnings.append(f"source basename {source.name!r} renamed to manifest id {package_id!r}")
+
+    if dest.exists():
+        if not overwrite:
+            return _envelope(
+                False, f"package already installed: {package_id}", code="package_exists"
+            )
+        if _tree_digest(source) == _tree_digest(dest):
+            return _envelope(True, f"unchanged {package_id}", warnings=warnings)
+        tmp_new = dest.parent / f".{package_id}.new-{uuid.uuid4().hex}"
+        try:
+            shutil.copytree(source, tmp_new)
+            _atomic_replace_dir(tmp_new, dest)
+        finally:
+            if tmp_new.exists():
+                shutil.rmtree(tmp_new, ignore_errors=True)
+        return _envelope(True, f"updated {kind} package {package_id}", warnings=warnings)
+
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source, dest)
     return _envelope(True, f"installed {kind} package {package_id}", warnings=warnings)

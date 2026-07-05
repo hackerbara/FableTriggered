@@ -1465,16 +1465,13 @@ def _ensure_state_dirs(paths: StatePaths, config) -> None:
 
 
 def _install_package_result(source: Path, paths: StatePaths) -> dict:
-    result = add_package(source, "patch", paths.state_dir)
-    if result.get("ok") is False and (result.get("error") or {}).get("code") == "package_exists":
-        return {
-            **result,
-            "ok": True,
-            "status": "ok",
-            "summary": f"already installed patch package {source.name}",
-            "error": None,
-        }
-    return result
+    # `install` is the repo -> state sync path: it must refresh packages whose
+    # on-disk copy is stale (old schemaVersion, old pins, etc. from an earlier
+    # dev install) rather than silently skipping them because the dest dir
+    # already exists (BUG 1). `add_package(overwrite=True)` itself reports
+    # installed/updated/unchanged per package; bare `add-patch` (handle_add_package)
+    # keeps the default `overwrite=False` no-clobber behavior for manual adds.
+    return add_package(source, "patch", paths.state_dir, overwrite=True)
 
 
 def _repo_patch_package_dirs(packages_root: Path) -> list[Path]:

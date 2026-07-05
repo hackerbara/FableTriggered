@@ -1,6 +1,8 @@
 import json
 import tempfile
 
+import pytest
+
 from claude_monkey.packages_admin import add_package, remove_package, scaffold_prompt_package
 
 
@@ -185,6 +187,81 @@ def test_remove_rejects_path_traversal_id_with_no_filesystem_changes(tmp_path):
     assert result["error"]["code"] == "invalid_package"
     assert outside_target.exists()
     assert (outside_target / "keepme.txt").exists()
+
+
+# --- Overwrite / refresh semantics (BUG 1: install must refresh stale packages) ----
+
+
+def test_add_package_default_overwrite_false_still_refuses_clobber(tmp_path):
+    """Bare add-patch (overwrite defaults False) must keep no-clobber behavior,
+    even when the existing dest is stale/different content, not just identical."""
+    home = tmp_path / "home"
+    src = _write_pkg(tmp_path, "demo-patch", PATCH_MANIFEST)
+    assert add_package(src, "patch", home)["ok"] is True
+
+    stale_manifest = dict(PATCH_MANIFEST, label="New Label")
+    src2 = _write_pkg(tmp_path, "demo-patch-v2", stale_manifest)
+    result = add_package(src2, "patch", home)  # overwrite not passed -> default False
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "package_exists"
+    installed = json.loads((home / "patches" / "demo-patch" / "manifest.json").read_text())
+    assert installed["label"] == "Demo"  # untouched, old content intact
+
+
+def test_add_package_overwrite_updates_stale_copy(tmp_path):
+    home = tmp_path / "home"
+    src = _write_pkg(tmp_path, "demo-patch", PATCH_MANIFEST)
+    assert add_package(src, "patch", home)["ok"] is True
+
+    new_manifest = dict(PATCH_MANIFEST, label="Refreshed Label")
+    src2 = _write_pkg(tmp_path, "demo-patch-new", new_manifest)
+    result = add_package(src2, "patch", home, overwrite=True)
+
+    assert result["ok"] is True
+    assert result["summary"] == "updated patch package demo-patch"
+    installed = json.loads((home / "patches" / "demo-patch" / "manifest.json").read_text())
+    assert installed["label"] == "Refreshed Label"
+
+
+def test_add_package_overwrite_reports_unchanged_for_identical_copy(tmp_path):
+    home = tmp_path / "home"
+    src = _write_pkg(tmp_path, "demo-patch", PATCH_MANIFEST)
+    assert add_package(src, "patch", home)["ok"] is True
+
+    src2 = _write_pkg(tmp_path, "demo-patch-again", PATCH_MANIFEST)
+    result = add_package(src2, "patch", home, overwrite=True)
+
+    assert result["ok"] is True
+    assert result["summary"] == "unchanged demo-patch"
+
+
+def test_add_package_overwrite_failure_mid_update_leaves_old_intact(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    src = _write_pkg(tmp_path, "demo-patch", PATCH_MANIFEST)
+    assert add_package(src, "patch", home)["ok"] is True
+
+    # Folder basename must match the manifest id here so `_load_manifest` takes
+    # its no-staging path -- otherwise the staging copytree (an unrelated,
+    # pre-existing code path) would eat our monkeypatched failure first.
+    new_manifest = dict(PATCH_MANIFEST, label="Should Not Land")
+    src2 = _write_pkg(tmp_path, "src2/demo-patch", new_manifest)
+
+    import claude_monkey.packages_admin as packages_admin_mod
+
+    def _boom(*args, **kwargs):
+        raise OSError("simulated disk failure mid-copy")
+
+    monkeypatch.setattr(packages_admin_mod.shutil, "copytree", _boom)
+
+    with pytest.raises(OSError):
+        add_package(src2, "patch", home, overwrite=True)
+
+    installed = json.loads((home / "patches" / "demo-patch" / "manifest.json").read_text())
+    assert installed["label"] == "Demo"  # old content still intact after failed update
+    # No stray temp siblings left behind under the bucket dir.
+    leftovers = [p.name for p in (home / "patches").iterdir() if p.name != "demo-patch"]
+    assert leftovers == []
 
 
 def test_add_renames_with_warning_when_multiple_json_files_present(tmp_path):

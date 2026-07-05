@@ -126,6 +126,40 @@ def test_install_reports_per_package_failure_and_exits_nonzero(tmp_path, monkeyp
     assert (home / ".claude-monkey" / "patches" / "good-patch" / "patch.json").exists()
 
 
+def test_install_refreshes_stale_repo_package(tmp_path, monkeypatch, capsys):
+    """BUG 1 regression: a stale on-disk copy (old schemaVersion/pins from an
+    earlier dev install) must be REFRESHED by `install`, not silently skipped
+    because the dest dir already exists."""
+    home, packages_root = configure_install(monkeypatch, tmp_path, package_ids=("alpha-patch",))
+
+    # Simulate a stale prior install: same id, old/different content already
+    # sitting under state dir before `install` runs.
+    stale_dest = home / ".claude-monkey" / "patches" / "alpha-patch"
+    write_json(stale_dest / "patch.json", patch_manifest("alpha-patch", label="Old Stale Label"))
+
+    assert main(["install", "--cli", "--json"]) == 0
+
+    payload = read_cli_json(capsys)
+    assert payload["ok"] is True
+    assert payload["packages"]["alpha-patch"]["ok"] is True
+    assert payload["packages"]["alpha-patch"]["summary"] == "updated patch package alpha-patch"
+    refreshed = json.loads((stale_dest / "patch.json").read_text())
+    assert refreshed["label"] != "Old Stale Label"
+
+
+def test_install_reports_unchanged_when_repo_package_already_current(tmp_path, monkeypatch, capsys):
+    home, packages_root = configure_install(monkeypatch, tmp_path, package_ids=("alpha-patch",))
+
+    assert main(["install", "--cli", "--json"]) == 0
+    capsys.readouterr()
+
+    # Second run: repo package content hasn't changed -> idempotent "unchanged".
+    assert main(["install", "--cli", "--json"]) == 0
+    payload = read_cli_json(capsys)
+    assert payload["ok"] is True
+    assert payload["packages"]["alpha-patch"]["summary"] == "unchanged alpha-patch"
+
+
 def test_uninstall_removes_launch_agent_only_and_leaves_state(tmp_path, monkeypatch, capsys):
     home, _packages_root = configure_install(monkeypatch, tmp_path, package_ids=("kept-patch",))
     state = home / ".claude-monkey"

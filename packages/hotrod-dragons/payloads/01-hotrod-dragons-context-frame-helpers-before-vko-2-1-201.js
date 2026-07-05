@@ -16,7 +16,7 @@ function __hdSize(e,t){try{let n=Er();return{rows:n?.rows??e??30,columns:n?.colu
 let __hdResponsiveBreakpointV6=140;
 function __hdRightWidthV6(e){return (e??__hdSize().columns)<=__hdResponsiveBreakpointV6?0:__hdW}
 function __hdCenterColumns(e,t){let n=e??__hdSize().columns,r=t??0;return Math.max(1,n-r-__hdW-__hdRightWidthV6(n))}
-function __hdCenterProviderV4({rows:e,columns:t,scrollRef:n,claimScrollBox:r,children:o}){let s={rows:e,columns:t},i={rows:e,columns:t,scrollRef:n??null,claimScrollBox:r??null};return Xd.jsx(fde,{value:s,children:Xd.jsx(t4,{value:i,children:o})})}
+function __hdCenterProviderV4({rows:e,columns:t,scrollRef:n,claimScrollBox:r,children:o}){let s=A_.useMemo(()=>({rows:e,columns:t}),[e,t]),i=A_.useMemo(()=>({rows:e,columns:t,scrollRef:n??null,claimScrollBox:r??null}),[e,t,n,r]);return Xd.jsx(fde,{value:s,children:Xd.jsx(t4,{value:i,children:o})})}
 function __hdWall(fireStr,staticStr,key){return Xd.jsxs(B,{flexShrink:0,flexDirection:"column",backgroundColor:"rgb(0,0,0)",children:[__hdRawNode(fireStr,__hdFireRows,key+"-fire"),__hdRawNode(staticStr,__hdStaticRows,key+"-static")]},key)}
 function __hdSideWallV4(fireStr,staticStr,height,key){return Xd.jsx(B,{width:__hdW,flexShrink:0,flexGrow:0,height:height,overflow:"hidden",flexDirection:"column",justifyContent:"flex-end",backgroundColor:"rgb(0,0,0)",children:__hdWall(fireStr,staticStr,key+"-wall")},key)}
 function __CodexHotrodSpriteSceneV11({side:e,ph:t,height:n,keyPrefix:r}){let o=e==="right",s=r??"codex-hotrod-v11-scene";return __hdSideWallV4(o?__hdFireStrM[t]:__hdFireStr[t],o?__hdStaticStrM:__hdStaticStr,n,s+"-"+(o?"right":"left"))}

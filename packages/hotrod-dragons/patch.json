@@ -4,7 +4,7 @@
   "id": "hotrod-dragons",
   "label": "Hotrod Dragons",
   "description": "Two heraldic fire-breathing dragons flank the terminal \u2014 high-def half-block pixel art with 8-phase baked flame animation, drawn via the renderer's native ink-raw-ansi direct-draw path.",
-  "packageVersion": "1.2.0-clipped-gutters-breakpoint-140",
+  "packageVersion": "1.2.1-memoized-center-provider",
   "compatibility": {
     "claudeVersions": [
       "2.1.201"
@@ -42,7 +42,7 @@
                 "oldRangeLength": 31,
                 "replacement": {
                   "path": "payloads/01-hotrod-dragons-context-frame-helpers-before-vko-2-1-201.js",
-                  "sha256": "f3f9a74d620ca9e5d5cad8afa8b8de4acb018532caee8aa54e00fa95785fbbb0"
+                  "sha256": "d5a1ccb351846320d5accb49f3bd3ccd8e64890552a60de85bf6d1eee15140d8"
                 },
                 "knownBehaviorChange": "Defines clipped 30-column visible dragon side gutters, responsive right-gutter collapse at <=140 columns, and center-column providers for both fde/useTerminalSize and t4 overlay consumers."
               },
@@ -268,6 +268,11 @@
             "type": "module_must_contain",
             "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "value": "Xd.jsx(fde,{value:s,children:Xd.jsx(t4,{value:i,children:o})})"
+          },
+          {
+            "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "s=A_.useMemo(()=>({rows:e,columns:t}),[e,t])"
           },
           {
             "type": "module_must_contain",

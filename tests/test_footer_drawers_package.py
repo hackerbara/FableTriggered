@@ -20,6 +20,7 @@ HC = ROOT / "packages" / "hidden-context-drawer"
 THINKING = ROOT / "packages" / "thinking-text-drawer"
 REMINDERS = ROOT / "packages" / "reminders-manager"
 CAPY = ROOT / "packages" / "capybara-onsen"
+DRAGONS = ROOT / "packages" / "hotrod-dragons"
 
 EXPECTED_BINARY_SHA = "a0852d76afc47b30f5cb0b7625ec9a7714cb189f2eeef6c28c77e2be954fb7fd"
 EXPECTED_BINARY_SIZE = 231708784
@@ -356,6 +357,11 @@ def _build_packages(tmp_path: Path, name: str, packages: list[Path]):
         # were memoized -- see test_capybara_onsen_center_provider_memoizes_context_values.
         ("framework-hidden-capy", [FOOTER_DRAWERS, HC, CAPY]),
         ("framework-all-capy", [FOOTER_DRAWERS, HC, THINKING, REMINDERS, CAPY]),
+        # Same coverage for hotrod-dragons, which shares the identical
+        # __hdCenterProviderV4 pattern (fixed alongside capybara-onsen's
+        # __coCenterProviderV4) -- see
+        # test_hotrod_dragons_center_provider_memoizes_context_values.
+        ("framework-hidden-dragons", [FOOTER_DRAWERS, HC, DRAGONS]),
     ],
 )
 @pytest.mark.local_real_smoke
@@ -386,6 +392,10 @@ def test_footer_drawers_successful_composition_matrix(tmp_path, name, packages) 
         capy_ops = {op["opId"] for op in report.operationsApplied if op["packageId"] == "capybara-onsen"}
         assert "capy-onsen-main-window-me-2-1-201" in capy_ops
         assert "capy-onsen-bottom-stack-de-2-1-201" in capy_ops
+    if name == "framework-hidden-dragons":
+        dragon_ops = {op["opId"] for op in report.operationsApplied if op["packageId"] == "hotrod-dragons"}
+        assert "hotrod-dragons-main-window-me-2-1-201" in dragon_ops
+        assert "hotrod-dragons-bottom-stack-de-2-1-201" in dragon_ops
 
 
 @pytest.mark.parametrize(("name", "package_dir"), [("hc", HC), ("thinking", THINKING), ("reminders", REMINDERS)])

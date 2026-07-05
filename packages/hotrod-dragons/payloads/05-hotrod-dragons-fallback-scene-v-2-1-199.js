@@ -1,1 +1,0 @@
-V=zd.jsxs(B,{flexGrow:1,flexDirection:"column",backgroundColor:"rgb(0,0,0)",paddingX:32,children:[zd.jsx(__CodexHotrodSpriteSceneV11,{rows:y,columns:T},"codex-hotrod-v11-scene-fallback"),n,s,i]})

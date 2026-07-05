@@ -1,1 +1,0 @@
-pe=zd.jsxs(B,{flexGrow:1,flexDirection:"column",overflow:"hidden",backgroundColor:"rgb(10,12,26)",paddingX:32,children:[zd.jsx(__CodexCapyOnsenSceneV1,{rows:y,columns:T},"codex-capy-onsen-v1-scene"),Q,ee,ne,oe,ie]})

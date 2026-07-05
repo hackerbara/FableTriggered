@@ -1,10 +1,12 @@
 import struct
+
 import pytest
-from tests.fixtures_bun import build_payload, MODULE_PATH_0
-from tests.fixtures_pe import build_pe_fixture
 from tests.claude_binary import win_claude_bin
-from claude_monkey.pe import find_pe_layout, PEError, pe_checksum, repack_changed_modules
+from tests.fixtures_bun import MODULE_PATH_0, build_payload
+from tests.fixtures_pe import build_pe_fixture
+
 from claude_monkey.bun_graph import parse_bun_section
+from claude_monkey.pe import PEError, find_pe_layout, pe_checksum, repack_changed_modules
 
 
 def test_find_pe_layout_on_fixture():

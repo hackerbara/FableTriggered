@@ -1,9 +1,11 @@
 import struct
 from pathlib import Path
+
 import pytest
 from tests.claude_binary import win_claude_bin
-from claude_monkey.pe import find_pe_layout
+
 from claude_monkey.bun_graph import parse_bun_section
+from claude_monkey.pe import find_pe_layout
 
 FIXTURE_PKG = Path(__file__).parent / "fixtures_win_package"
 

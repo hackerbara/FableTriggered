@@ -1,6 +1,7 @@
 import pytest
 from tests.fixtures_bun import build_payload
 from tests.fixtures_pe import build_pe_fixture
+
 from claude_monkey.binary_format import detect_binary_format, locate_bun_section
 
 

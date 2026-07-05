@@ -4,7 +4,7 @@
   "id": "capybara-onsen",
   "label": "Capybara Onsen",
   "description": "A calming twilight Japanese onsen scene with two capybaras \u2014 baked half-block pixel art with 16-phase water/steam animation, drawn via the renderer's native ink-raw-ansi direct-draw path.",
-  "packageVersion": "1.4.3-memoized-center-provider",
+  "packageVersion": "1.4.4-footer-drawer-overlay-fix",
   "compatibility": {
     "claudeVersions": [
       "2.1.201"
@@ -32,7 +32,7 @@
             "operations": [
               {
                 "opId": "capy-onsen-context-frame-helpers-before-vko-2-1-201",
-                "label": "Insert physical frame plus fde/t4 center providers before app shell VKo",
+                "label": "Insert physical frame plus fde center provider and modal-only t4 before app shell VKo",
                 "type": "replace_exact",
                 "exact": "function VKo(e){let t=MXe.c(78)",
                 "requireWithinRange": [
@@ -42,9 +42,9 @@
                 "oldRangeLength": 31,
                 "replacement": {
                   "path": "payloads/01-capy-onsen-context-frame-helpers-before-vko-2-1-201.js",
-                  "sha256": "64bfabaa96d7b72f5eecb695bbf41902d0e98b2a365ce458b23b2a44188177cd"
+                  "sha256": "a99bea96b172e3f7ccec74c29dd465a9390b48927dd1e5dfdd2198ec4312afbb"
                 },
-                "knownBehaviorChange": "Defines clipped 30-column visible side gutters, responsive right-gutter collapse at <=140 columns, and center-column providers for both fde/useTerminalSize and t4 overlay consumers."
+                "knownBehaviorChange": "Defines clipped 30-column visible side gutters, responsive right-gutter collapse at <=140 columns, and a center-column fde/useTerminalSize provider while reserving t4 for real modal/scrollbox overlays."
               },
               {
                 "opId": "capy-onsen-center-columns-a-2-1-201",
@@ -64,7 +64,7 @@
               },
               {
                 "opId": "capy-onsen-main-window-me-2-1-201",
-                "label": "Physically and contextually wrap the fullscreen main window row in onsen gutters (me)",
+                "label": "Physically wrap the fullscreen main window row in onsen gutters (me)",
                 "type": "replace_exact",
                 "exact": "me=Xd.jsxs(B,{flexGrow:1,flexDirection:\"row\",overflow:\"hidden\",children:[Ee,pe]})",
                 "requireWithinRange": [
@@ -76,11 +76,11 @@
                   "path": "payloads/03-capy-onsen-main-window-me-2-1-201.js",
                   "sha256": "089a0d69544d3e14fadef64b5015de8406806e348c4ff6c5139f2cf4c4f87498"
                 },
-                "knownBehaviorChange": "Constrains the whole main window row between explicit gutters and gives center children a narrowed fde/t4 context."
+                "knownBehaviorChange": "Constrains the whole main window row between explicit gutters and gives center children a narrowed fde context without putting normal content in modal/scrollbox t4."
               },
               {
                 "opId": "capy-onsen-bottom-stack-de-2-1-201",
-                "label": "Physically and contextually wrap fullscreen bottom chrome/prompt/footer stack in onsen gutters (de)",
+                "label": "Physically wrap fullscreen bottom chrome/prompt/footer stack in onsen gutters (de)",
                 "type": "replace_exact",
                 "exact": "de=Xd.jsxs(B,{flexDirection:\"column\",flexShrink:0,width:\"100%\",maxHeight:w,children:[Se,le,ue]})",
                 "requireWithinRange": [
@@ -92,7 +92,7 @@
                   "path": "payloads/04-capy-onsen-bottom-stack-de-2-1-201.js",
                   "sha256": "1fe4fe0c509ef92118b57661ff145ca48e659c19f935419f0f50392372c0f219"
                 },
-                "knownBehaviorChange": "Constrains prompt/footer/bottom overlays to an explicit center width and narrowed fde/t4 context while rendering pool water in both gutters."
+                "knownBehaviorChange": "Constrains prompt/footer/bottom overlays to an explicit center width and narrowed fde context while leaving footer drawer overlays unclipped and rendering pool water in both gutters."
               },
               {
                 "opId": "capy-onsen-fullscreen-modal-center-fe-2-1-201",
@@ -108,11 +108,11 @@
                   "path": "payloads/05-capy-onsen-fullscreen-modal-center-fe-2-1-201.js",
                   "sha256": "5cef9057dd54e31fe56d0c056893cae8c3d821f35af6746b97c2ec8b80d273c6"
                 },
-                "knownBehaviorChange": "Keeps modal/sub-agent style overlays in an explicit center-width box and narrowed fde/t4 context."
+                "knownBehaviorChange": "Keeps modal/sub-agent style overlays in an explicit center-width box and narrowed real modal t4 context."
               },
               {
                 "opId": "capy-onsen-qde-bottom-stack-ee-2-1-201",
-                "label": "Physically and contextually wrap QDe bottom chrome/prompt/footer stack in onsen gutters (ee)",
+                "label": "Physically wrap QDe bottom chrome/prompt/footer stack in onsen gutters (ee)",
                 "type": "replace_exact",
                 "exact": "ee=Xd.jsxs(Xd.Fragment,{children:[J,Q,s]})",
                 "requireWithinRange": [
@@ -140,11 +140,11 @@
                   "path": "payloads/07-capy-onsen-qde-overlay-center-te-2-1-201.js",
                   "sha256": "d84f7e497aebdbf867fe016888dc596ab1c9b584ec12f8f48cc8d20d32072768"
                 },
-                "knownBehaviorChange": "Keeps overlay contents out of gutters using an explicit center-width box and narrowed fde/t4 context."
+                "knownBehaviorChange": "Keeps overlay contents out of gutters using an explicit center-width box and narrowed real modal t4 context."
               },
               {
                 "opId": "capy-onsen-fallback-window-v-2-1-201",
-                "label": "Physically and contextually wrap fallback scrollable/bottom/modal window in onsen gutters (V)",
+                "label": "Physically wrap fallback scrollable/bottom/modal window in onsen gutters (V)",
                 "type": "replace_exact",
                 "exact": "V=Xd.jsxs(Xd.Fragment,{children:[n,s,i]})",
                 "requireWithinRange": [
@@ -256,6 +256,11 @@
           },
           {
             "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "a=n!==void 0||r!==void 0,l=a?Xd.jsx(t4,{value:i,children:o}):o"
+          },
+          {
+            "type": "module_must_not_contain",
             "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "value": "Xd.jsx(fde,{value:s,children:Xd.jsx(t4,{value:i,children:o})})"
           },

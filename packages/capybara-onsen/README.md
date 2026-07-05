@@ -60,14 +60,14 @@ full-frame app-shell anchors as `hotrod-dragons` — the two packages are **mutu
 exclusive**; the builder's byte-range overlap check rejects co-application:
 
 1. `…-context-frame-helpers-before-vko` — scene components, clipped gutters,
-   responsive right-gutter collapse, and center-column `fde`/`t4` providers.
+   responsive right-gutter collapse, a center-column `fde` provider, and modal-only `t4` provider.
 2. `…-center-columns-a` — shrinks the app shell's local column context by the
    left gutter, responsive right gutter, and any sidebar.
 3. `…-main-window-me` — physically wraps the fullscreen main window/transcript row.
-4. `…-bottom-stack-de` — physically/contextually wraps fullscreen prompt/footer
+4. `…-bottom-stack-de` — physically wraps fullscreen prompt/footer
    bottom chrome.
 5. `…-fullscreen-modal-center-fe` — constrains fullscreen modal/sub-agent overlays.
-6. `…-qde-bottom-stack-ee` — constrains the terminal-scroll-region prompt/footer path.
+6. `…-qde-bottom-stack-ee` — constrains the terminal-scroll-region prompt/footer path without clipping footer overlays.
 7. `…-qde-overlay-center-te` — constrains the terminal-scroll-region overlay path.
 8. `…-fallback-window-v` — applies the same frame in the non-fullscreen fallback path.
 

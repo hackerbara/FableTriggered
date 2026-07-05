@@ -20,6 +20,15 @@ def _manifest() -> dict:
     return json.loads((PACKAGE_DIR / "patch.json").read_text())
 
 
+def _joined_payload_text() -> str:
+    manifest = _manifest()
+    operations = manifest["patch"]["targets"][0]["modules"][0]["operations"]
+    return "\n".join(
+        (PACKAGE_DIR / op["replacement"]["path"]).read_text(encoding="utf-8")
+        for op in operations
+    )
+
+
 def test_capybara_onsen_manifest_shape_and_pins():
     manifest = _manifest()
     assert manifest["id"] == "capybara-onsen"
@@ -81,7 +90,7 @@ def test_capybara_onsen_payloads_match_hashes_and_are_mojibake_safe():
     assert "codex-capy-onsen-v6-right-responsive" in joined
     assert "codex-capy-onsen-v6-pool-right-responsive" in joined
     assert "codex-capy-onsen-v5-width-readout" not in joined
-    assert "Xd.jsx(fde,{value:s,children:Xd.jsx(t4,{value:i,children:o})})" in joined
+    assert "a=n!==void 0||r!==void 0,l=a?Xd.jsx(t4,{value:i,children:o}):o" in joined
     assert '"ink-raw-ansi"' in joined
     assert "String.fromCharCode(9600)" in joined       # half-block generated at runtime
     assert "String.fromCharCode(27)" in joined         # ESC generated at runtime
@@ -94,27 +103,36 @@ def test_capybara_onsen_center_provider_memoizes_context_values():
     """Regression test for the footer-drawers Enter-to-open interaction bug.
 
     The center provider re-provides the app's real `fde` (useTerminalSize)
-    and `t4` (modal/scrollbox) React contexts around the main window and
-    bottom stack (composer + footer). Recreating the `{rows, columns, ...}`
-    value objects on every render meant every consumer of those contexts --
-    including the composer component that hosts footer-drawers' Enter-to-open
-    wiring -- was forced to re-render on capybara's own 180ms art animation
-    tick, forever, whether or not the user was interacting. Composed with
-    footer-drawers + hidden-context-drawer this broke Enter-to-open even
-    though the footer bars kept rendering fine (bar rendering doesn't depend
-    on the isActive/context stability that key-binding routing does).
-    Memoizing the provider's values keeps their identity stable across pure
-    animation re-renders, so context-consuming descendants only re-render
-    when the terminal actually resizes.
+    around the main window and bottom stack, and still re-provides `t4`
+    (modal/scrollbox) for real modal paths. Recreating the value objects on
+    every render meant descendants were forced to re-render on capybara's own
+    180ms art animation tick, forever, whether or not the user was
+    interacting. Memoizing the provider values keeps their identity stable
+    across pure animation re-renders, so descendants only re-render when the
+    terminal actually resizes.
     """
-    manifest = _manifest()
-    operations = manifest["patch"]["targets"][0]["modules"][0]["operations"]
-    joined = ""
-    for op in operations:
-        joined += "\n" + (PACKAGE_DIR / op["replacement"]["path"]).read_text(encoding="utf-8")
+    joined = _joined_payload_text()
     assert "A_.useMemo(()=>({rows:e,columns:t}),[e,t])" in joined
     assert "A_.useMemo(()=>({rows:e,columns:t,scrollRef:n??null,claimScrollBox:r??null}),[e,t,n,r])" in joined
     assert "let s={rows:e,columns:t},i={rows:e,columns:t,scrollRef:n??null,claimScrollBox:r??null}" not in joined
+
+
+def test_capybara_onsen_footer_drawer_overlays_are_not_clipped_or_fake_modal():
+    """Footer drawer panels mount in the bottom stack and escape upward.
+
+    The art frame may narrow `fde` for the center column, but it must not wrap
+    non-modal footer/composer descendants in the renderer's real `t4`
+    modal/scrollbox context, and the bottom-stack frame must not clip absolute
+    overlay mounts like `Ilc`.
+    """
+    joined = _joined_payload_text()
+    assert "Xd.jsx(fde,{value:s,children:Xd.jsx(t4,{value:i,children:o})})" not in joined
+    assert "a=n!==void 0||r!==void 0,l=a?Xd.jsx(t4,{value:i,children:o}):o" in joined
+
+    start = joined.index("function __CodexCapyOnsenBottomStackV4")
+    end = joined.index("function __CodexCapyOnsenModalProviderV4")
+    bottom_stack_helper = joined[start:end]
+    assert 'overflow:"hidden"' not in bottom_stack_helper
 
 
 def test_capybara_onsen_validates_against_live_2_1_201_source():

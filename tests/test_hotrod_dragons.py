@@ -20,6 +20,15 @@ def _manifest() -> dict:
     return json.loads((PACKAGE_DIR / "patch.json").read_text())
 
 
+def _joined_payload_text() -> str:
+    manifest = _manifest()
+    operations = manifest["patch"]["targets"][0]["modules"][0]["operations"]
+    return "\n".join(
+        (PACKAGE_DIR / op["replacement"]["path"]).read_text(encoding="utf-8")
+        for op in operations
+    )
+
+
 def test_hotrod_dragons_manifest_shape_and_pins():
     manifest = _manifest()
     assert manifest["id"] == "hotrod-dragons"
@@ -82,7 +91,7 @@ def test_hotrod_dragons_payloads_match_hashes_and_are_mojibake_safe():
     assert "codex-hotrod-v12-right-responsive" in joined
     assert "codex-hotrod-v12-tower-right-responsive" in joined
     assert "A=__hdCenterColumns(T,f)" in joined
-    assert "Xd.jsx(fde,{value:s,children:Xd.jsx(t4,{value:i,children:o})})" in joined
+    assert "a=n!==void 0||r!==void 0,l=a?Xd.jsx(t4,{value:i,children:o}):o" in joined
     assert '"ink-raw-ansi"' in joined
     assert "String.fromCharCode(9600)" in joined       # half-block generated at runtime
     assert "String.fromCharCode(27)" in joined         # ESC generated at runtime
@@ -96,26 +105,32 @@ def test_hotrod_dragons_center_provider_memoizes_context_values():
     """Regression test for the same class of bug fixed in capybara-onsen
     (see test_capybara_onsen_center_provider_memoizes_context_values).
 
-    hotrod-dragons shares the identical __hdCenterProviderV4 pattern: it
-    re-provides the app's real `fde` (useTerminalSize) and `t4`
-    (modal/scrollbox) React contexts around the main window and bottom
-    stack (composer + footer). Recreating the `{rows, columns, ...}` value
-    objects on every render meant every consumer of those contexts --
-    including the composer component that hosts footer-drawers' Enter-to-
-    open wiring -- was forced to re-render on hotrod-dragons' own 95ms fire
+    hotrod-dragons shares the same __hdCenterProviderV4 pattern: it
+    re-provides the app's real `fde` (useTerminalSize) around the main
+    window and bottom stack, and still re-provides `t4` (modal/scrollbox)
+    for real modal paths. Recreating the value objects on every render meant
+    descendants were forced to re-render on hotrod-dragons' own 95ms fire
     animation tick, forever, regardless of user interaction. Memoizing the
-    provider's values keeps their identity stable across pure animation
-    re-renders, so context-consuming descendants only re-render when the
-    terminal actually resizes.
+    provider values keeps their identity stable across pure animation
+    re-renders, so descendants only re-render when the terminal actually
+    resizes.
     """
-    manifest = _manifest()
-    operations = manifest["patch"]["targets"][0]["modules"][0]["operations"]
-    joined = ""
-    for op in operations:
-        joined += "\n" + (PACKAGE_DIR / op["replacement"]["path"]).read_text(encoding="utf-8")
+    joined = _joined_payload_text()
     assert "A_.useMemo(()=>({rows:e,columns:t}),[e,t])" in joined
     assert "A_.useMemo(()=>({rows:e,columns:t,scrollRef:n??null,claimScrollBox:r??null}),[e,t,n,r])" in joined
     assert "let s={rows:e,columns:t},i={rows:e,columns:t,scrollRef:n??null,claimScrollBox:r??null}" not in joined
+
+
+def test_hotrod_dragons_footer_drawer_overlays_are_not_clipped_or_fake_modal():
+    """Hotrod shares capy's app-shell provider shape, so keep the same drawer guard."""
+    joined = _joined_payload_text()
+    assert "Xd.jsx(fde,{value:s,children:Xd.jsx(t4,{value:i,children:o})})" not in joined
+    assert "a=n!==void 0||r!==void 0,l=a?Xd.jsx(t4,{value:i,children:o}):o" in joined
+
+    start = joined.index("function __CodexHotrodBottomStackV4")
+    end = joined.index("function __CodexHotrodModalProviderV4")
+    bottom_stack_helper = joined[start:end]
+    assert 'overflow:"hidden"' not in bottom_stack_helper
 
 
 def test_hotrod_dragons_validates_against_live_2_1_201_source():

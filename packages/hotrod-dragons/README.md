@@ -29,9 +29,10 @@ the fire strings swap; the renderer's cell differ + synchronized-update mode 202
 handle the rest, flicker-free.
 
 The layout uses the same global frame strategy as the responsive Capybara package:
-physical left/right gutters plus narrowed `fde`/`t4` terminal-size contexts for the
-center column. That second part is what keeps prompt wrapping and overlays from
-measuring the full terminal width and disappearing under the right-side art.
+physical left/right gutters plus a narrowed `fde` terminal-size context for the
+center column; `t4` is reserved for real modal/scrollbox overlay paths. That keeps
+prompt wrapping and overlays from measuring the full terminal width without making
+normal footer/composer content believe it lives in a modal.
 
 - **Mojibake-safe**: payloads contain **no literal `▀` or ESC bytes** — the runtime
   produces both via `String.fromCharCode(9600)` / `String.fromCharCode(27)`. Art data
@@ -51,15 +52,15 @@ measuring the full terminal width and disappearing under the right-side art.
 All eight are `replace_exact` inserts/replacements (non-overlapping):
 
 1. `…-context-frame-helpers-before-vko` — defines dragon art, responsive right-gutter
-   collapse, and center-column `fde`/`t4` providers.
+   collapse, a center-column `fde` provider, and modal-only `t4` provider.
 2. `…-center-columns-a` — shrinks the app shell's local column context by the left
    gutter, responsive right gutter, and any sidebar.
 3. `…-main-window-me` — physically wraps the fullscreen main window/transcript row.
-4. `…-bottom-stack-de` — physically/contextually wraps fullscreen prompt/footer/bottom
+4. `…-bottom-stack-de` — physically wraps fullscreen prompt/footer/bottom
    chrome.
 5. `…-fullscreen-modal-center-fe` — constrains fullscreen modal/sub-agent overlays to
    the center column.
-6. `…-qde-bottom-stack-ee` — constrains the terminal-scroll-region prompt/footer path.
+6. `…-qde-bottom-stack-ee` — constrains the terminal-scroll-region prompt/footer path without clipping footer overlays.
 7. `…-qde-overlay-center-te` — constrains the terminal-scroll-region overlay path.
 8. `…-fallback-window-v` — applies the same main/bottom frame in the non-fullscreen
    fallback path.

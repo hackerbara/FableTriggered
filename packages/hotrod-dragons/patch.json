@@ -4,7 +4,7 @@
   "id": "hotrod-dragons",
   "label": "Hotrod Dragons",
   "description": "Two heraldic fire-breathing dragons flank the terminal \u2014 high-def half-block pixel art with 8-phase baked flame animation, drawn via the renderer's native ink-raw-ansi direct-draw path.",
-  "packageVersion": "1.2.1-memoized-center-provider",
+  "packageVersion": "1.2.2-footer-drawer-overlay-fix",
   "compatibility": {
     "claudeVersions": [
       "2.1.201"
@@ -32,7 +32,7 @@
             "operations": [
               {
                 "opId": "hotrod-dragons-context-frame-helpers-before-vko-2-1-201",
-                "label": "Insert dragon art plus physical frame and fde/t4 center providers before app shell VKo",
+                "label": "Insert dragon art plus physical frame, fde center provider, and modal-only t4 before app shell VKo",
                 "type": "replace_exact",
                 "exact": "function VKo(e){let t=MXe.c(78)",
                 "requireWithinRange": [
@@ -42,9 +42,9 @@
                 "oldRangeLength": 31,
                 "replacement": {
                   "path": "payloads/01-hotrod-dragons-context-frame-helpers-before-vko-2-1-201.js",
-                  "sha256": "d5a1ccb351846320d5accb49f3bd3ccd8e64890552a60de85bf6d1eee15140d8"
+                  "sha256": "ec73307839f8ae3b8c80e074cc66949583ad20368b10e40f1f774eef24279341"
                 },
-                "knownBehaviorChange": "Defines clipped 30-column visible dragon side gutters, responsive right-gutter collapse at <=140 columns, and center-column providers for both fde/useTerminalSize and t4 overlay consumers."
+                "knownBehaviorChange": "Defines clipped 30-column visible dragon side gutters, responsive right-gutter collapse at <=140 columns, and a center-column fde/useTerminalSize provider while reserving t4 for real modal/scrollbox overlays."
               },
               {
                 "opId": "hotrod-dragons-center-columns-a-2-1-201",
@@ -64,7 +64,7 @@
               },
               {
                 "opId": "hotrod-dragons-main-window-me-2-1-201",
-                "label": "Physically and contextually wrap the fullscreen main window row in dragon gutters (me)",
+                "label": "Physically wrap the fullscreen main window row in dragon gutters (me)",
                 "type": "replace_exact",
                 "exact": "me=Xd.jsxs(B,{flexGrow:1,flexDirection:\"row\",overflow:\"hidden\",children:[Ee,pe]})",
                 "requireWithinRange": [
@@ -76,11 +76,11 @@
                   "path": "payloads/03-hotrod-dragons-main-window-me-2-1-201.js",
                   "sha256": "90280d4e698ecc02139209a7490345c49234e18a376728dd1574f7f6f0fd3995"
                 },
-                "knownBehaviorChange": "Constrains the whole main window row between explicit dragon gutters and gives center children a narrowed fde/t4 context."
+                "knownBehaviorChange": "Constrains the whole main window row between explicit dragon gutters and gives center children a narrowed fde context without putting normal content in modal/scrollbox t4."
               },
               {
                 "opId": "hotrod-dragons-bottom-stack-de-2-1-201",
-                "label": "Physically and contextually wrap fullscreen bottom chrome/prompt/footer stack in dragon gutters (de)",
+                "label": "Physically wrap fullscreen bottom chrome/prompt/footer stack in dragon gutters (de)",
                 "type": "replace_exact",
                 "exact": "de=Xd.jsxs(B,{flexDirection:\"column\",flexShrink:0,width:\"100%\",maxHeight:w,children:[Se,le,ue]})",
                 "requireWithinRange": [
@@ -92,7 +92,7 @@
                   "path": "payloads/04-hotrod-dragons-bottom-stack-de-2-1-201.js",
                   "sha256": "7b479f41b0a78ce71a71176d2fd8ceb4421cfc3347653e9afacce97f8aa3bf26"
                 },
-                "knownBehaviorChange": "Constrains prompt/footer/bottom overlays to the center width and narrowed fde/t4 context while rendering castle towers in the gutters."
+                "knownBehaviorChange": "Constrains prompt/footer/bottom overlays to the center width and narrowed fde context while leaving footer drawer overlays unclipped and rendering castle towers in the gutters."
               },
               {
                 "opId": "hotrod-dragons-fullscreen-modal-center-fe-2-1-201",
@@ -108,11 +108,11 @@
                   "path": "payloads/05-hotrod-dragons-fullscreen-modal-center-fe-2-1-201.js",
                   "sha256": "cbc0e6181e54c9aaf86181909aa1aaaa788ab2b0867a0e9ee570156ca3c943e0"
                 },
-                "knownBehaviorChange": "Keeps modal/sub-agent style overlays in an explicit center-width box and narrowed fde/t4 context."
+                "knownBehaviorChange": "Keeps modal/sub-agent style overlays in an explicit center-width box and narrowed real modal t4 context."
               },
               {
                 "opId": "hotrod-dragons-qde-bottom-stack-ee-2-1-201",
-                "label": "Physically and contextually wrap QDe bottom chrome/prompt/footer stack in dragon gutters (ee)",
+                "label": "Physically wrap QDe bottom chrome/prompt/footer stack in dragon gutters (ee)",
                 "type": "replace_exact",
                 "exact": "ee=Xd.jsxs(Xd.Fragment,{children:[J,Q,s]})",
                 "requireWithinRange": [
@@ -140,11 +140,11 @@
                   "path": "payloads/07-hotrod-dragons-qde-overlay-center-te-2-1-201.js",
                   "sha256": "971ca0f2271c2736e174fe816d3a9fde4eafa218833cdf405c1279d780e42333"
                 },
-                "knownBehaviorChange": "Keeps overlay contents out of gutters using an explicit center-width box and narrowed fde/t4 context."
+                "knownBehaviorChange": "Keeps overlay contents out of gutters using an explicit center-width box and narrowed real modal t4 context."
               },
               {
                 "opId": "hotrod-dragons-fallback-window-v-2-1-201",
-                "label": "Physically and contextually wrap fallback scrollable/bottom/modal window in dragon gutters (V)",
+                "label": "Physically wrap fallback scrollable/bottom/modal window in dragon gutters (V)",
                 "type": "replace_exact",
                 "exact": "V=Xd.jsxs(Xd.Fragment,{children:[n,s,i]})",
                 "requireWithinRange": [
@@ -266,6 +266,11 @@
           },
           {
             "type": "module_must_contain",
+            "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
+            "value": "a=n!==void 0||r!==void 0,l=a?Xd.jsx(t4,{value:i,children:o}):o"
+          },
+          {
+            "type": "module_must_not_contain",
             "modulePath": "/$bunfs/root/src/entrypoints/cli.js",
             "value": "Xd.jsx(fde,{value:s,children:Xd.jsx(t4,{value:i,children:o})})"
           },

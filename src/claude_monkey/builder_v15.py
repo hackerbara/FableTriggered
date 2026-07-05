@@ -9,10 +9,11 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from claude_monkey.binary_format import locate_bun_section, repack_for_format
 from claude_monkey.binary_inspect import inspect_binary_bytes
 from claude_monkey.bun_graph import BunGraphError, parse_bun_section
 from claude_monkey.install import use_official
-from claude_monkey.macho import MachOError, find_macho_layout
+from claude_monkey.macho import MachOError
 from claude_monkey.manifest_v2 import (
     AssertionV2,
     ManifestV2,
@@ -33,7 +34,6 @@ from claude_monkey.module_patch import (
 )
 from claude_monkey.package_model import PackageKind, PackageValidationError, load_package_manifest
 from claude_monkey.progress import StageTracker
-from claude_monkey.repack import repack_changed_modules
 from claude_monkey.reports_v2 import BuildReportV2
 from claude_monkey.smoke import (
     CommandResult,
@@ -169,10 +169,8 @@ def validate_package(request: ValidationRequestV15) -> dict[str, Any]:
                 "errors": ["source identity did not match exactly"],
             }
         target = matching_targets[0]
-        layout = find_macho_layout(source)
-        graph = parse_bun_section(
-            source[layout.bun_section.offset : layout.bun_section.offset + layout.bun_section.size]
-        )
+        start, length = locate_bun_section(source)
+        graph = parse_bun_section(source[start : start + length])
         if graph.validation_errors:
             return {
                 "schemaVersion": 1,
@@ -524,10 +522,8 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
                     raise ValueError(
                         f"patch_conflict:package_conflict:{manifest.id}:{conflict}"
                     )
-        layout = find_macho_layout(source)
-        graph = parse_bun_section(
-            source[layout.bun_section.offset : layout.bun_section.offset + layout.bun_section.size]
-        )
+        start, length = locate_bun_section(source)
+        graph = parse_bun_section(source[start : start + length])
         if graph.validation_errors:
             raise ValueError(f"bun_graph_invalid:{graph.validation_errors}")
         original_modules = {module.path: module.content for module in graph.modules}
@@ -599,7 +595,7 @@ def build_patchset_v15(request: BuildRequestV15) -> BuildReportV2:
             raise ValueError("no_module_changes")
         tracker.done()
         tracker.start("repack")
-        repack = repack_changed_modules(source, changed_modules)
+        repack = repack_for_format(source, changed_modules)
         for _, manifest, target in selected:
             for assertion in target.postconditions:
                 result = _assert_condition_v2(

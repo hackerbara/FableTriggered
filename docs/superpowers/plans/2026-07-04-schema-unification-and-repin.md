@@ -138,6 +138,7 @@ def test_schema_one_without_kind_rejected(tmp_path):
 
 - [ ] **Step 2: Run — expect FAIL** (currently both parse or raise differently)
 - [ ] **Step 3: Implement** — in `load_manifest_v2`, delete the `schemaVersion == 2 or (schemaVersion == 1 and "kind" not in data)` branch; validate `data.get("schemaVersion") == 1 and "kind" in data`, else raise the error above; always route through `_v3_manifest_as_v2_dict`.
+- [ ] **Step 3b: Remove the install-branch's temporary v2 acceptance.** The `codex/install-uninstall-command` branch modified `src/claude_monkey/package_model.py` (~lines 371, 407, 415, 422-423) to accept `schemaVersion: 2` so `install` could copy the 5 not-yet-migrated packages (see `docs/superpowers/reviews/2026-07-04-install-uninstall-review.md` on that branch). Once this task's strict format lands and Task 3 migrates those manifests, that acceptance is dead scaffolding — remove it. If the install branch hasn't merged yet when you get here, this step is a no-op; note that in the commit message either way. The Step-1 rejection tests are the regression guard.
 - [ ] **Step 4: Run the suite.** EXPECTED COLLATERAL: every test building the 5 not-yet-migrated packages now fails — that's Task 3's cue, not a bug. Verify the two new tests pass and failures are exactly the un-migrated-package builds. **Do not commit yet** — Task 3 lands atomically with this.
 
 ---

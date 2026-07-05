@@ -4,9 +4,30 @@ import hashlib
 import json
 
 import pytest
-from tests.test_manifest import valid_manifest
-
 from claude_monkey.cli import main
+
+
+def unsupported_legacy_manifest() -> dict:
+    return {
+        "schemaVersion": 1,
+        "id": "example-patch",
+        "name": "Example Patch",
+        "description": "Example declarative patch",
+        "packageVersion": "0.1.0",
+        "targets": [
+            {
+                "sourceIdentity": {
+                    "claudeVersion": "2.1.198",
+                    "versionOutput": "2.1.198 (Claude Code)",
+                    "sha256": "a" * 64,
+                    "sizeBytes": 100,
+                    "platform": "darwin",
+                    "arch": "arm64",
+                },
+                "operations": [],
+            }
+        ],
+    }
 
 
 def test_cli_version(capsys):
@@ -51,7 +72,7 @@ def test_cli_build_with_explicit_source_and_package(monkeypatch, tmp_path, capsy
     source_sha = hashlib.sha256(source.read_bytes()).hexdigest()
     package = tmp_path / "patches" / "example-patch"
     package.mkdir(parents=True)
-    data = valid_manifest()
+    data = unsupported_legacy_manifest()
     data["targets"][0]["sourceIdentity"]["sha256"] = source_sha
     data["targets"][0]["sourceIdentity"]["sizeBytes"] = source.stat().st_size
     (package / "patch.json").write_text(json.dumps(data))

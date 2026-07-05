@@ -4,7 +4,7 @@ import base64
 import hashlib
 from pathlib import Path
 
-from claude_monkey.manifest import PayloadRef
+from typing import Any
 
 
 class PayloadError(ValueError):
@@ -19,7 +19,7 @@ def decode_payload_text(text: str, encoding: str) -> bytes:
     raise PayloadError(f"unsupported payload encoding: {encoding}")
 
 
-def load_payload_bytes(ref: PayloadRef, package_dir: Path | None) -> bytes:
+def load_payload_bytes(ref: Any, package_dir: Path | None) -> bytes:
     if ref.inline is not None:
         return decode_payload_text(ref.inline, ref.encoding)
     if ref.path is None or ref.sha256 is None:

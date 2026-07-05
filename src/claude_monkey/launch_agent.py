@@ -98,7 +98,11 @@ def provision_app_venv(repo_root: Path, state_dir: Path, runner=run_command) -> 
     venv_dir = app_venv_dir(state_dir)
     venv_dir.parent.mkdir(parents=True, exist_ok=True)
 
-    result = runner(["uv", "venv", str(venv_dir)])
+    # --clear: `uv venv` otherwise refuses to recreate a venv that already
+    # exists at this path ("Use --clear to replace it"), which would break
+    # re-running install after a repo update (the "updates a venv" half of
+    # this function's contract).
+    result = runner(["uv", "venv", "--clear", str(venv_dir)])
     if result.returncode != 0:
         raise RuntimeError(f"uv venv failed: {result.stderr or result.stdout}")
 

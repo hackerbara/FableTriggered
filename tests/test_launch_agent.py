@@ -117,7 +117,8 @@ def test_provision_app_venv_runs_uv_venv_then_uv_pip_install_in_order(tmp_path):
 
     app_dir = state_dir / "app"
     assert result == app_dir
-    assert runner.calls[0] == ["uv", "venv", str(app_dir)]
+    assert runner.calls[0][:2] == ["uv", "venv"]
+    assert str(app_dir) in runner.calls[0]
     install_call = runner.calls[1]
     assert install_call[:3] == ["uv", "pip", "install"]
     assert "--python" in install_call
@@ -127,6 +128,22 @@ def test_provision_app_venv_runs_uv_venv_then_uv_pip_install_in_order(tmp_path):
     assert "-e" not in install_call
     assert "--editable" not in install_call
     assert "--reinstall" in install_call
+
+
+def test_provision_app_venv_passes_clear_flag_so_reprovisioning_an_existing_venv_succeeds(tmp_path):
+    """Real-machine regression: `uv venv <dir>` refuses to recreate a venv
+    that already exists at that path unless told to --clear it, erroring
+    'A virtual environment already exists ... Use --clear to replace it'.
+    `install` must be re-runnable (e.g. after a repo update) without that
+    failure, per the 'creates/updates a venv... re-running upgrades in
+    place' requirement."""
+    runner = FakeRunner()
+    state_dir = tmp_path / "home" / ".claude-monkey"
+    state_dir.mkdir(parents=True)
+
+    provision_app_venv(tmp_path / "repo", state_dir, runner=runner)
+
+    assert "--clear" in runner.calls[0]
 
 
 def test_provision_app_venv_writes_marker_file(tmp_path):
